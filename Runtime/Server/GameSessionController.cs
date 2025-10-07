@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Unity.Netcode;
 using UnityEngine;
+using MultiplayerServicesTest.Shared;
 
 namespace MultiplayerServicesTest.Server
 {
@@ -30,7 +31,7 @@ namespace MultiplayerServicesTest.Server
         // ========== Configuration ==========
         [Header("Timeouts")]
         [SerializeField] private float waitingPlayersTimeout = 10f;
-        [SerializeField] private float inGameTimeout = 300f;
+        private float inGameTimeout;
 
         // ========== Components ==========
         private int m_RequiredPlayers;
@@ -80,6 +81,16 @@ namespace MultiplayerServicesTest.Server
 
             m_RequiredPlayers = ServerSingleton.Instance?.GameManager?.TeamCount ?? 2;
             m_PlayerTracker = new PlayerConnectionTracker();
+
+            var config = GameConfig.Instance;
+            if (config != null)
+            {
+                inGameTimeout = config.MaxGameDurationSeconds;
+            }
+            else
+            {
+                inGameTimeout = 300f;
+            }
 
             // プレイヤー数変化を監視
             m_PlayerTracker.OnPlayerCountChanged += count =>

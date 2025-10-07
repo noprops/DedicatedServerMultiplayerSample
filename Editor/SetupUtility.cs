@@ -1,6 +1,7 @@
 using System.IO;
 using UnityEditor;
 using UnityEngine;
+using MultiplayerServicesTest.Shared;
 
 namespace DedicatedServerMultiplayerSample.Editor
 {
@@ -27,12 +28,11 @@ namespace DedicatedServerMultiplayerSample.Editor
 
                 CopyFolder("Scenes");
                 CopyFolder("Prefabs");
-                CopyFolder("Configurations");
-                CopyFolder("Scripts/Client");
-                CopyFolder("Scripts/Shared");
+            CopyFolder("Configurations");
+            CopyFolder("Scripts/Client");
+            CopyFolder("Scripts/Shared");
 
-                // Copy GameConfig into Assets/Resources/Config
-                CopyFolder("Resources/Config");
+            CreateGameConfigAsset();
 
                 SetupScenes();
 
@@ -76,6 +76,19 @@ namespace DedicatedServerMultiplayerSample.Editor
                 Directory.CreateDirectory(Path.GetDirectoryName(fileTarget) ?? destination);
                 File.Copy(file, fileTarget, overwrite: true);
             }
+        }
+
+        private static void CreateGameConfigAsset()
+        {
+            var config = ScriptableObject.CreateInstance<GameConfig>();
+
+            string resourcesPath = Path.Combine(TargetRoot, "Resources/Config");
+            Directory.CreateDirectory(resourcesPath);
+
+            string assetPath = Path.Combine(resourcesPath, "GameConfig.asset");
+
+            AssetDatabase.CreateAsset(config, assetPath);
+            AssetDatabase.SaveAssets();
         }
 
         private static void SetupScenes()

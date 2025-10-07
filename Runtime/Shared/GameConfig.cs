@@ -26,6 +26,11 @@ namespace MultiplayerServicesTest.Shared
         [SerializeField]
         private int m_MaxPlayersPerTeam = 1;
 
+        [Header("Game Flow")]
+        [Min(10f)]
+        [SerializeField]
+        private float m_MaxGameDurationSeconds = 300f;
+
         private static GameConfig s_Instance;
 
         /// <summary>
@@ -52,6 +57,11 @@ namespace MultiplayerServicesTest.Shared
         /// 人間プレイヤーの理想的な最大人数。
         /// </summary>
         public int MaxHumanPlayers => MaxTeams * MaxPlayersPerTeam;
+
+        /// <summary>
+        /// ゲーム全体の最大所要時間（秒）。
+        /// </summary>
+        public float MaxGameDurationSeconds => Mathf.Max(10f, m_MaxGameDurationSeconds);
 
         /// <summary>
         /// シーン上から簡単に参照できるシングルトンアクセサ。
