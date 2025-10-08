@@ -1,6 +1,6 @@
 using UnityEngine;
 
-namespace MultiplayerServicesTest.Shared
+namespace DedicatedServerMultiplayerSample.Shared
 {
     /// <summary>
     /// ゲーム全体で共有するプレイヤー構成設定を保持するScriptableObject。

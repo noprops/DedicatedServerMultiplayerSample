@@ -1,4 +1,4 @@
-namespace MultiplayerServicesTest.Client
+namespace DedicatedServerMultiplayerSample.Client
 {
     /// <summary>
     /// マッチメイキング結果

@@ -3,9 +3,9 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.Netcode;
-using MultiplayerServicesTest.Shared;
+using DedicatedServerMultiplayerSample.Shared;
 
-namespace MultiplayerServicesTest.Server
+namespace DedicatedServerMultiplayerSample.Server
 {
     /// <summary>
     /// プレイヤーの接続検証を行うクラス
@@ -20,7 +20,7 @@ namespace MultiplayerServicesTest.Server
         private readonly NetworkManager m_NetworkManager;
         private readonly List<string> m_ExpectedPlayerIds;
         private readonly Dictionary<ulong, string> m_ConnectedPlayers;
-        private readonly Dictionary<ulong, ConnectionData> m_ConnectionDataMap;
+        private readonly Dictionary<ulong, Dictionary<string, object>> m_ConnectionDataMap;
 
         // ========== Constructor ==========
         public ServerPlayerValidator(
@@ -31,8 +31,8 @@ namespace MultiplayerServicesTest.Server
             m_NetworkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
             m_ExpectedPlayerIds = expectedPlayerIds ?? new List<string>();
             m_ConnectedPlayers = connectedPlayers ?? new Dictionary<ulong, string>();
-            m_ConnectionDataMap = new Dictionary<ulong, ConnectionData>();
-            m_FallbackMaxPlayers = Mathf.Max(1, MultiplayerServicesTest.Shared.GameConfig.Instance.MaxHumanPlayers);
+            m_ConnectionDataMap = new Dictionary<ulong, Dictionary<string, object>>();
+            m_FallbackMaxPlayers = Mathf.Max(1, DedicatedServerMultiplayerSample.Shared.GameConfig.Instance.MaxHumanPlayers);
         }
 
         // ========== Public Methods ==========
@@ -41,7 +41,7 @@ namespace MultiplayerServicesTest.Server
         /// 接続リクエストを検証
         /// </summary>
         /// <returns>(success, connectionData, errorReason)</returns>
-        public (bool success, ConnectionData connectionData, string errorReason) ValidateConnectionRequest(
+        public (bool success, Dictionary<string, object> connectionData, string errorReason) ValidateConnectionRequest(
             NetworkManager.ConnectionApprovalRequest request)
         {
             Debug.Log($"[ServerPlayerValidator] Validating connection request. ClientId: {request.ClientNetworkId}");
@@ -79,38 +79,23 @@ namespace MultiplayerServicesTest.Server
 
             // ===== ConnectionData JSON版 =====
             string playerId = null;
-            ConnectionData connectionData = null;
+            Dictionary<string, object> connectionData = ConnectionPayloadSerializer.DeserializeFromBytes(request.Payload);
 
-            if (request.Payload != null && request.Payload.Length > 0)
+            if (connectionData.Count > 0)
             {
-                try
-                {
-                    string jsonPayload = System.Text.Encoding.UTF8.GetString(request.Payload);
-                    Debug.Log($"[ServerPlayerValidator] ✓ Received JSON: '{jsonPayload}'");
-
-                    // JSONからConnectionDataをデシリアライズ
-                    connectionData = JsonUtility.FromJson<ConnectionData>(jsonPayload);
-                    if (connectionData != null)
-                    {
-                        playerId = connectionData.authId;
-                        Debug.Log($"[ServerPlayerValidator] ✓ Parsed ConnectionData - Name: '{connectionData.playerName}', AuthId: '{connectionData.authId}'");
-                        Debug.Log($"[ServerPlayerValidator] ✓ Game Version: {connectionData.gameVersion}, Rank: {connectionData.rank}");
-                    }
-                    else
-                    {
-                        Debug.LogError("[ServerPlayerValidator] Failed to deserialize ConnectionData from JSON");
-                    }
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[ServerPlayerValidator] Failed to parse JSON payload: {e.Message}");
-                }
+                Debug.Log($"[ServerPlayerValidator] ✓ Parsed connection payload with keys: {string.Join(", ", connectionData.Keys)}");
             }
-            else
-            {
-                Debug.LogWarning($"[ServerPlayerValidator] ✗ Payload is empty or null!");
 
-                // フォールバック：期待されるプレイヤーリストから割り当て
+            if (connectionData.Count > 0)
+            {
+                playerId = ExtractString(connectionData, "authId");
+                Debug.Log($"[ServerPlayerValidator] ✓ Parsed connection payload. authId: '{playerId ?? "null"}'");
+            }
+
+            if (string.IsNullOrEmpty(playerId))
+            {
+                Debug.LogWarning("[ServerPlayerValidator] Payload missing authId. Attempting fallback.");
+
                 if (m_ExpectedPlayerIds.Count > 0)
                 {
                     foreach (var expectedId in m_ExpectedPlayerIds)
@@ -118,13 +103,7 @@ namespace MultiplayerServicesTest.Server
                         if (!m_ConnectedPlayers.ContainsValue(expectedId))
                         {
                             playerId = expectedId;
-                            connectionData = new ConnectionData(
-                                playerName: "Player" + request.ClientNetworkId,
-                                authId: playerId,
-                                gameVersion: ConvertVersionToInt(Application.version),
-                                rank: 1000
-                            );
-                            Debug.Log($"[ServerPlayerValidator] Fallback - Assigned expected PlayerId: {playerId}");
+                            connectionData = BuildFallbackPayload(request.ClientNetworkId, expectedId);
                             break;
                         }
                     }
@@ -162,7 +141,7 @@ namespace MultiplayerServicesTest.Server
         /// <summary>
         /// ConnectionDataを取得
         /// </summary>
-        public ConnectionData GetConnectionData(ulong clientNetworkId)
+        public Dictionary<string, object> GetConnectionData(ulong clientNetworkId)
         {
             return m_ConnectionDataMap.ContainsKey(clientNetworkId) ? m_ConnectionDataMap[clientNetworkId] : null;
         }
@@ -170,9 +149,9 @@ namespace MultiplayerServicesTest.Server
         /// <summary>
         /// すべてのConnectionDataを取得
         /// </summary>
-        public Dictionary<ulong, ConnectionData> GetAllConnectionData()
+        public Dictionary<ulong, Dictionary<string, object>> GetAllConnectionData()
         {
-            return new Dictionary<ulong, ConnectionData>(m_ConnectionDataMap);
+            return new Dictionary<ulong, Dictionary<string, object>>(m_ConnectionDataMap);
         }
 
         /// <summary>
@@ -224,6 +203,35 @@ namespace MultiplayerServicesTest.Server
                 Debug.LogError($"Failed to convert version '{version}' to int: {e.Message}");
                 return 0;
             }
+        }
+
+        private static Dictionary<string, object> BuildFallbackPayload(ulong clientNetworkId, string authId)
+        {
+            return new Dictionary<string, object>
+            {
+                ["playerName"] = $"Player{clientNetworkId}",
+                ["authId"] = authId,
+                ["gameVersion"] = ConvertVersionToInt(Application.version),
+                ["rank"] = 1000
+            };
+        }
+
+        private static string ExtractString(Dictionary<string, object> payload, string key)
+        {
+            if (payload == null || !payload.TryGetValue(key, out var value) || value == null)
+            {
+                return null;
+            }
+
+            return value switch
+            {
+                string str => str,
+                int i => i.ToString(),
+                long l => l.ToString(),
+                double d => d.ToString(),
+                bool b => b.ToString(),
+                _ => value.ToString()
+            };
         }
 
         // ========== Private Methods ==========

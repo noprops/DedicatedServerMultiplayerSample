@@ -6,9 +6,9 @@ using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using MultiplayerServicesTest.Shared;
+using DedicatedServerMultiplayerSample.Shared;
 
-namespace MultiplayerServicesTest.Server
+namespace DedicatedServerMultiplayerSample.Server
 {
     /// <summary>
     /// サーバー管理クラス（完全に直線的な処理）
@@ -274,7 +274,8 @@ namespace MultiplayerServicesTest.Server
             // 承認
             response.Approved = true;
             response.CreatePlayerObject = false;
-            m_PlayerValidator.RegisterConnectedPlayer(request.ClientNetworkId, connectionData?.authId ?? "Unknown");
+            var connectionAuthId = ExtractString(connectionData, "authId") ?? "Unknown";
+            m_PlayerValidator.RegisterConnectedPlayer(request.ClientNetworkId, connectionAuthId);
 
             // シーンロード待ち
             if (!m_IsSceneLoaded)
@@ -308,12 +309,13 @@ namespace MultiplayerServicesTest.Server
 
             // ConnectionData（接続時に取得したデータ）
             var connectionData = m_PlayerValidator.GetConnectionData(clientId);
-            if (connectionData != null)
+            if (connectionData != null && connectionData.Count > 0)
             {
-                Debug.Log($"[ServerGameManager] ConnectionData from client:");
-                Debug.Log($"  - PlayerName: {connectionData.playerName}");
-                Debug.Log($"  - Rank: {connectionData.rank}");
-                Debug.Log($"  - GameVersion: {connectionData.gameVersion}");
+                Debug.Log("[ServerGameManager] Connection payload values:");
+                foreach (var kvp in connectionData)
+                {
+                    Debug.Log($"  - {kvp.Key}: {kvp.Value}");
+                }
             }
         }
 
@@ -335,9 +337,9 @@ namespace MultiplayerServicesTest.Server
         /// <summary>
         /// すべての接続中プレイヤーのUserDataを取得
         /// </summary>
-        public Dictionary<ulong, ConnectionData> GetAllConnectedPlayers()
+        public Dictionary<ulong, Dictionary<string, object>> GetAllConnectedPlayers()
         {
-            return m_PlayerValidator?.GetAllConnectionData() ?? new Dictionary<ulong, ConnectionData>();
+            return m_PlayerValidator?.GetAllConnectionData() ?? new Dictionary<ulong, Dictionary<string, object>>();
         }
 
         /// <summary>
@@ -361,6 +363,23 @@ namespace MultiplayerServicesTest.Server
             Debug.Log("[ServerGameManager] Player readiness set to false");
         }
 
+        private static string ExtractString(Dictionary<string, object> payload, string key)
+        {
+            if (payload == null || !payload.TryGetValue(key, out var value) || value == null)
+            {
+                return null;
+            }
+
+            return value switch
+            {
+                string str => str,
+                int i => i.ToString(),
+                long l => l.ToString(),
+                double d => d.ToString(),
+                bool b => b.ToString(),
+                _ => value.ToString()
+            };
+        }
 
         public void CloseServer()
         {

@@ -9,7 +9,7 @@ using UnityEngine;
 using Unity.Services.Authentication.Server;
 using Unity.Services.Matchmaker.Http;
 
-namespace MultiplayerServicesTest.Server
+namespace DedicatedServerMultiplayerSample.Server
 {
     /// <summary>
     /// Unity Multiplayサービスとの統合を管理するクラス
@@ -20,12 +20,12 @@ namespace MultiplayerServicesTest.Server
         private IMultiplaySessionManager m_SessionManager;
         private MultiplayServerOptions m_ServerOptions;
         private readonly ServerRuntimeConfig m_RuntimeConfig;
-        private readonly MultiplayerServicesTest.Shared.GameConfig m_GameConfig;
+        private readonly DedicatedServerMultiplayerSample.Shared.GameConfig m_GameConfig;
 
         public ServerMultiplayIntegration(ServerRuntimeConfig runtimeConfig)
         {
             m_RuntimeConfig = runtimeConfig ?? throw new ArgumentNullException(nameof(runtimeConfig));
-            m_GameConfig = MultiplayerServicesTest.Shared.GameConfig.Instance;
+            m_GameConfig = DedicatedServerMultiplayerSample.Shared.GameConfig.Instance;
         }
 
         // ========== Events ==========

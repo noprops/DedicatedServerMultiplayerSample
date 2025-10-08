@@ -4,12 +4,15 @@ using Unity.Services.Core;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-namespace MultiplayerServicesTest.Client
+namespace DedicatedServerMultiplayerSample.Client
 {
     public class ClientSingleton : MonoBehaviour
     {
         public static ClientSingleton Instance { get; private set; }
 
+        [SerializeField] private MonoBehaviour matchmakingPayloadProviderBehaviour;
+
+        private IMatchmakingPayloadProvider matchmakingPayloadProvider;
         private ClientGameManager gameManager;
         public ClientGameManager GameManager => gameManager;
 
@@ -22,6 +25,24 @@ namespace MultiplayerServicesTest.Client
                 Instance = this;
                 DontDestroyOnLoad(gameObject);
                 Debug.Log("[ClientSingleton] Instance created");
+
+                if (matchmakingPayloadProviderBehaviour == null)
+                {
+                    matchmakingPayloadProviderBehaviour = GetComponent<IMatchmakingPayloadProvider>() as MonoBehaviour;
+                }
+
+                if (matchmakingPayloadProviderBehaviour != null)
+                {
+                    matchmakingPayloadProvider = matchmakingPayloadProviderBehaviour as IMatchmakingPayloadProvider;
+                    if (matchmakingPayloadProvider == null)
+                    {
+                        Debug.LogError("[ClientSingleton] Matchmaking payload provider behaviour does not implement IMatchmakingPayloadProvider");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning("[ClientSingleton] No matchmaking payload provider assigned.");
+                }
             }
             else
             {
@@ -56,7 +77,6 @@ namespace MultiplayerServicesTest.Client
                 }
 
                 Debug.Log($"[ClientSingleton] ✓ Authenticated as: {AuthenticationWrapper.PlayerId}");
-                Debug.Log($"[ClientSingleton] ✓ Player name: {AuthenticationWrapper.PlayerName}");
 
                 // ================================================================
                 // STEP 3: ClientGameManager作成
@@ -69,7 +89,7 @@ namespace MultiplayerServicesTest.Client
                     return;
                 }
 
-                gameManager = await ClientGameManager.CreateAsync(NetworkManager.Singleton);
+                gameManager = await ClientGameManager.CreateAsync(NetworkManager.Singleton, matchmakingPayloadProvider);
                 Debug.Log("[ClientSingleton] ✓ ClientGameManager created and initialized");
 
                 // ================================================================

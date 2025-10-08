@@ -3,10 +3,10 @@ using System.Collections.Generic;
 using System.Threading.Tasks;
 using Unity.Netcode;
 using UnityEngine;
-using MultiplayerServicesTest.Client;
-using MultiplayerServicesTest.Server;
+using DedicatedServerMultiplayerSample.Client;
+using DedicatedServerMultiplayerSample.Server;
 
-namespace MultiplayerServicesTest.Shared
+namespace DedicatedServerMultiplayerSample.Shared
 {
     public enum Hand
     {
@@ -36,7 +36,7 @@ namespace MultiplayerServicesTest.Shared
 
         // ========== Server State ==========
         private Dictionary<ulong, Hand> m_PlayerChoices = new Dictionary<ulong, Hand>();
-        private Dictionary<ulong, ConnectionData> m_PlayerConnectionData = new Dictionary<ulong, ConnectionData>();
+        private Dictionary<ulong, Dictionary<string, object>> m_PlayerConnectionData = new Dictionary<ulong, Dictionary<string, object>>();
         private TaskCompletionSource<bool> m_AllPlayersChosenTcs;
         private bool m_GameInProgress = false;
 

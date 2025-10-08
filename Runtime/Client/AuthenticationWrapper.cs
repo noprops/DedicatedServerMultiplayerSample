@@ -4,7 +4,7 @@ using Unity.Services.Authentication;
 using Unity.Services.Core;
 using UnityEngine;
 
-namespace MultiplayerServicesTest.Client
+namespace DedicatedServerMultiplayerSample.Client
 {
     /// <summary>
     /// Unity Authentication Serviceのラッパークラス（静的クラス）
@@ -27,11 +27,6 @@ namespace MultiplayerServicesTest.Client
         public static string PlayerId =>
             IsSignedIn ? AuthenticationService.Instance.PlayerId : null;
 
-        /// <summary>
-        /// プレイヤー名（認証済みの場合のみ有効）
-        /// </summary>
-        public static string PlayerName { get; private set; }
-
         // ========== Public Methods ==========
 
         /// <summary>
@@ -51,7 +46,6 @@ namespace MultiplayerServicesTest.Client
             if (AuthenticationService.Instance.IsSignedIn)
             {
                 Debug.Log($"[AuthenticationWrapper] Already signed in as: {PlayerId}");
-                UpdatePlayerName();
                 return true;
             }
 
@@ -62,8 +56,6 @@ namespace MultiplayerServicesTest.Client
 
                 Debug.Log($"[AuthenticationWrapper] ✓ Signed in successfully");
                 Debug.Log($"[AuthenticationWrapper] Player ID: {PlayerId}");
-
-                UpdatePlayerName();
 
                 return true;
             }
@@ -76,31 +68,6 @@ namespace MultiplayerServicesTest.Client
             catch (Exception e)
             {
                 Debug.LogError($"[AuthenticationWrapper] Unexpected error during authentication: {e.Message}");
-                return false;
-            }
-        }
-
-        /// <summary>
-        /// プレイヤー名を更新
-        /// </summary>
-        public static async Task<bool> UpdatePlayerNameAsync(string newName)
-        {
-            if (!IsSignedIn)
-            {
-                Debug.LogError("[AuthenticationWrapper] Cannot update player name: Not authenticated");
-                return false;
-            }
-
-            try
-            {
-                await AuthenticationService.Instance.UpdatePlayerNameAsync(newName);
-                PlayerName = newName;
-                Debug.Log($"[AuthenticationWrapper] Player name updated to: {newName}");
-                return true;
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[AuthenticationWrapper] Failed to update player name: {e.Message}");
                 return false;
             }
         }
@@ -119,7 +86,6 @@ namespace MultiplayerServicesTest.Client
             try
             {
                 AuthenticationService.Instance.SignOut();
-                PlayerName = null;
                 Debug.Log("[AuthenticationWrapper] Signed out successfully");
             }
             catch (Exception e)
@@ -151,38 +117,6 @@ namespace MultiplayerServicesTest.Client
                 Debug.LogError($"[AuthenticationWrapper] Failed to refresh session token: {e.Message}");
                 return false;
             }
-        }
-
-        // ========== Private Methods ==========
-
-        /// <summary>
-        /// プレイヤー名を生成または取得
-        /// </summary>
-        private static void UpdatePlayerName()
-        {
-            // 将来的にCloud Saveから取得する場合はここで処理
-            // 現在はランダム名を生成
-            if (string.IsNullOrEmpty(PlayerName))
-            {
-                PlayerName = GenerateRandomPlayerName();
-                Debug.Log($"[AuthenticationWrapper] Generated player name: {PlayerName}");
-            }
-        }
-
-        /// <summary>
-        /// ランダムなプレイヤー名を生成
-        /// </summary>
-        private static string GenerateRandomPlayerName()
-        {
-            string[] adjectives = { "Swift", "Brave", "Mighty", "Silent", "Clever", "Bold", "Fierce", "Noble" };
-            string[] nouns = { "Tiger", "Eagle", "Wolf", "Dragon", "Hawk", "Lion", "Panther", "Phoenix" };
-
-            var random = new System.Random();
-            string adjective = adjectives[random.Next(adjectives.Length)];
-            string noun = nouns[random.Next(nouns.Length)];
-            int number = random.Next(100, 999);
-
-            return $"{adjective}{noun}{number}";
         }
     }
 }

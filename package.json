@@ -15,7 +15,7 @@
     {
       "displayName": "Basic Scene Setup",
       "description": "BootStrap, loading, menu and game scenes with prefabs and configurations",
-      "path": "Samples~/BasicSetup"
+      "path": "Samples~/Templates"
     }
   ]
 }

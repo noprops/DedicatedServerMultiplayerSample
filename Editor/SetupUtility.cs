@@ -1,7 +1,6 @@
 using System.IO;
 using UnityEditor;
 using UnityEngine;
-using MultiplayerServicesTest.Shared;
 
 namespace DedicatedServerMultiplayerSample.Editor
 {
@@ -28,11 +27,11 @@ namespace DedicatedServerMultiplayerSample.Editor
 
                 CopyFolder("Scenes");
                 CopyFolder("Prefabs");
-            CopyFolder("Configurations");
-            CopyFolder("Scripts/Client");
-            CopyFolder("Scripts/Shared");
+                CopyFolder("Configurations");
+                CopyFolder("Scripts/Client");
+                CopyFolder("Scripts/Shared");
 
-            CreateGameConfigAsset();
+                CreateGameConfigAsset();
 
                 SetupScenes();
 
@@ -80,7 +79,12 @@ namespace DedicatedServerMultiplayerSample.Editor
 
         private static void CreateGameConfigAsset()
         {
-            var config = ScriptableObject.CreateInstance<GameConfig>();
+            var config = ScriptableObject.CreateInstance("DedicatedServerMultiplayerSample.Shared.GameConfig");
+            if (config == null)
+            {
+                Debug.LogError("[DedicatedServerMultiplayerSample] Failed to create GameConfig ScriptableObject. Ensure the runtime assembly is available.");
+                return;
+            }
 
             string resourcesPath = Path.Combine(TargetRoot, "Resources/Config");
             Directory.CreateDirectory(resourcesPath);

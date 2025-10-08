@@ -5,9 +5,9 @@ using System.Linq;
 using System.Threading.Tasks;
 using Unity.Netcode;
 using UnityEngine;
-using MultiplayerServicesTest.Server;
+using DedicatedServerMultiplayerSample.Server;
 
-namespace MultiplayerServicesTest.Shared
+namespace DedicatedServerMultiplayerSample.Shared
 {
     public partial class RockPaperScissorsGame
     {
@@ -109,8 +109,8 @@ namespace MultiplayerServicesTest.Shared
                 if (players.Count >= 2)
                 {
                     SendPlayerNamesClientRpc(
-                        players[0].Key, players[0].Value.playerName,
-                        players[1].Key, players[1].Value.playerName
+                        players[0].Key, ExtractPlayerName(players[0].Value, players[0].Key),
+                        players[1].Key, ExtractPlayerName(players[1].Value, players[1].Key)
                     );
                 }
             }
@@ -244,6 +244,33 @@ namespace MultiplayerServicesTest.Shared
                     (myHand == Hand.Scissors && opponentHand == Hand.Paper))
                 ? GameResult.Win
                 : GameResult.Lose;
+        }
+
+        private static string ExtractPlayerName(Dictionary<string, object> payload, ulong fallbackId)
+        {
+            if (payload == null)
+            {
+                return $"Player{fallbackId}";
+            }
+
+            if (payload.TryGetValue("playerName", out var value) && value != null)
+            {
+                switch (value)
+                {
+                    case string name when !string.IsNullOrWhiteSpace(name):
+                        return name;
+                    case int i:
+                        return i.ToString();
+                    case long l:
+                        return l.ToString();
+                    case double d:
+                        return d.ToString();
+                    case bool b:
+                        return b.ToString();
+                }
+            }
+
+            return $"Player{fallbackId}";
         }
     }
 }

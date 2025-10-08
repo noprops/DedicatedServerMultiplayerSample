@@ -3,7 +3,7 @@ using Unity.Netcode;
 using Unity.Services.Core;
 using UnityEngine;
 
-namespace MultiplayerServicesTest.Server
+namespace DedicatedServerMultiplayerSample.Server
 {
     public class ServerSingleton : MonoBehaviour
     {

@@ -3,7 +3,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-namespace MultiplayerServicesTest.Client
+namespace DedicatedServerMultiplayerSample.Client
 {
     /// <summary>
     /// ローディングシーンの管理クラス
@@ -60,7 +60,6 @@ namespace MultiplayerServicesTest.Client
             }
 
             Debug.Log($"[LoadingScene] ✓ Authenticated as: {AuthenticationWrapper.PlayerId}");
-            Debug.Log($"[LoadingScene] ✓ Player name: {AuthenticationWrapper.PlayerName}");
 
             // ================================================================
             // STEP 3: プレイヤーデータのロード（Cloud Save）

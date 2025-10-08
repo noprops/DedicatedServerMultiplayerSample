@@ -8,9 +8,9 @@ using Unity.Services.Core;
 using Unity.Services.Multiplayer;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using MultiplayerServicesTest.Shared;
+using DedicatedServerMultiplayerSample.Shared;
 
-namespace MultiplayerServicesTest.Client
+namespace DedicatedServerMultiplayerSample.Client
 {
     // Client connection states
     public enum ClientConnectionState
@@ -33,11 +33,9 @@ namespace MultiplayerServicesTest.Client
         // ========== Properties ==========
         public bool IsConnected => networkManager != null && networkManager.IsClient && networkManager.IsConnectedClient;
         public bool IsMatchmaking { get; private set; }
-        public PlayerData PlayerData { get; private set; }
-        public static int GameVersion => ConvertVersionToInt(Application.version);
-
         // ========== Fields ==========
         private readonly NetworkManager networkManager;
+        private readonly IMatchmakingPayloadProvider payloadProvider;
         private ISession currentSession;
         private CancellationTokenSource matchmakerCancellationSource;
         private bool isDisposed = false;
@@ -49,17 +47,18 @@ namespace MultiplayerServicesTest.Client
         /// <summary>
         /// ClientGameManagerを作成して初期化（ファクトリメソッド）
         /// </summary>
-        public static async Task<ClientGameManager> CreateAsync(NetworkManager networkManager)
+        public static async Task<ClientGameManager> CreateAsync(NetworkManager networkManager, IMatchmakingPayloadProvider payloadProvider)
         {
-            var manager = new ClientGameManager(networkManager);
+            var manager = new ClientGameManager(networkManager, payloadProvider);
             await manager.InitializeAsync();
             return manager;
         }
 
         // ========== Constructor ==========
-        private ClientGameManager(NetworkManager networkManager)
+        private ClientGameManager(NetworkManager networkManager, IMatchmakingPayloadProvider payloadProvider)
         {
             this.networkManager = networkManager;
+            this.payloadProvider = payloadProvider;
             Debug.Log("[ClientGameManager] Created");
 
             // NetworkManagerのコールバックを監視
@@ -135,17 +134,6 @@ namespace MultiplayerServicesTest.Client
 
                 Debug.Log($"[ClientGameManager] ✓ Using authenticated player: {AuthenticationWrapper.PlayerId}");
 
-                // プレイヤー名をAuthenticationWrapperから取得
-                Debug.Log($"[ClientGameManager] ✓ Player name: {AuthenticationWrapper.PlayerName}");
-
-                // PlayerDataを初期化
-                PlayerData = new PlayerData(
-                    playerName: AuthenticationWrapper.PlayerName,
-                    authId: AuthenticationWrapper.PlayerId,
-                    rank: 1000
-                );
-                Debug.Log($"[ClientGameManager] ✓ PlayerData initialized: {PlayerData}");
-
                 Debug.Log("[ClientGameManager] ========== INITIALIZATION COMPLETE ==========");
             }
             catch (Exception e)
@@ -160,7 +148,7 @@ namespace MultiplayerServicesTest.Client
         /// <summary>
         /// マッチメイキングとサーバー接続（上から下へ一直線）
         /// </summary>
-        public async Task<MatchResult> MatchmakeAsync(string queueName, string gameMode = "classic", string map = "default")
+        public async Task<MatchResult> MatchmakeAsync(string queueName)
         {
             if (IsMatchmaking)
             {
@@ -188,39 +176,63 @@ namespace MultiplayerServicesTest.Client
                 // キャンセレーショントークン作成
                 matchmakerCancellationSource = new CancellationTokenSource();
 
-                // マッチメイキングオプション設定
+                Debug.Log("[ClientGameManager] ====================================");
+
+                Dictionary<string, PlayerProperty> playerProperties = null;
+                Dictionary<string, object> ticketAttributes = null;
+                Dictionary<string, object> connectionPayload = null;
+                var authId = AuthenticationWrapper.PlayerId;
+                if (string.IsNullOrEmpty(authId))
+                {
+                    Debug.LogWarning("[ClientGameManager] Authentication player ID not available. Using fallback auth id.");
+                    authId = "unknown-player";
+                }
+
+                if (payloadProvider != null)
+                {
+                    try
+                    {
+                        playerProperties = payloadProvider.BuildPlayerProperties();
+                        ticketAttributes = payloadProvider.BuildTicketAttributes();
+                        connectionPayload = payloadProvider.BuildConnectionData(authId);
+                    }
+                    catch (Exception providerException)
+                    {
+                        Debug.LogError($"[ClientGameManager] Payload provider error: {providerException.Message}");
+                    }
+                }
+                else
+                {
+                    Debug.LogWarning("[ClientGameManager] No matchmaking payload provider configured.");
+                }
+
+                playerProperties?.Remove("queueName");
+                ticketAttributes?.Remove("queueName");
+
+                if (playerProperties == null)
+                {
+                    Debug.LogWarning("[ClientGameManager] Payload provider returned no player properties. Using empty dictionary.");
+                    playerProperties = new Dictionary<string, PlayerProperty>();
+                }
+
+                if (ticketAttributes == null)
+                {
+                    Debug.LogWarning("[ClientGameManager] Payload provider returned no ticket attributes. Using empty dictionary.");
+                    ticketAttributes = new Dictionary<string, object>();
+                }
+
                 var matchmakerOptions = new MatchmakerOptions
                 {
                     QueueName = queueName,
-                    // PlayerProperties: マッチルール評価用（プレイヤー間の比較）
-                    PlayerProperties = new Dictionary<string, PlayerProperty>
-                    {
-                        ["gameVersion"] = new PlayerProperty(GameVersion.ToString()),
-                        ["gameMode"] = new PlayerProperty(gameMode),
-                        ["map"] = new PlayerProperty(map),
-                        ["rank"] = new PlayerProperty(PlayerData.Rank.ToString())
-                    },
-                    // TicketAttributes: プールフィルター用（プール振り分け）
-                    TicketAttributes = new Dictionary<string, object>
-                    {
-                        ["gameVersion"] = GameVersion,
-                        ["gameMode"] = gameMode,
-                        ["map"] = map
-                    }
+                    playerProperties = playerProperties,
+                    ticketAttributes = ticketAttributes
                 };
 
-                Debug.Log($"[ClientGameManager] ====================================");
+                var connectionBytes = BuildConnectionDataBytes(connectionPayload, playerProperties, authId);
+                networkManager.NetworkConfig.ConnectionData = connectionBytes;
 
-                // ===== ConnectionData版 =====
-                // PlayerDataからConnectionDataを作成して設定
-                var connectionData = ConnectionData.FromPlayerData(PlayerData, GameVersion);
-                Debug.Log($"[ClientGameManager] Using ConnectionData: {connectionData}");
-
-                string payload = JsonUtility.ToJson(connectionData);
-                byte[] payloadBytes = System.Text.Encoding.UTF8.GetBytes(payload);
-                networkManager.NetworkConfig.ConnectionData = payloadBytes;
-                Debug.Log($"[ClientGameManager] Setting ConnectionData: {payload}");
-                Debug.Log($"[ClientGameManager] Payload bytes length: {payloadBytes.Length}");
+                var gameMode = ExtractGameMode(ticketAttributes, playerProperties) ?? "default-mode";
+                var map = ExtractMap(ticketAttributes, playerProperties) ?? "default-map";
 
                 // セッションオプション設定
                 var sessionOptions = new SessionOptions()
@@ -339,20 +351,131 @@ namespace MultiplayerServicesTest.Client
 
         // ========== Private Helper Methods ==========
 
-        private static int ConvertVersionToInt(string version)
+        private static string ExtractGameMode(Dictionary<string, object> ticketAttributes, Dictionary<string, PlayerProperty> playerProperties)
         {
+            return ExtractAttributeAsString(ticketAttributes, "gameMode")
+                   ?? ExtractPlayerPropertyAsString(playerProperties, "gameMode");
+        }
+
+        private static string ExtractMap(Dictionary<string, object> ticketAttributes, Dictionary<string, PlayerProperty> playerProperties)
+        {
+            return ExtractAttributeAsString(ticketAttributes, "map")
+                   ?? ExtractPlayerPropertyAsString(playerProperties, "map");
+        }
+
+        private static byte[] BuildConnectionDataBytes(Dictionary<string, object> connectionData, Dictionary<string, PlayerProperty> playerProperties, string fallbackAuthId)
+        {
+            var payload = connectionData != null
+                ? new Dictionary<string, object>(connectionData)
+                : new Dictionary<string, object>();
+
+            var playerName = ExtractAttributeAsString(payload, "playerName")
+                             ?? ExtractPlayerPropertyAsString(playerProperties, "playerName")
+                             ?? "Player";
+
+            var authId = ExtractAttributeAsString(payload, "authId")
+                         ?? fallbackAuthId
+                         ?? "unknown-player";
+
+            var gameVersion = ExtractAttributeAsInt(payload, "gameVersion")
+                              ?? ExtractPlayerPropertyAsInt(playerProperties, "gameVersion")
+                              ?? GetApplicationVersionAsInt();
+
+            var rank = ExtractAttributeAsInt(payload, "rank")
+                       ?? ExtractPlayerPropertyAsInt(playerProperties, "rank")
+                       ?? 0;
+
+            payload["playerName"] = playerName;
+            payload["authId"] = authId;
+            payload["gameVersion"] = gameVersion;
+            payload["rank"] = rank;
+
+            return ConnectionPayloadSerializer.SerializeToBytes(payload);
+        }
+
+        private static string ExtractAttributeAsString(Dictionary<string, object> source, string key)
+        {
+            if (source == null || !source.TryGetValue(key, out var value) || value == null)
+            {
+                return null;
+            }
+
+            switch (value)
+            {
+                case string str:
+                    return str;
+                case int i:
+                    return i.ToString();
+                case long l:
+                    return l.ToString();
+                case float f:
+                    return f.ToString();
+                case double d:
+                    return d.ToString();
+                case bool b:
+                    return b.ToString();
+                default:
+                    return value.ToString();
+            }
+        }
+
+        private static int? ExtractAttributeAsInt(Dictionary<string, object> source, string key)
+        {
+            if (source == null || !source.TryGetValue(key, out var value) || value == null)
+            {
+                return null;
+            }
+
+            switch (value)
+            {
+                case int i:
+                    return i;
+                case long l:
+                    return (int)l;
+                case float f:
+                    return (int)f;
+                case double d:
+                    return (int)d;
+                case string s when int.TryParse(s, out var parsed):
+                    return parsed;
+                default:
+                    return null;
+            }
+        }
+
+        private static string ExtractPlayerPropertyAsString(Dictionary<string, PlayerProperty> properties, string key)
+        {
+            if (properties == null || !properties.TryGetValue(key, out var property) || property == null)
+            {
+                return null;
+            }
+
+            return property.Value;
+        }
+
+        private static int? ExtractPlayerPropertyAsInt(Dictionary<string, PlayerProperty> properties, string key)
+        {
+            var value = ExtractPlayerPropertyAsString(properties, key);
+            if (string.IsNullOrEmpty(value))
+            {
+                return null;
+            }
+
+            return int.TryParse(value, out var parsed) ? parsed : null;
+        }
+
+        private static int GetApplicationVersionAsInt()
+        {
+            var version = Application.version;
             if (string.IsNullOrEmpty(version))
+            {
                 return 0;
+            }
 
             try
             {
-                // "1.2.3" -> "123" -> 123
-                string cleanVersion = version.Replace(".", "").Replace(",", "");
-                if (int.TryParse(cleanVersion, out int versionInt))
-                {
-                    return versionInt;
-                }
-                return 0;
+                var cleanVersion = version.Replace(".", "").Replace(",", "");
+                return int.TryParse(cleanVersion, out var versionInt) ? versionInt : 0;
             }
             catch (Exception e)
             {
