@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -13,6 +14,30 @@ namespace DedicatedServerMultiplayerSample.Client
     {
         // ========== Constants ==========
         private const string MENU_SCENE_NAME = "menu";
+
+        // ========== Custom Tasks ==========
+        private readonly List<Func<Task>> customTasks = new List<Func<Task>>();
+
+        /// <summary>
+        /// ローディングシーンがメニューへ遷移する直前に実行する処理を登録します。
+        /// </summary>
+        public void Register(Func<Task> task)
+        {
+            if (task == null) return;
+            if (!customTasks.Contains(task))
+            {
+                customTasks.Add(task);
+            }
+        }
+
+        /// <summary>
+        /// Registerした処理を解除します。
+        /// </summary>
+        public void Unregister(Func<Task> task)
+        {
+            if (task == null) return;
+            customTasks.Remove(task);
+        }
 
         // ========== Unity Lifecycle ==========
         private async void Start()
@@ -61,22 +86,8 @@ namespace DedicatedServerMultiplayerSample.Client
 
             Debug.Log($"[LoadingScene] ✓ Authenticated as: {AuthenticationWrapper.PlayerId}");
 
-            // ================================================================
-            // STEP 3: プレイヤーデータのロード（Cloud Save）
-            // ================================================================
-            Debug.Log("[LoadingScene] STEP 3: Loading player data...");
-
-            bool dataLoaded = await LoadPlayerDataAsync();
-            if (!dataLoaded)
-            {
-                Debug.LogWarning("[LoadingScene] Failed to load player data, using defaults");
-                // プレイヤーデータのロードに失敗しても続行
-            }
-            else
-            {
-                Debug.Log("[LoadingScene] ✓ Player data loaded");
-            }
-
+            await RunCustomTasksAsync();
+            
             // ================================================================
             // STEP 4: メニューシーンへ遷移
             // ================================================================
@@ -87,30 +98,27 @@ namespace DedicatedServerMultiplayerSample.Client
             Debug.Log("[LoadingScene] ========== LOADING COMPLETE ==========");
         }
 
-        // ========== Player Data Loading ==========
-        /// <summary>
-        /// プレイヤーデータをCloud Saveからロード
-        /// </summary>
-        private async Task<bool> LoadPlayerDataAsync()
+        private async Task RunCustomTasksAsync()
         {
-            try
+            if (customTasks.Count == 0)
             {
-                // TODO: Cloud Saveからプレイヤーデータをロード
-                // 現在は未実装なので、仮の処理として少し待つだけ
-                await Task.Delay(100);
-
-                Debug.Log("[LoadingScene] Player data loading is not yet implemented");
-
-                // 将来的な実装例：
-                // var cloudSaveData = await CloudSaveService.Instance.Data.LoadAsync();
-                // PlayerDataManager.Instance.UpdateLocalData(cloudSaveData);
-
-                return true;
+                return;
             }
-            catch (Exception e)
+
+            foreach (var task in customTasks)
             {
-                Debug.LogError($"[LoadingScene] Failed to load player data: {e.Message}");
-                return false;
+                try
+                {
+                    var taskResult = task?.Invoke();
+                    if (taskResult != null)
+                    {
+                        await taskResult;
+                    }
+                }
+                catch (Exception e)
+                {
+                    Debug.LogError($"[LoadingScene] Custom loading task failed: {e.Message}");
+                }
             }
         }
 
@@ -119,6 +127,7 @@ namespace DedicatedServerMultiplayerSample.Client
         private void OnDestroy()
         {
             Debug.Log("[LoadingScene] LoadingScene destroyed");
+            customTasks.Clear();
         }
     }
 }

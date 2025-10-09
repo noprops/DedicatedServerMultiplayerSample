@@ -1,0 +1,24 @@
+{
+    "name": "DedicatedServerMultiplayerSample.Runtime",
+    "rootNamespace": "DedicatedServerMultiplayerSample",
+    "references": [
+        "Unity.Netcode.Runtime",
+        "Unity.Services.Core",
+        "Unity.Services.Authentication",
+        "Unity.Services.Multiplayer",
+        "Unity.Services.Matchmaker",
+        "Unity.Services.Multiplay",
+        "Unity.TextMeshPro"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "noEngineReferences": false,
+    "optionalUnityReferences": [
+        "UnityEngine.UI"
+    ]
+}

@@ -6,7 +6,7 @@ using UnityEngine;
 using DedicatedServerMultiplayerSample.Client;
 using DedicatedServerMultiplayerSample.Server;
 
-namespace DedicatedServerMultiplayerSample.Shared
+namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
     public enum Hand
     {

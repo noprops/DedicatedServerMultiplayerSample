@@ -7,7 +7,7 @@ using Unity.Netcode;
 using UnityEngine;
 using DedicatedServerMultiplayerSample.Server;
 
-namespace DedicatedServerMultiplayerSample.Shared
+namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
     public partial class RockPaperScissorsGame
     {

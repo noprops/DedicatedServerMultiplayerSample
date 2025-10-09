@@ -322,22 +322,6 @@ namespace DedicatedServerMultiplayerSample.Client
                 // ================================================================
                 Debug.Log("[ClientGameManager] STEP 5: Waiting for scene sync...");
 
-                // Scene load completed callback registration and cleanup
-                void HandleSceneLoaded(string sceneName, LoadSceneMode loadSceneMode,
-                    System.Collections.Generic.List<ulong> clientsCompleted,
-                    System.Collections.Generic.List<ulong> clientsTimedOut)
-                {
-                    Debug.Log($"[ClientGameManager] Scene loaded: {sceneName}");
-                    if (sceneName == "game")
-                    {
-                        Debug.Log("[ClientGameManager] ✓ Game scene loaded successfully!");
-                        networkManager.SceneManager.OnLoadEventCompleted -= HandleSceneLoaded;
-                    }
-                }
-                
-                networkManager.SceneManager.OnLoadEventCompleted += HandleSceneLoaded;
-                Debug.Log("[ClientGameManager] Scene load callback registered");
-
                 Debug.Log("[ClientGameManager] ✓ Ready for game");
 
                 Debug.Log("[ClientGameManager] ========== MATCHMAKING COMPLETE ==========");
@@ -478,13 +462,6 @@ namespace DedicatedServerMultiplayerSample.Client
         {
             if (networkManager != null)
             {
-                // コールバックをクリーンアップ
-                if (networkManager.SceneManager != null)
-                {
-                    networkManager.SceneManager.OnLoadEventCompleted -= OnSceneLoadCompleted;
-                    Debug.Log("[ClientGameManager] Cleaned up scene load callbacks");
-                }
-
                 if (networkManager.IsClient)
                 {
                     networkManager.Shutdown();
@@ -509,11 +486,6 @@ namespace DedicatedServerMultiplayerSample.Client
             {
                 networkManager.OnClientConnectedCallback -= OnClientConnected;
                 networkManager.OnClientDisconnectCallback -= OnClientDisconnected;
-
-                if (networkManager.SceneManager != null)
-                {
-                    networkManager.SceneManager.OnLoadEventCompleted -= OnSceneLoadCompleted;
-                }
             }
 
             Debug.Log("[ClientGameManager] Calling CancelMatchmakingAsync from Dispose");

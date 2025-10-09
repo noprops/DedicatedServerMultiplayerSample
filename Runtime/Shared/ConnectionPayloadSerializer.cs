@@ -1,7 +1,8 @@
 using System;
 using System.Collections.Generic;
+using System.Collections;
 using System.Text;
-using System.Text.Json;
+using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Shared
 {
@@ -10,12 +11,6 @@ namespace DedicatedServerMultiplayerSample.Shared
     /// </summary>
     public static class ConnectionPayloadSerializer
     {
-        private static readonly JsonSerializerOptions s_JsonOptions = new JsonSerializerOptions
-        {
-            PropertyNamingPolicy = null,
-            WriteIndented = false
-        };
-
         /// <summary>
         /// Serialize a dictionary payload to UTF8 bytes.
         /// </summary>
@@ -26,7 +21,12 @@ namespace DedicatedServerMultiplayerSample.Shared
                 return Array.Empty<byte>();
             }
 
-            var json = JsonSerializer.Serialize(payload, s_JsonOptions);
+            var wrapper = new PayloadWrapper
+            {
+                root = ConvertToPayloadValue(payload)
+            };
+
+            var json = JsonUtility.ToJson(wrapper);
             return Encoding.UTF8.GetBytes(json);
         }
 
@@ -43,8 +43,8 @@ namespace DedicatedServerMultiplayerSample.Shared
             try
             {
                 var json = Encoding.UTF8.GetString(payloadBytes);
-                using var document = JsonDocument.Parse(json);
-                return JsonElementToDictionary(document.RootElement);
+                var wrapper = JsonUtility.FromJson<PayloadWrapper>(json);
+                return ConvertToDictionary(wrapper?.root) ?? new Dictionary<string, object>();
             }
             catch (Exception)
             {
@@ -52,56 +52,165 @@ namespace DedicatedServerMultiplayerSample.Shared
             }
         }
 
-        private static Dictionary<string, object> JsonElementToDictionary(JsonElement element)
+        private static PayloadValue ConvertToPayloadValue(object value)
         {
-            var dict = new Dictionary<string, object>();
-            foreach (var property in element.EnumerateObject())
+            if (value == null)
             {
-                dict[property.Name] = ConvertJsonElement(property.Value);
+                return new PayloadValue { type = PayloadValueType.Null };
+            }
+
+            switch (value)
+            {
+                case string s:
+                    return new PayloadValue { type = PayloadValueType.String, stringValue = s };
+                case bool b:
+                    return new PayloadValue { type = PayloadValueType.Boolean, boolValue = b };
+                case int i:
+                    return new PayloadValue { type = PayloadValueType.Number, isIntegral = true, longValue = i };
+                case long l:
+                    return new PayloadValue { type = PayloadValueType.Number, isIntegral = true, longValue = l };
+                case float f:
+                    return new PayloadValue { type = PayloadValueType.Number, numberValue = f, isIntegral = false };
+                case double d:
+                    return new PayloadValue { type = PayloadValueType.Number, numberValue = d, isIntegral = false };
+                case IDictionary<string, object> dict:
+                    return ConvertDictionary(dict);
+                case IDictionary dictionary:
+                    var converted = new Dictionary<string, object>();
+                    foreach (DictionaryEntry entry in dictionary)
+                    {
+                        converted[Convert.ToString(entry.Key)] = entry.Value;
+                    }
+                    return ConvertDictionary(converted);
+                case IEnumerable enumerable when value is not string:
+                    var arrayValue = new PayloadValue { type = PayloadValueType.Array };
+                    arrayValue.arrayValues = new List<PayloadValue>();
+                    foreach (var item in enumerable)
+                    {
+                        arrayValue.arrayValues.Add(ConvertToPayloadValue(item));
+                    }
+                    return arrayValue;
+                default:
+                    return new PayloadValue { type = PayloadValueType.String, stringValue = value.ToString() };
+            }
+        }
+
+        private static PayloadValue ConvertDictionary(IDictionary<string, object> dict)
+        {
+            var payload = new PayloadValue
+            {
+                type = PayloadValueType.Object,
+                objectValues = new List<PayloadEntry>()
+            };
+
+            foreach (var kvp in dict)
+            {
+                payload.objectValues.Add(new PayloadEntry
+                {
+                    key = kvp.Key,
+                    value = ConvertToPayloadValue(kvp.Value)
+                });
+            }
+
+            return payload;
+        }
+
+        private static Dictionary<string, object> ConvertToDictionary(PayloadValue value)
+        {
+            if (value == null || value.type != PayloadValueType.Object || value.objectValues == null)
+            {
+                return new Dictionary<string, object>();
+            }
+
+            var dict = new Dictionary<string, object>();
+            foreach (var entry in value.objectValues)
+            {
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                dict[entry.key] = ConvertPayloadValueToObject(entry.value);
             }
             return dict;
         }
 
-        private static object ConvertJsonElement(JsonElement element)
+        private static object ConvertPayloadValueToObject(PayloadValue value)
         {
-            switch (element.ValueKind)
+            if (value == null)
             {
-                case JsonValueKind.Object:
-                    return JsonElementToDictionary(element);
-                case JsonValueKind.Array:
-                    var list = new List<object>();
-                    foreach (var item in element.EnumerateArray())
+                return null;
+            }
+
+            switch (value.type)
+            {
+                case PayloadValueType.Null:
+                    return null;
+                case PayloadValueType.String:
+                    return value.stringValue ?? string.Empty;
+                case PayloadValueType.Boolean:
+                    return value.boolValue;
+                case PayloadValueType.Number:
+                    if (value.isIntegral)
                     {
-                        list.Add(ConvertJsonElement(item));
+                        if (value.longValue >= int.MinValue && value.longValue <= int.MaxValue)
+                        {
+                            return (int)value.longValue;
+                        }
+                        return value.longValue;
+                    }
+                    return value.numberValue;
+                case PayloadValueType.Array:
+                    var list = new List<object>();
+                    if (value.arrayValues != null)
+                    {
+                        foreach (var item in value.arrayValues)
+                        {
+                            list.Add(ConvertPayloadValueToObject(item));
+                        }
                     }
                     return list;
-                case JsonValueKind.String:
-                    return element.GetString();
-                case JsonValueKind.Number:
-                    if (element.TryGetInt64(out var longValue))
-                    {
-                        if (longValue >= int.MinValue && longValue <= int.MaxValue)
-                        {
-                            return (int)longValue;
-                        }
-                        return longValue;
-                    }
-
-                    if (element.TryGetDouble(out var doubleValue))
-                    {
-                        return doubleValue;
-                    }
-
-                    return element.GetRawText();
-                case JsonValueKind.True:
-                    return true;
-                case JsonValueKind.False:
-                    return false;
-                case JsonValueKind.Null:
-                    return null;
+                case PayloadValueType.Object:
+                    return ConvertToDictionary(value);
                 default:
-                    return element.GetRawText();
+                    return null;
             }
+        }
+
+        [Serializable]
+        private class PayloadWrapper
+        {
+            public PayloadValue root;
+        }
+
+        [Serializable]
+        private class PayloadValue
+        {
+            public PayloadValueType type;
+            public string stringValue;
+            public double numberValue;
+            public bool boolValue;
+            public bool isIntegral;
+            public long longValue;
+            public List<PayloadValue> arrayValues;
+            public List<PayloadEntry> objectValues;
+        }
+
+        [Serializable]
+        private class PayloadEntry
+        {
+            public string key;
+            public PayloadValue value;
+        }
+
+        private enum PayloadValueType
+        {
+            Null = 0,
+            String = 1,
+            Number = 2,
+            Boolean = 3,
+            Array = 4,
+            Object = 5
         }
     }
 }

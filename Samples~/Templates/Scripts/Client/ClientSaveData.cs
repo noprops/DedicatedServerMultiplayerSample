@@ -2,7 +2,7 @@ using System.Collections.Generic;
 using UnityEngine;
 using DedicatedServerMultiplayerSample.Client;
 
-namespace Samples.DedicatedServerMultiplayer
+namespace DedicatedServerMultiplayerSample.Samples.Client
 {
     /// <summary>
     /// サンプル用クライアントデータストア。

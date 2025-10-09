@@ -6,9 +6,9 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
-using DedicatedServerMultiplayerSample.Shared;
+using DedicatedServerMultiplayerSample.Samples.Shared;
 
-namespace DedicatedServerMultiplayerSample.Client
+namespace DedicatedServerMultiplayerSample.Samples.Client
 {
     public class RockPaperScissorsUI : MonoBehaviour
     {
