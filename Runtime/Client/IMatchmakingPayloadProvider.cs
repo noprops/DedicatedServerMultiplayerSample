@@ -1,28 +1,31 @@
 using System.Collections.Generic;
-using Unity.Services.Multiplayer;
 
 namespace DedicatedServerMultiplayerSample.Client
 {
     /// <summary>
-    /// Provides matchmaking payload values (player properties, ticket attributes, connection data)
+    /// Supplies matchmaking payload values (player properties, ticket attributes, connection data)
     /// that will be sent to the matchmaking service.
     /// </summary>
     public interface IMatchmakingPayloadProvider
     {
         /// <summary>
-        /// Build the player properties dictionary for the given context.
+        /// Returns key/value pairs that will be mapped to Matchmaker player properties.
         /// </summary>
-        Dictionary<string, PlayerProperty> BuildPlayerProperties();
+        Dictionary<string, object> GetPlayerProperties();
 
         /// <summary>
-        /// Build the ticket attributes dictionary for the given context.
+        /// Returns key/value pairs that populate Matchmaker ticket attributes.
         /// </summary>
-        Dictionary<string, object> BuildTicketAttributes();
+        Dictionary<string, object> GetTicketAttributes();
 
         /// <summary>
-        /// Build the connection payload dictionary that will be serialized and assigned to
-        /// <see cref="Unity.Netcode.NetworkConfig.ConnectionData"/>.
+        /// Returns key/value pairs that will be serialized into NetworkConfig.ConnectionData.
         /// </summary>
-        Dictionary<string, object> BuildConnectionData(string authId);
+        Dictionary<string, object> GetConnectionData();
+
+        /// <summary>
+        /// Returns key/value pairs that will populate session metadata when creating a session.
+        /// </summary>
+        Dictionary<string, object> GetSessionProperties();
     }
 }

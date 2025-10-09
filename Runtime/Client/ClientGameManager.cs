@@ -12,6 +12,17 @@ using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Client
 {
+    /// <summary>
+    /// マッチメイキングの結果種別。
+    /// </summary>
+    public enum MatchResult
+    {
+        Success,
+        UserCancelled,
+        Failed,
+        Timeout
+    }
+
     // Client connection states
     public enum ClientConnectionState
     {
@@ -178,23 +189,20 @@ namespace DedicatedServerMultiplayerSample.Client
 
                 Debug.Log("[ClientGameManager] ====================================");
 
-                Dictionary<string, PlayerProperty> playerProperties = null;
+                Dictionary<string, object> playerProperties = null;
                 Dictionary<string, object> ticketAttributes = null;
                 Dictionary<string, object> connectionPayload = null;
+                Dictionary<string, object> sessionMetadata = null;
                 var authId = AuthenticationWrapper.PlayerId;
-                if (string.IsNullOrEmpty(authId))
-                {
-                    Debug.LogWarning("[ClientGameManager] Authentication player ID not available. Using fallback auth id.");
-                    authId = "unknown-player";
-                }
 
                 if (payloadProvider != null)
                 {
                     try
                     {
-                        playerProperties = payloadProvider.BuildPlayerProperties();
-                        ticketAttributes = payloadProvider.BuildTicketAttributes();
-                        connectionPayload = payloadProvider.BuildConnectionData(authId);
+                        playerProperties = payloadProvider.GetPlayerProperties();
+                        ticketAttributes = payloadProvider.GetTicketAttributes();
+                        connectionPayload = payloadProvider.GetConnectionData();
+                        sessionMetadata = payloadProvider.GetSessionProperties();
                     }
                     catch (Exception providerException)
                     {
@@ -206,13 +214,10 @@ namespace DedicatedServerMultiplayerSample.Client
                     Debug.LogWarning("[ClientGameManager] No matchmaking payload provider configured.");
                 }
 
-                playerProperties?.Remove("queueName");
-                ticketAttributes?.Remove("queueName");
-
                 if (playerProperties == null)
                 {
                     Debug.LogWarning("[ClientGameManager] Payload provider returned no player properties. Using empty dictionary.");
-                    playerProperties = new Dictionary<string, PlayerProperty>();
+                    playerProperties = new Dictionary<string, object>();
                 }
 
                 if (ticketAttributes == null)
@@ -221,29 +226,26 @@ namespace DedicatedServerMultiplayerSample.Client
                     ticketAttributes = new Dictionary<string, object>();
                 }
 
+                if (sessionMetadata == null)
+                {
+                    sessionMetadata = new Dictionary<string, object>();
+                }
+
                 var matchmakerOptions = new MatchmakerOptions
                 {
                     QueueName = queueName,
-                    playerProperties = playerProperties,
-                    ticketAttributes = ticketAttributes
+                    PlayerProperties = MatchmakingPayloadConverter.ToPlayerProperties(playerProperties),
+                    TicketAttributes = ticketAttributes
                 };
 
-                var connectionBytes = BuildConnectionDataBytes(connectionPayload, playerProperties, authId);
+                var connectionBytes = MatchmakingPayloadConverter.ToConnectionPayload(connectionPayload, authId);
                 networkManager.NetworkConfig.ConnectionData = connectionBytes;
-
-                var gameMode = ExtractGameMode(ticketAttributes, playerProperties) ?? "default-mode";
-                var map = ExtractMap(ticketAttributes, playerProperties) ?? "default-map";
 
                 // セッションオプション設定
                 var sessionOptions = new SessionOptions()
                 {
                     MaxPlayers = GameConfig.Instance.MaxHumanPlayers,
-                    Name = $"{gameMode}_{map}",
-                    SessionProperties = new Dictionary<string, SessionProperty>
-                    {
-                        ["gameMode"] = new SessionProperty(gameMode),
-                        ["map"] = new SessionProperty(map)
-                    }
+                    SessionProperties = MatchmakingPayloadConverter.ToSessionProperties(sessionMetadata)
                 }.WithDirectNetwork(); // Dedicated Server用
 
                 // ================================================================
@@ -320,7 +322,21 @@ namespace DedicatedServerMultiplayerSample.Client
                 // ================================================================
                 Debug.Log("[ClientGameManager] STEP 5: Waiting for scene sync...");
 
-                SetupSceneLoadCallback();
+                // Scene load completed callback registration and cleanup
+                void HandleSceneLoaded(string sceneName, LoadSceneMode loadSceneMode,
+                    System.Collections.Generic.List<ulong> clientsCompleted,
+                    System.Collections.Generic.List<ulong> clientsTimedOut)
+                {
+                    Debug.Log($"[ClientGameManager] Scene loaded: {sceneName}");
+                    if (sceneName == "game")
+                    {
+                        Debug.Log("[ClientGameManager] ✓ Game scene loaded successfully!");
+                        networkManager.SceneManager.OnLoadEventCompleted -= HandleSceneLoaded;
+                    }
+                }
+                
+                networkManager.SceneManager.OnLoadEventCompleted += HandleSceneLoaded;
+                Debug.Log("[ClientGameManager] Scene load callback registered");
 
                 Debug.Log("[ClientGameManager] ✓ Ready for game");
 
@@ -350,139 +366,6 @@ namespace DedicatedServerMultiplayerSample.Client
         }
 
         // ========== Private Helper Methods ==========
-
-        private static string ExtractGameMode(Dictionary<string, object> ticketAttributes, Dictionary<string, PlayerProperty> playerProperties)
-        {
-            return ExtractAttributeAsString(ticketAttributes, "gameMode")
-                   ?? ExtractPlayerPropertyAsString(playerProperties, "gameMode");
-        }
-
-        private static string ExtractMap(Dictionary<string, object> ticketAttributes, Dictionary<string, PlayerProperty> playerProperties)
-        {
-            return ExtractAttributeAsString(ticketAttributes, "map")
-                   ?? ExtractPlayerPropertyAsString(playerProperties, "map");
-        }
-
-        private static byte[] BuildConnectionDataBytes(Dictionary<string, object> connectionData, Dictionary<string, PlayerProperty> playerProperties, string fallbackAuthId)
-        {
-            var payload = connectionData != null
-                ? new Dictionary<string, object>(connectionData)
-                : new Dictionary<string, object>();
-
-            var playerName = ExtractAttributeAsString(payload, "playerName")
-                             ?? ExtractPlayerPropertyAsString(playerProperties, "playerName")
-                             ?? "Player";
-
-            var authId = ExtractAttributeAsString(payload, "authId")
-                         ?? fallbackAuthId
-                         ?? "unknown-player";
-
-            var gameVersion = ExtractAttributeAsInt(payload, "gameVersion")
-                              ?? ExtractPlayerPropertyAsInt(playerProperties, "gameVersion")
-                              ?? GetApplicationVersionAsInt();
-
-            var rank = ExtractAttributeAsInt(payload, "rank")
-                       ?? ExtractPlayerPropertyAsInt(playerProperties, "rank")
-                       ?? 0;
-
-            payload["playerName"] = playerName;
-            payload["authId"] = authId;
-            payload["gameVersion"] = gameVersion;
-            payload["rank"] = rank;
-
-            return ConnectionPayloadSerializer.SerializeToBytes(payload);
-        }
-
-        private static string ExtractAttributeAsString(Dictionary<string, object> source, string key)
-        {
-            if (source == null || !source.TryGetValue(key, out var value) || value == null)
-            {
-                return null;
-            }
-
-            switch (value)
-            {
-                case string str:
-                    return str;
-                case int i:
-                    return i.ToString();
-                case long l:
-                    return l.ToString();
-                case float f:
-                    return f.ToString();
-                case double d:
-                    return d.ToString();
-                case bool b:
-                    return b.ToString();
-                default:
-                    return value.ToString();
-            }
-        }
-
-        private static int? ExtractAttributeAsInt(Dictionary<string, object> source, string key)
-        {
-            if (source == null || !source.TryGetValue(key, out var value) || value == null)
-            {
-                return null;
-            }
-
-            switch (value)
-            {
-                case int i:
-                    return i;
-                case long l:
-                    return (int)l;
-                case float f:
-                    return (int)f;
-                case double d:
-                    return (int)d;
-                case string s when int.TryParse(s, out var parsed):
-                    return parsed;
-                default:
-                    return null;
-            }
-        }
-
-        private static string ExtractPlayerPropertyAsString(Dictionary<string, PlayerProperty> properties, string key)
-        {
-            if (properties == null || !properties.TryGetValue(key, out var property) || property == null)
-            {
-                return null;
-            }
-
-            return property.Value;
-        }
-
-        private static int? ExtractPlayerPropertyAsInt(Dictionary<string, PlayerProperty> properties, string key)
-        {
-            var value = ExtractPlayerPropertyAsString(properties, key);
-            if (string.IsNullOrEmpty(value))
-            {
-                return null;
-            }
-
-            return int.TryParse(value, out var parsed) ? parsed : null;
-        }
-
-        private static int GetApplicationVersionAsInt()
-        {
-            var version = Application.version;
-            if (string.IsNullOrEmpty(version))
-            {
-                return 0;
-            }
-
-            try
-            {
-                var cleanVersion = version.Replace(".", "").Replace(",", "");
-                return int.TryParse(cleanVersion, out var versionInt) ? versionInt : 0;
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"Failed to convert version '{version}' to int: {e.Message}");
-                return 0;
-            }
-        }
 
         private async Task<bool> WaitForConnection()
         {
@@ -533,27 +416,6 @@ namespace DedicatedServerMultiplayerSample.Client
             }
 
             return connected;
-        }
-
-        private void SetupSceneLoadCallback()
-        {
-            // 重複防止
-            networkManager.SceneManager.OnLoadEventCompleted -= OnSceneLoadCompleted;
-            networkManager.SceneManager.OnLoadEventCompleted += OnSceneLoadCompleted;
-            Debug.Log("[ClientGameManager] Scene load callback registered");
-        }
-
-        private void OnSceneLoadCompleted(string sceneName, LoadSceneMode loadSceneMode,
-            System.Collections.Generic.List<ulong> clientsCompleted,
-            System.Collections.Generic.List<ulong> clientsTimedOut)
-        {
-            Debug.Log($"[ClientGameManager] Scene loaded: {sceneName}");
-            if (sceneName == "game")
-            {
-                Debug.Log("[ClientGameManager] ✓ Game scene loaded successfully!");
-                // クリーンアップ
-                networkManager.SceneManager.OnLoadEventCompleted -= OnSceneLoadCompleted;
-            }
         }
 
         /// <summary>

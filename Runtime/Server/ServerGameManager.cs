@@ -24,8 +24,8 @@ namespace DedicatedServerMultiplayerSample.Server
         private readonly NetworkManager m_NetworkManager;
         private ServerMultiplayIntegration m_MultiplayIntegration;
         private ServerPlayerValidator m_PlayerValidator;
-        private readonly List<string> m_ExpectedPlayerIds = new List<string>();
-        private readonly Dictionary<ulong, string> m_ConnectedPlayers = new Dictionary<ulong, string>();
+        private readonly List<string> m_ExpectedAuthIds = new List<string>();
+        private readonly Dictionary<ulong, string> m_ConnectedAuthIds = new Dictionary<ulong, string>();
         private int m_TeamCount = 2;
 
         // シーンロード完了管理
@@ -106,8 +106,8 @@ namespace DedicatedServerMultiplayerSample.Server
 
                     foreach (var player in matchResults.MatchProperties.Players)
                     {
-                        m_ExpectedPlayerIds.Add(player.Id);
-                        Debug.Log($"  - Expected Player ID: {player.Id}");
+                        m_ExpectedAuthIds.Add(player.Id);
+                        Debug.Log($"  - Expected AuthId: {player.Id}");
                     }
 
                     // チーム情報の表示
@@ -142,8 +142,8 @@ namespace DedicatedServerMultiplayerSample.Server
                 // プレイヤー検証クラスを作成
                 m_PlayerValidator = new ServerPlayerValidator(
                     m_NetworkManager,
-                    m_ExpectedPlayerIds,
-                    m_ConnectedPlayers
+                    m_ExpectedAuthIds,
+                    m_ConnectedAuthIds
                 );
 
                 m_NetworkManager.ConnectionApprovalCallback = HandleConnectionApproval;
@@ -302,8 +302,8 @@ namespace DedicatedServerMultiplayerSample.Server
 
         private void OnClientConnected(ulong clientId)
         {
-            string playerId = m_PlayerValidator.GetPlayerId(clientId);
-            Debug.Log($"[ServerGameManager] Client connected - ClientId: {clientId}, PlayerId: {playerId}");
+            string authId = m_PlayerValidator.GetAuthId(clientId);
+            Debug.Log($"[ServerGameManager] Client connected - ClientId: {clientId}, AuthId: {authId}");
             Debug.Log($"[ServerGameManager] Total clients: {m_NetworkManager.ConnectedClients.Count}");
 
 

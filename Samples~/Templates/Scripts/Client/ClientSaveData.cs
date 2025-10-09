@@ -1,7 +1,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 using DedicatedServerMultiplayerSample.Client;
-using Unity.Services.Multiplayer;
 
 namespace Samples.DedicatedServerMultiplayer
 {
@@ -14,35 +13,12 @@ namespace Samples.DedicatedServerMultiplayer
     {
         public static ClientSaveData Instance { get; private set; }
 
-        [Header("Identity")]
-        [SerializeField] private string playerName = "Player";
-        [SerializeField] private int rank = 1000;
-        private int gameVersion;
-
-        [Header("Matchmaking Settings")]
-        [SerializeField] private string gameMode = "default";
-        [SerializeField] private string map = "arena";
-
-        [Header("Optional Friend Matching")]
-        [SerializeField] private string roomCode = string.Empty;
-
-        public string PlayerName => playerName;
-        public int Rank => rank;
-        public int GameVersion => gameVersion;
-
-        /// <summary>
-        /// サンプルでは Inspector から値を編集できますが、実際にはゲーム内ロジックから呼び出してください。
-        /// </summary>
-        public void UpdateIdentity(string newPlayerName, int newRank)
-        {
-            playerName = string.IsNullOrWhiteSpace(newPlayerName) ? GenerateRandomPlayerName() : newPlayerName;
-            rank = newRank;
-        }
-
-        public void UpdateRoomCode(string code)
-        {
-            roomCode = code;
-        }
+        public string PlayerName { get; set; }
+        public int Rank { get; set; }
+        public int GameVersion { get; set; }
+        public string GameMode { get; set; }
+        public string Map { get; set; }
+        public string RoomCode { get; set; }
 
         private void Awake()
         {
@@ -55,56 +31,72 @@ namespace Samples.DedicatedServerMultiplayer
             Instance = this;
             DontDestroyOnLoad(gameObject);
 
-            EnsurePlayerNameInitialized();
-            InitializeGameVersion();
+            InitializeData();
         }
 
-        public Dictionary<string, PlayerProperty> BuildPlayerProperties()
+        /// <summary>
+        /// 初期状態の値をまとめて設定。
+        /// </summary>
+        private void InitializeData()
         {
-            var dict = new Dictionary<string, PlayerProperty>
-            {
-                ["gameVersion"] = new PlayerProperty(gameVersion.ToString()),
-                ["gameMode"] = new PlayerProperty(gameMode),
-                ["map"] = new PlayerProperty(map),
-                ["rank"] = new PlayerProperty(rank.ToString())
-            };
-            return dict;
-        }
+            PlayerName = string.IsNullOrWhiteSpace(PlayerName) ? GenerateRandomPlayerName() : PlayerName;
+            Rank = Rank == 0 ? 1000 : Rank;
+            GameMode = string.IsNullOrWhiteSpace(GameMode) ? "default" : GameMode;
+            Map = string.IsNullOrWhiteSpace(Map) ? "arena" : Map;
+            RoomCode = RoomCode ?? string.Empty;
+            GameVersion = GameVersion != 0 ? GameVersion : ParseGameVersion(Application.version);
 
-        public Dictionary<string, object> BuildTicketAttributes()
-        {
-            var dict = new Dictionary<string, object>();
-
-            dict["gameVersion"] = gameVersion;
-            dict["gameMode"] = gameMode;
-            dict["map"] = map;
-
-            if (!string.IsNullOrEmpty(roomCode))
-            {
-                dict["roomCode"] = roomCode;
-            }
-
-            return dict;
-        }
-
-        public Dictionary<string, object> BuildConnectionData(string authId)
-        {
-            return new Dictionary<string, object>
-            {
-                ["playerName"] = ResolvePlayerName(),
-                ["authId"] = authId,
-                ["gameVersion"] = gameVersion,
-                ["rank"] = rank
-            };
-        }
-
-        private void InitializeGameVersion()
-        {
-            gameVersion = ParseGameVersion(Application.version);
-            if (gameVersion == 0)
+            if (GameVersion == 0)
             {
                 Debug.LogWarning("[ClientSaveData] Failed to parse Application.version. Using 0 for gameVersion.");
             }
+        }
+
+        public Dictionary<string, object> GetPlayerProperties()
+        {
+            return new Dictionary<string, object>
+            {
+                ["gameVersion"] = GameVersion,
+                ["gameMode"] = GameMode,
+                ["map"] = Map,
+                ["rank"] = Rank
+            };
+        }
+
+        public Dictionary<string, object> GetTicketAttributes()
+        {
+            var dict = new Dictionary<string, object>
+            {
+                ["gameVersion"] = GameVersion,
+                ["gameMode"] = GameMode,
+                ["map"] = Map
+            };
+
+            if (!string.IsNullOrEmpty(RoomCode))
+            {
+                dict["roomCode"] = RoomCode;
+            }
+
+            return dict;
+        }
+
+        public Dictionary<string, object> GetConnectionData()
+        {
+            return new Dictionary<string, object>
+            {
+                ["playerName"] = PlayerName,
+                ["gameVersion"] = GameVersion,
+                ["rank"] = Rank
+            };
+        }
+
+        public Dictionary<string, object> GetSessionProperties()
+        {
+            return new Dictionary<string, object>
+            {
+                ["gameMode"] = GameMode,
+                ["map"] = Map
+            };
         }
 
         private static int ParseGameVersion(string version)
@@ -116,20 +108,6 @@ namespace Samples.DedicatedServerMultiplayer
 
             var cleanVersion = version.Replace(".", "").Replace(",", "");
             return int.TryParse(cleanVersion, out var versionInt) ? versionInt : 0;
-        }
-
-        private string ResolvePlayerName()
-        {
-            EnsurePlayerNameInitialized();
-            return playerName;
-        }
-
-        private void EnsurePlayerNameInitialized()
-        {
-            if (string.IsNullOrWhiteSpace(playerName) || playerName == "Player")
-            {
-                playerName = GenerateRandomPlayerName();
-            }
         }
 
         private static string GenerateRandomPlayerName()

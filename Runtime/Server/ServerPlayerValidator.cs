@@ -18,19 +18,19 @@ namespace DedicatedServerMultiplayerSample.Server
 
         // ========== Fields ==========
         private readonly NetworkManager m_NetworkManager;
-        private readonly List<string> m_ExpectedPlayerIds;
-        private readonly Dictionary<ulong, string> m_ConnectedPlayers;
+        private readonly List<string> m_ExpectedAuthIds;
+        private readonly Dictionary<ulong, string> m_ConnectedAuthIds;
         private readonly Dictionary<ulong, Dictionary<string, object>> m_ConnectionDataMap;
 
         // ========== Constructor ==========
         public ServerPlayerValidator(
             NetworkManager networkManager,
-            List<string> expectedPlayerIds,
-            Dictionary<ulong, string> connectedPlayers)
+            List<string> expectedAuthIds,
+            Dictionary<ulong, string> connectedAuthIds)
         {
             m_NetworkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
-            m_ExpectedPlayerIds = expectedPlayerIds ?? new List<string>();
-            m_ConnectedPlayers = connectedPlayers ?? new Dictionary<ulong, string>();
+            m_ExpectedAuthIds = expectedAuthIds ?? new List<string>();
+            m_ConnectedAuthIds = connectedAuthIds ?? new Dictionary<ulong, string>();
             m_ConnectionDataMap = new Dictionary<ulong, Dictionary<string, object>>();
             m_FallbackMaxPlayers = Mathf.Max(1, DedicatedServerMultiplayerSample.Shared.GameConfig.Instance.MaxHumanPlayers);
         }
@@ -78,47 +78,24 @@ namespace DedicatedServerMultiplayerSample.Server
             Debug.Log($"[ServerPlayerValidator] ===== PAYLOAD DEBUG END =====");
 
             // ===== ConnectionData JSON版 =====
-            string playerId = null;
-            Dictionary<string, object> connectionData = ConnectionPayloadSerializer.DeserializeFromBytes(request.Payload);
+            var connectionData = ConnectionPayloadSerializer.DeserializeFromBytes(request.Payload);
 
             if (connectionData.Count > 0)
             {
                 Debug.Log($"[ServerPlayerValidator] ✓ Parsed connection payload with keys: {string.Join(", ", connectionData.Keys)}");
             }
 
-            if (connectionData.Count > 0)
+            var authId = connectionData.Count > 0 ? ExtractString(connectionData, "authId") : null;
+
+            if (string.IsNullOrEmpty(authId))
             {
-                playerId = ExtractString(connectionData, "authId");
-                Debug.Log($"[ServerPlayerValidator] ✓ Parsed connection payload. authId: '{playerId ?? "null"}'");
+                Debug.LogError("[ServerPlayerValidator] ✗ Connection payload missing required 'authId'.");
+                return (false, null, "Missing authId");
             }
 
-            if (string.IsNullOrEmpty(playerId))
-            {
-                Debug.LogWarning("[ServerPlayerValidator] Payload missing authId. Attempting fallback.");
+            Debug.Log($"[ServerPlayerValidator] ✓ Parsed connection payload. authId: '{authId}'");
 
-                if (m_ExpectedPlayerIds.Count > 0)
-                {
-                    foreach (var expectedId in m_ExpectedPlayerIds)
-                    {
-                        if (!m_ConnectedPlayers.ContainsValue(expectedId))
-                        {
-                            playerId = expectedId;
-                            connectionData = BuildFallbackPayload(request.ClientNetworkId, expectedId);
-                            break;
-                        }
-                    }
-                }
-            }
-
-            // 検証結果
-            if (string.IsNullOrEmpty(playerId))
-            {
-                Debug.LogError("[ServerPlayerValidator] ✗ No valid PlayerId found!");
-                return (false, null, "No valid PlayerId");
-            }
-
-            // 4. プレイヤー検証
-            if (!ValidatePlayer(playerId, request.ClientNetworkId))
+            if (!ValidatePlayer(authId, request.ClientNetworkId))
             {
                 return (false, null, "Authentication failed or server is full");
             }
@@ -132,10 +109,10 @@ namespace DedicatedServerMultiplayerSample.Server
         /// <summary>
         /// プレイヤーを接続済みとして登録
         /// </summary>
-        public void RegisterConnectedPlayer(ulong clientNetworkId, string playerId)
+        public void RegisterConnectedPlayer(ulong clientNetworkId, string authId)
         {
-            m_ConnectedPlayers[clientNetworkId] = playerId;
-            Debug.Log($"[ServerPlayerValidator] Registered player - ClientId: {clientNetworkId}, PlayerId: {playerId}");
+            m_ConnectedAuthIds[clientNetworkId] = authId;
+            Debug.Log($"[ServerPlayerValidator] Registered player - ClientId: {clientNetworkId}, AuthId: {authId}");
         }
 
         /// <summary>
@@ -159,10 +136,10 @@ namespace DedicatedServerMultiplayerSample.Server
         /// </summary>
         public void HandlePlayerDisconnect(ulong clientNetworkId)
         {
-            if (m_ConnectedPlayers.ContainsKey(clientNetworkId))
+            if (m_ConnectedAuthIds.ContainsKey(clientNetworkId))
             {
-                Debug.Log($"[ServerPlayerValidator] Removed player {m_ConnectedPlayers[clientNetworkId]}");
-                m_ConnectedPlayers.Remove(clientNetworkId);
+                Debug.Log($"[ServerPlayerValidator] Removed player {m_ConnectedAuthIds[clientNetworkId]}");
+                m_ConnectedAuthIds.Remove(clientNetworkId);
             }
             if (m_ConnectionDataMap.ContainsKey(clientNetworkId))
             {
@@ -171,49 +148,13 @@ namespace DedicatedServerMultiplayerSample.Server
         }
 
         /// <summary>
-        /// 接続済みプレイヤーのIDを取得
+        /// 接続済みプレイヤーの認証IDを取得
         /// </summary>
-        public string GetPlayerId(ulong clientNetworkId)
+        public string GetAuthId(ulong clientNetworkId)
         {
-            return m_ConnectedPlayers.ContainsKey(clientNetworkId)
-                ? m_ConnectedPlayers[clientNetworkId]
+            return m_ConnectedAuthIds.ContainsKey(clientNetworkId)
+                ? m_ConnectedAuthIds[clientNetworkId]
                 : "Unknown";
-        }
-
-        /// <summary>
-        /// バージョン文字列を整数に変換
-        /// </summary>
-        private static int ConvertVersionToInt(string version)
-        {
-            if (string.IsNullOrEmpty(version))
-                return 0;
-
-            try
-            {
-                // "1.2.3" -> "123" -> 123
-                string cleanVersion = version.Replace(".", "").Replace(",", "");
-                if (int.TryParse(cleanVersion, out int versionInt))
-                {
-                    return versionInt;
-                }
-                return 0;
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"Failed to convert version '{version}' to int: {e.Message}");
-                return 0;
-            }
-        }
-
-        private static Dictionary<string, object> BuildFallbackPayload(ulong clientNetworkId, string authId)
-        {
-            return new Dictionary<string, object>
-            {
-                ["playerName"] = $"Player{clientNetworkId}",
-                ["authId"] = authId,
-                ["gameVersion"] = ConvertVersionToInt(Application.version),
-                ["rank"] = 1000
-            };
         }
 
         private static string ExtractString(Dictionary<string, object> payload, string key)
@@ -236,63 +177,73 @@ namespace DedicatedServerMultiplayerSample.Server
 
         // ========== Private Methods ==========
 
-        private bool ValidatePlayer(string playerId, ulong clientNetworkId)
+        private bool ValidatePlayer(string authId, ulong clientNetworkId)
         {
             // 最大プレイヤー数チェック
             int maxAllowedPlayers = GetExpectedPlayerCount();
-            if (m_ConnectedPlayers.Count >= maxAllowedPlayers)
+            if (m_ConnectedAuthIds.Count >= maxAllowedPlayers)
             {
                 Debug.LogWarning("[ServerPlayerValidator] Server is full");
                 return false;
             }
 
             // 期待プレイヤーリストチェック
-            if (m_ExpectedPlayerIds.Count > 0 && !string.IsNullOrEmpty(playerId))
+            if (m_ExpectedAuthIds.Count > 0 && !string.IsNullOrEmpty(authId))
             {
-                if (!m_ExpectedPlayerIds.Contains(playerId))
+                if (!m_ExpectedAuthIds.Contains(authId))
                 {
-                    Debug.LogWarning($"[ServerPlayerValidator] Player {playerId} not in expected list");
+                    Debug.LogWarning($"[ServerPlayerValidator] AuthId {authId} not in expected list");
                     return false;
                 }
             }
 
             // 重複接続チェックと処理
-            HandleDuplicateConnection(playerId);
+            HandleDuplicateConnection(authId);
 
             return true;
         }
 
         private int GetExpectedPlayerCount()
         {
-            if (m_ExpectedPlayerIds != null && m_ExpectedPlayerIds.Count > 0)
+            if (m_ExpectedAuthIds != null && m_ExpectedAuthIds.Count > 0)
             {
-                return m_ExpectedPlayerIds.Count;
+                return m_ExpectedAuthIds.Count;
             }
 
             return m_FallbackMaxPlayers;
         }
 
-        private void HandleDuplicateConnection(string playerId)
+        private void HandleDuplicateConnection(string authId)
         {
-            if (string.IsNullOrEmpty(playerId))
+            if (string.IsNullOrEmpty(authId))
                 return;
 
-            // 同じプレイヤーIDで既に接続しているクライアントを探す
-            foreach (var kvp in m_ConnectedPlayers)
-            {
-                if (kvp.Value == playerId)
-                {
-                    Debug.LogWarning($"[ServerPlayerValidator] Duplicate connection for PlayerId: {playerId}");
+            ulong duplicateClientId = 0;
+            bool foundDuplicate = false;
 
-                    // 既存の接続を切断
-                    if (m_NetworkManager.ConnectedClients.ContainsKey(kvp.Key))
-                    {
-                        m_NetworkManager.DisconnectClient(kvp.Key);
-                    }
-                    m_ConnectedPlayers.Remove(kvp.Key);
+            foreach (var kvp in m_ConnectedAuthIds)
+            {
+                if (kvp.Value == authId)
+                {
+                    duplicateClientId = kvp.Key;
+                    foundDuplicate = true;
                     break;
                 }
             }
+
+            if (!foundDuplicate)
+            {
+                return;
+            }
+
+            Debug.LogWarning($"[ServerPlayerValidator] Duplicate connection for authId: {authId}");
+
+            if (m_NetworkManager.ConnectedClients.ContainsKey(duplicateClientId))
+            {
+                m_NetworkManager.DisconnectClient(duplicateClientId);
+            }
+
+            m_ConnectedAuthIds.Remove(duplicateClientId);
         }
     }
 }
