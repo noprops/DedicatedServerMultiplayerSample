@@ -5,7 +5,7 @@ This sample is imported to `Assets/Samples/Dedicated Server Multiplayer Sample/<
 Contents:
 - `Scenes/bootStrap.unity` – creates `NetworkManager`, `ClientSingleton`, and (for server builds) `ServerSingleton` at runtime.
 - `Scenes/loading.unity` – demonstrates hooking into `LoadingScene` with `LoadingSceneSampleTask`.
-- `Scenes/menu.unity` – placeholder scene; replace with your own menu UI wired to the matchmaking scripts.
+- `Scenes/menu.unity` – basic menu scene ready to hook up to your matchmaking UI.
 - `Scenes/game.unity` – contains the `RockPaperScissorsGame` network behaviour and session controller.
 - `Scripts/Client` & `Scripts/Shared` – sample behaviours referenced by the scenes.
 - `Resources/Config/GameConfig.asset` – default configuration loaded by `GameConfig.Instance`.

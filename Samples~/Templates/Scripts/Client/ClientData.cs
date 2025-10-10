@@ -9,9 +9,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Client
     /// マッチメイキングに渡すデータを構築し、<see cref="IMatchmakingPayloadProvider"/> として提供します。
     /// 実際のプロジェクトではこのクラスを参考にして独自の保存データ管理を実装してください。
     /// </summary>
-    public class ClientSaveData : MonoBehaviour, IMatchmakingPayloadProvider
+    public class ClientData : MonoBehaviour, IMatchmakingPayloadProvider
     {
-        public static ClientSaveData Instance { get; private set; }
+        public static ClientData Instance { get; private set; }
 
         public string PlayerName { get; set; }
         public int Rank { get; set; }
@@ -48,7 +48,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client
 
             if (GameVersion == 0)
             {
-                Debug.LogWarning("[ClientSaveData] Failed to parse Application.version. Using 0 for gameVersion.");
+                Debug.LogWarning("[ClientData] Failed to parse Application.version. Using 0 for gameVersion.");
             }
         }
 

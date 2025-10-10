@@ -6,6 +6,7 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
+using DedicatedServerMultiplayerSample.Client;
 using DedicatedServerMultiplayerSample.Samples.Shared;
 
 namespace DedicatedServerMultiplayerSample.Samples.Client

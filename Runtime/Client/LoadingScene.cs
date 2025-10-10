@@ -87,9 +87,9 @@ namespace DedicatedServerMultiplayerSample.Client
             Debug.Log($"[LoadingScene] ✓ Authenticated as: {AuthenticationWrapper.PlayerId}");
 
             await RunCustomTasksAsync();
-            
+
             // ================================================================
-            // STEP 4: メニューシーンへ遷移
+            //loadingsceneへloadingscenesampletaskを差し込む方法を説明せよ。現在taskのlistがprivateになっていて差し込めない？ STEP 4: メニューシーンへ遷移
             // ================================================================
             Debug.Log("[LoadingScene] STEP 4: Loading menu scene...");
 

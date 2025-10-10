@@ -1,0 +1,10 @@
+{
+  "name": "LinuxServer",
+  "buildTarget": "DedicatedServer",
+  "outputPath": "Builds/LinuxServer",
+  "development": false,
+  "scenes": [
+    "Scenes/bootStrap.unity",
+    "Scenes/game.unity"
+  ]
+}

@@ -9,5 +9,6 @@ Import the **Basic Scene Setup** sample via the Unity Package Manager to copy te
 - Multiplay session integration and allocation helper utilities
 - Shared configuration assets (e.g. `GameConfig`) for maximum player counts and team structure
 - Sample scenes (bootStrap, loading, menu, game) and helper scripts for rapid setup
+- Matchmaker/Multiplay configuration templates plus a Linux server build profile
 
 See `Quickstart.md` for setup instructions.
