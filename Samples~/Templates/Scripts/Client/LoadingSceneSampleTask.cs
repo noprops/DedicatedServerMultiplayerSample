@@ -6,42 +6,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Client
 {
     /// <summary>
     /// LoadingScene に処理を差し込むサンプルスクリプト。
-    /// LoadingScene 上にアタッチし、SerializeField から参照を設定してください。
+    /// LoadingScene と同じ GameObject にアタッチして使用します。
     /// </summary>
-    public class LoadingSceneSampleTask : MonoBehaviour
+    public class LoadingSceneSampleTask : LoadingSceneTaskBase
     {
-        [SerializeField] private LoadingScene loadingScene;
-
-        private void Awake()
-        {
-            if (loadingScene == null)
-            {
-                loadingScene = GetComponent<LoadingScene>();
-            }
-
-            if (loadingScene == null)
-            {
-                Debug.LogError("[LoadingSceneSampleTask] LoadingScene reference not set.");
-            }
-        }
-
-        private void OnEnable()
-        {
-            if (loadingScene != null)
-            {
-                loadingScene.Register(RunAsync);
-            }
-        }
-
-        private void OnDisable()
-        {
-            if (loadingScene != null)
-            {
-                loadingScene.Unregister(RunAsync);
-            }
-        }
-
-        private async Task RunAsync()
+        protected override async Task RunAsync()
         {
             Debug.Log("[LoadingSceneSampleTask] Custom task started");
             await Task.Delay(500); // ここで実際の処理（Cloud Save など）を行う
