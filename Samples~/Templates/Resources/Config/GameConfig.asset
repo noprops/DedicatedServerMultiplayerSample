@@ -16,4 +16,3 @@ MonoBehaviour:
   m_MaxTeams: 2
   m_MinPlayersPerTeam: 1
   m_MaxPlayersPerTeam: 1
-  m_MaxGameDurationSeconds: 300

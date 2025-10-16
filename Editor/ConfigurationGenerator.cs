@@ -11,7 +11,17 @@ namespace DedicatedServerMultiplayerSample.Editor
         private const string QueueFileName = "MatchmakerQueue.mmq";
         private const string EnvironmentFileName = "MatchmakerEnvironment.mme";
         private const string MultiplayFileName = "MultiplayConfiguration.gsh";
-        private const string BuildProfileFileName = "LinuxServer.buildprofile";
+
+        private const string QueueName = "default-queue";
+        private const string DefaultPoolName = "default-pool";
+        private const string FilteredPoolName = "high-version-pool";
+        private const string FleetName = "fleet";
+        private const string BuildConfigurationName = "build-config";
+        private const string DefaultRegion = "Asia";
+        private const string MultiplayBuildName = "server-build";
+        private const string MultiplayExecutableName = "DedicatedServer.x86_64";
+        private const string MultiplayBuildPath = "Builds/LinuxServer";
+        private const string MultiplayBinaryPath = "DedicatedServer.x86_64";
 
         public static void UpdateFromGameConfig(GameConfig config)
         {
@@ -45,8 +55,7 @@ namespace DedicatedServerMultiplayerSample.Editor
             {
                 UpdateMatchmakerQueue(configurationsFolder, config);
                 UpdateMatchmakerEnvironment(configurationsFolder);
-                EnsureMultiplayConfigExists(configurationsFolder);
-                UpdateBuildProfile(configurationsFolder, rootFolder);
+                UpdateMultiplayConfig(configurationsFolder);
                 AssetDatabase.Refresh();
                 Debug.Log("[ConfigurationGenerator] Configurations updated.");
             }
@@ -58,20 +67,19 @@ namespace DedicatedServerMultiplayerSample.Editor
 
         private static string FindSampleRootFolder(string gameConfigAssetPath)
         {
-            // GameConfig asset is typically at ".../Basic Scene Setup/Resources/Config/GameConfig.asset"
             var directory = Path.GetDirectoryName(gameConfigAssetPath);
             if (string.IsNullOrEmpty(directory))
             {
                 return null;
             }
 
-            var resourcesFolder = Path.GetDirectoryName(directory); // Resources
+            var resourcesFolder = Path.GetDirectoryName(directory);
             if (string.IsNullOrEmpty(resourcesFolder))
             {
                 return null;
             }
 
-            var rootFolder = Path.GetDirectoryName(resourcesFolder); // Sample root
+            var rootFolder = Path.GetDirectoryName(resourcesFolder);
             return string.IsNullOrEmpty(rootFolder) ? null : rootFolder.Replace('\\', '/');
         }
 
@@ -80,56 +88,33 @@ namespace DedicatedServerMultiplayerSample.Editor
             var path = Path.Combine(configurationsFolder, QueueFileName);
             EnsureQueueFileExists(path);
 
-            var json = File.ReadAllText(path);
-            var queueConfig = JsonUtility.FromJson<MatchmakerQueueConfig>(json);
-            if (queueConfig == null)
-            {
-                Debug.LogError("[ConfigurationGenerator] Unable to parse MatchmakerQueue configuration.");
-                return;
-            }
+            var queueConfig = JsonUtility.FromJson<MatchmakerQueueConfig>(File.ReadAllText(path)) ?? CreateDefaultQueueConfig();
 
             var minTeams = Mathf.Max(1, gameConfig.MinTeams);
             var maxTeams = Mathf.Max(minTeams, gameConfig.MaxTeams);
             var minPlayersPerTeam = Mathf.Max(1, gameConfig.MinPlayersPerTeam);
             var maxPlayersPerTeam = Mathf.Max(minPlayersPerTeam, gameConfig.MaxPlayersPerTeam);
 
+            queueConfig.name = QueueName;
+            queueConfig.enabled = true;
             queueConfig.maxPlayersPerTicket = maxPlayersPerTeam;
 
-            void ApplyTeamSettings(TeamDefinition[] teams)
+            queueConfig.defaultPool ??= new Pool();
+            queueConfig.defaultPool.name = DefaultPoolName;
+            ConfigurePool(queueConfig.defaultPool, "Rules", minTeams, maxTeams, minPlayersPerTeam, maxPlayersPerTeam);
+
+            var filteredPool = queueConfig.filteredPools != null && queueConfig.filteredPools.Length > 0
+                ? queueConfig.filteredPools[0]
+                : new Pool();
+            filteredPool.name = FilteredPoolName;
+            filteredPool.filters = new[]
             {
-                if (teams == null)
-                {
-                    return;
-                }
+                new Filter { attribute = "gameVersion", @operator = "GreaterThan", value = 200 }
+            };
+            ConfigurePool(filteredPool, "Rules", minTeams, maxTeams, minPlayersPerTeam, maxPlayersPerTeam);
+            queueConfig.filteredPools = new[] { filteredPool };
 
-                foreach (var team in teams)
-                {
-                    if (team.teamCount != null)
-                    {
-                        team.teamCount.min = minTeams;
-                        team.teamCount.max = maxTeams;
-                    }
-
-                    if (team.playerCount != null)
-                    {
-                        team.playerCount.min = minPlayersPerTeam;
-                        team.playerCount.max = maxPlayersPerTeam;
-                    }
-                }
-            }
-
-            ApplyTeamSettings(queueConfig.defaultPool?.matchLogic?.matchDefinition?.teams);
-
-            if (queueConfig.filteredPools != null)
-            {
-                foreach (var pool in queueConfig.filteredPools)
-                {
-                    ApplyTeamSettings(pool.matchLogic?.matchDefinition?.teams);
-                }
-            }
-
-            var updatedJson = JsonUtility.ToJson(queueConfig, true);
-            File.WriteAllText(path, updatedJson);
+            File.WriteAllText(path, JsonUtility.ToJson(queueConfig, true));
         }
 
         private static void EnsureQueueFileExists(string path)
@@ -145,96 +130,138 @@ namespace DedicatedServerMultiplayerSample.Editor
                 Directory.CreateDirectory(directory);
             }
 
-            var queue = JsonUtility.ToJson(new MatchmakerQueueConfig(), true);
-            File.WriteAllText(path, queue);
+            File.WriteAllText(path, JsonUtility.ToJson(CreateDefaultQueueConfig(), true));
+        }
+
+        private static MatchmakerQueueConfig CreateDefaultQueueConfig()
+        {
+            var config = new MatchmakerQueueConfig
+            {
+                name = QueueName,
+                defaultPool = new Pool { name = DefaultPoolName }
+            };
+
+            ConfigurePool(config.defaultPool, "Rules", 2, 2, 1, 1);
+
+            var filtered = new Pool { name = FilteredPoolName };
+            filtered.filters = new[] { new Filter { attribute = "gameVersion", @operator = "GreaterThan", value = 200 } };
+            ConfigurePool(filtered, "Rules", 2, 2, 1, 1);
+            config.filteredPools = new[] { filtered };
+
+            return config;
+        }
+
+        private static void ConfigurePool(Pool pool, string logicName, int minTeams, int maxTeams, int minPlayersPerTeam, int maxPlayersPerTeam)
+        {
+            pool.enabled = true;
+            pool.timeoutSeconds = 300;
+            pool.matchLogic ??= new MatchLogic();
+            pool.matchLogic.name = logicName;
+            pool.matchLogic.matchDefinition ??= new MatchDefinition();
+            ApplyTeamSettings(pool.matchLogic.matchDefinition.teams, minTeams, maxTeams, minPlayersPerTeam, maxPlayersPerTeam);
+
+            pool.matchHosting ??= new MatchHosting();
+            pool.matchHosting.type = "Multiplay";
+            pool.matchHosting.fleetName = FleetName;
+            pool.matchHosting.buildConfigurationName = BuildConfigurationName;
+            pool.matchHosting.defaultQoSRegionName = DefaultRegion;
+        }
+
+        private static void ApplyTeamSettings(TeamDefinition[] teams, int minTeams, int maxTeams, int minPlayersPerTeam, int maxPlayersPerTeam)
+        {
+            if (teams == null)
+            {
+                return;
+            }
+
+            foreach (var team in teams)
+            {
+                team.teamCount ??= new Count();
+                team.teamCount.min = minTeams;
+                team.teamCount.max = maxTeams;
+                team.teamCount.relaxations = Array.Empty<Count>();
+
+                team.playerCount ??= new Count();
+                team.playerCount.min = minPlayersPerTeam;
+                team.playerCount.max = maxPlayersPerTeam;
+                team.playerCount.relaxations = Array.Empty<Count>();
+            }
         }
 
         private static void UpdateMatchmakerEnvironment(string configurationsFolder)
         {
             var path = Path.Combine(configurationsFolder, EnvironmentFileName);
-            if (!File.Exists(path))
-            {
-                var directory = Path.GetDirectoryName(path);
-                if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
-                {
-                    Directory.CreateDirectory(directory);
-                }
-
-                File.WriteAllText(path, "{\n  \"$schema\": \"https://ugs-config-schemas.unity3d.com/v1/matchmaker/matchmaker-environment-config.schema.json\",\n  \"enabled\": true,\n  \"defaultQueueName\": \"default-queue\"\n}\n");
-                return;
-            }
-
-            // No dynamic content to update right now; keep placeholder as-is.
-        }
-
-        private static void EnsureMultiplayConfigExists(string configurationsFolder)
-        {
-            var path = Path.Combine(configurationsFolder, MultiplayFileName);
-            if (File.Exists(path))
-            {
-                return;
-            }
-
             var directory = Path.GetDirectoryName(path);
             if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
             {
                 Directory.CreateDirectory(directory);
             }
 
-            const string defaultYaml = "version: 1.0\nbuilds:\n  dedicated-server-sample:\n    executableName: DedicatedServerMultiplayerSample.x86_64\n    buildPath: Builds/LinuxServer\n    excludePaths: []\nbuildConfigurations:\n  dedicated-server-config:\n    build: dedicated-server-sample\n    queryType: sqp\n    binaryPath: DedicatedServerMultiplayerSample.x86_64\n    commandLine: -nographics -batchmode -port $$port$$ -queryport $$query_port$$ -logFile $$log_dir$$/server.log\n    variables: {}\n    readiness: true\nfleets:\n  dedicated-server-fleet:\n    buildConfigurations:\n      - dedicated-server-config\n    regions:\n      Asia:\n        minAvailable: 1\n        maxServers: 2\n    usageSettings:\n      - hardwareType: CLOUD\n        machineType: GCP-N2\n        maxServersPerMachine: 4\n";
-            File.WriteAllText(path, defaultYaml);
-        }
+            var json = "{\n" +
+                       "  \"$schema\": \"https://ugs-config-schemas.unity3d.com/v1/matchmaker/matchmaker-environment-config.schema.json\",\n" +
+                       "  \"enabled\": true,\n" +
+                       $"  \"defaultQueueName\": \"{QueueName}\"\n" +
+                       "}\n";
 
-        private static void UpdateBuildProfile(string configurationsFolder, string rootFolder)
-        {
-            var path = Path.Combine(configurationsFolder, BuildProfileFileName);
-            BuildProfileDefinition profile;
-            if (File.Exists(path))
-            {
-                profile = JsonUtility.FromJson<BuildProfileDefinition>(File.ReadAllText(path));
-                if (profile == null)
-                {
-                    profile = new BuildProfileDefinition();
-                }
-            }
-            else
-            {
-                profile = new BuildProfileDefinition();
-            }
-
-            profile.name = string.IsNullOrEmpty(profile.name) ? "LinuxServer" : profile.name;
-            profile.buildTarget = string.IsNullOrEmpty(profile.buildTarget) ? "DedicatedServer" : profile.buildTarget;
-            profile.outputPath = string.IsNullOrEmpty(profile.outputPath) ? "Builds/LinuxServer" : profile.outputPath;
-
-            var bootStrapPath = CombineAndNormalize(rootFolder, "Scenes/bootStrap.unity");
-            var gamePath = CombineAndNormalize(rootFolder, "Scenes/game.unity");
-            profile.scenes = new[] { bootStrapPath, gamePath };
-
-            var json = JsonUtility.ToJson(profile, true);
             File.WriteAllText(path, json);
         }
 
-        private static string CombineAndNormalize(string left, string right)
+        private static void UpdateMultiplayConfig(string configurationsFolder)
         {
-            return Path.Combine(left, right).Replace('\\', '/');
+            var path = Path.Combine(configurationsFolder, MultiplayFileName);
+            var directory = Path.GetDirectoryName(path);
+            if (!string.IsNullOrEmpty(directory) && !Directory.Exists(directory))
+            {
+                Directory.CreateDirectory(directory);
+            }
+
+            var yaml =
+                $"version: 1.0\\n" +
+                "builds:\\n" +
+                $"  {MultiplayBuildName}:\\n" +
+                $"    executableName: {MultiplayExecutableName}\\n" +
+                $"    buildPath: {MultiplayBuildPath}\\n" +
+                "    excludePaths: []\\n" +
+                "buildConfigurations:\\n" +
+                $"  {BuildConfigurationName}:\\n" +
+                $"    build: {MultiplayBuildName}\\n" +
+                "    queryType: sqp\\n" +
+                $"    binaryPath: {MultiplayBinaryPath}\\n" +
+                "    commandLine: -nographics -batchmode -port $$port$$ -queryport $$query_port$$ -logFile $$log_dir$$/server.log\\n" +
+                "    variables: {}\\n" +
+                "    readiness: true\\n" +
+                "fleets:\\n" +
+                $"  {FleetName}:\\n" +
+                "    buildConfigurations:\\n" +
+                $"      - {BuildConfigurationName}\\n" +
+                "    regions:\\n" +
+                $"      {DefaultRegion}:\\n" +
+                "        minAvailable: 1\\n" +
+                "        maxServers: 2\\n" +
+                "    usageSettings:\\n" +
+                "      - hardwareType: CLOUD\\n" +
+                "        machineType: GCP-N2\\n" +
+                "        maxServersPerMachine: 4\\n";
+
+            File.WriteAllText(path, yaml);
         }
 
         [Serializable]
         private class MatchmakerQueueConfig
         {
-            public string name = "default-queue";
+            public string name = QueueName;
             public bool enabled = true;
             public int maxPlayersPerTicket = 1;
-            public Pool defaultPool = new Pool();
+            public Pool defaultPool = new Pool { name = DefaultPoolName };
             public Pool[] filteredPools = Array.Empty<Pool>();
         }
 
         [Serializable]
         private class Pool
         {
-            public string name = "default-pool";
+            public string name = DefaultPoolName;
             public bool enabled = true;
-            public float timeoutSeconds = 90;
+            public float timeoutSeconds = 300;
             public Variant[] variants = Array.Empty<Variant>();
             public MatchLogic matchLogic = new MatchLogic();
             public MatchHosting matchHosting = new MatchHosting();
@@ -274,8 +301,8 @@ namespace DedicatedServerMultiplayerSample.Editor
         private class TeamDefinition
         {
             public string name = "Players";
-            public Count teamCount = new Count { min = 2, max = 2, relaxations = Array.Empty<Count>() };
-            public Count playerCount = new Count { min = 1, max = 1, relaxations = Array.Empty<Count>() };
+            public Count teamCount = new Count { min = 2, max = 2 };
+            public Count playerCount = new Count { min = 1, max = 1 };
             public TeamRule[] teamRules = Array.Empty<TeamRule>();
         }
 
@@ -303,19 +330,9 @@ namespace DedicatedServerMultiplayerSample.Editor
         private class MatchHosting
         {
             public string type = "Multiplay";
-            public string fleetName = "rps-fleet";
-            public string buildConfigurationName = "rps-server-config";
-            public string defaultQoSRegionName = "Asia";
-        }
-
-        [Serializable]
-        private class BuildProfileDefinition
-        {
-            public string name = "LinuxServer";
-            public string buildTarget = "DedicatedServer";
-            public string outputPath = "Builds/LinuxServer";
-            public bool development = false;
-            public string[] scenes = Array.Empty<string>();
+            public string fleetName = FleetName;
+            public string buildConfigurationName = BuildConfigurationName;
+            public string defaultQoSRegionName = DefaultRegion;
         }
     }
 }

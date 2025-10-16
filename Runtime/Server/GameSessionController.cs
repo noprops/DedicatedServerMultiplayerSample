@@ -1,9 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using Unity.Netcode;
 using UnityEngine;
-using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Server
 {
@@ -31,7 +31,6 @@ namespace DedicatedServerMultiplayerSample.Server
         // ========== Configuration ==========
         [Header("Timeouts")]
         [SerializeField] private float waitingPlayersTimeout = 10f;
-        private float inGameTimeout;
 
         // ========== Components ==========
         private int m_RequiredPlayers;
@@ -40,6 +39,8 @@ namespace DedicatedServerMultiplayerSample.Server
         // ========== Flow Control (Direct TCS) ==========
         private TaskCompletionSource<bool> m_PlayersReadyTcs;
         private TaskCompletionSource<bool> m_GameEndTcs;
+        private CancellationTokenSource m_ShutdownCts;
+        private Task m_ShutdownTask;
 
         // ========== Public API ==========
 
@@ -82,16 +83,6 @@ namespace DedicatedServerMultiplayerSample.Server
             m_RequiredPlayers = ServerSingleton.Instance?.GameManager?.TeamCount ?? 2;
             m_PlayerTracker = new PlayerConnectionTracker();
 
-            var config = GameConfig.Instance;
-            if (config != null)
-            {
-                inGameTimeout = config.MaxGameDurationSeconds;
-            }
-            else
-            {
-                inGameTimeout = 300f;
-            }
-
             // プレイヤー数変化を監視
             m_PlayerTracker.OnPlayerCountChanged += count =>
             {
@@ -100,6 +91,17 @@ namespace DedicatedServerMultiplayerSample.Server
                     Debug.Log("[GameSessionController] Required players reached");
                     m_PlayersReadyTcs?.TrySetResult(true);
                 }
+            };
+
+            m_PlayerTracker.OnAllPlayersDisconnected += () =>
+            {
+                var delay = State == GameSessionState.InGame ? 30f : 5f;
+                var reason = State == GameSessionState.InGame
+                    ? "All players disconnected during game"
+                    : "All players disconnected";
+
+                Debug.Log($"[GameSessionController] All players disconnected. Scheduling shutdown in {delay}s.");
+                _ = ScheduleShutdownAsync(reason, delay);
             };
         }
 
@@ -115,6 +117,8 @@ namespace DedicatedServerMultiplayerSample.Server
             // Cancel any pending TCS
             m_PlayersReadyTcs?.TrySetCanceled();
             m_GameEndTcs?.TrySetCanceled();
+            m_ShutdownCts?.Cancel();
+            m_ShutdownCts?.Dispose();
 
             if (Instance == this)
                 Instance = null;
@@ -144,7 +148,7 @@ namespace DedicatedServerMultiplayerSample.Server
                     // タイムアウト → 即座にシャットダウン
                     Debug.LogError("[GameSessionController] Timeout - not enough players");
                     SetState(GameSessionState.StartFailed);
-                    await ScheduleShutdownAsync("Start timeout - not enough players");
+                    await ScheduleShutdownAsync("Start timeout - not enough players", 10f);
                     return;
                 }
 
@@ -155,14 +159,11 @@ namespace DedicatedServerMultiplayerSample.Server
 
                 // 3. 終了条件を待つ
                 Debug.Log("[GameSessionController] Waiting for end condition");
-                bool gameEnd = await WaitForGameEndAsync();
-
-                Debug.Log($"[GameSessionController] gameEnd = {gameEnd}");
+                await m_GameEndTcs.Task;
 
                 // 4. 終了処理
                 SetState(GameSessionState.GameEnded);
-                string endReason = gameEnd ? "Game completed normally" : "InGame timeout";
-                await ScheduleShutdownAsync(endReason);
+                await ScheduleShutdownAsync("Game completed normally", 20f);
             }
             catch (Exception e)
             {
@@ -191,21 +192,45 @@ namespace DedicatedServerMultiplayerSample.Server
             return await Task.WhenAny(ready, timeout) == ready;
         }
 
-        private async Task<bool> WaitForGameEndAsync()
+        public async Task ScheduleShutdownAsync(string reason, float delaySeconds = 10f)
         {
-            var timeout = Task.Delay(TimeSpan.FromSeconds(inGameTimeout));
-            var gameEnd = m_GameEndTcs.Task;
-            return await Task.WhenAny(gameEnd, timeout) == gameEnd;
-        }
+            try
+            {
+                m_ShutdownCts?.Cancel();
+                if (m_ShutdownTask != null)
+                {
+                    await m_ShutdownTask;
+                }
+            }
+            catch (TaskCanceledException)
+            {
+                // ignored
+            }
+            finally
+            {
+                m_ShutdownCts?.Dispose();
+            }
 
-        public async Task ScheduleShutdownAsync(string reason)
-        {
-            const float SHUTDOWN_DELAY = 10f;
-            Debug.Log($"[Shutdown] Scheduled in {SHUTDOWN_DELAY}s - Reason: {reason}");
-            await Task.Delay(TimeSpan.FromSeconds(SHUTDOWN_DELAY));
+            m_ShutdownCts = new CancellationTokenSource();
+            var token = m_ShutdownCts.Token;
 
-            Debug.Log($"[Shutdown] Executing shutdown - Reason: {reason}");
-            ServerSingleton.Instance?.GameManager?.CloseServer();
+            Debug.Log($"[Shutdown] Scheduled in {delaySeconds}s - Reason: {reason}");
+            m_ShutdownTask = Task.Run(async () =>
+            {
+                try
+                {
+                    await Task.Delay(TimeSpan.FromSeconds(delaySeconds), token);
+                    if (!token.IsCancellationRequested)
+                    {
+                        Debug.Log($"[Shutdown] Executing shutdown - Reason: {reason}");
+                        ServerSingleton.Instance?.GameManager?.CloseServer();
+                    }
+                }
+                catch (TaskCanceledException)
+                {
+                    // cancellation expected when a new schedule overrides the previous one
+                }
+            }, token);
         }
 
         // ========== State Management ==========
@@ -232,6 +257,7 @@ namespace DedicatedServerMultiplayerSample.Server
 
             public int CurrentCount => m_ConnectedPlayers.Count;
             public event Action<int> OnPlayerCountChanged;
+            public event Action OnAllPlayersDisconnected;
 
             public PlayerConnectionTracker()
             {
@@ -262,6 +288,11 @@ namespace DedicatedServerMultiplayerSample.Server
                 m_ConnectedPlayers.Remove(clientId);
                 Debug.Log($"[PlayerTracker] Disconnected: {clientId} (Total: {CurrentCount})");
                 OnPlayerCountChanged?.Invoke(CurrentCount);
+
+                if (CurrentCount == 0)
+                {
+                    OnAllPlayersDisconnected?.Invoke();
+                }
             }
 
             public void Dispose()

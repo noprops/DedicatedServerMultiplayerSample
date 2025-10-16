@@ -1,21 +1,21 @@
 version: 1.0
 builds:
-  dedicated-server-sample:
-    executableName: DedicatedServerMultiplayerSample.x86_64
+  server-build:
+    executableName: DedicatedServer.x86_64
     buildPath: Builds/LinuxServer
     excludePaths: []
 buildConfigurations:
-  dedicated-server-config:
-    build: dedicated-server-sample
+  build-config:
+    build: server-build
     queryType: sqp
-    binaryPath: DedicatedServerMultiplayerSample.x86_64
+    binaryPath: DedicatedServer.x86_64
     commandLine: -nographics -batchmode -port $$port$$ -queryport $$query_port$$ -logFile $$log_dir$$/server.log
     variables: {}
     readiness: true
 fleets:
-  dedicated-server-fleet:
+  fleet:
     buildConfigurations:
-      - dedicated-server-config
+      - build-config
     regions:
       Asia:
         minAvailable: 1
