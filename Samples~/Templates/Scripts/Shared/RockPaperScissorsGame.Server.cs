@@ -1,16 +1,18 @@
 #if UNITY_SERVER || ENABLE_UCS_SERVER
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Threading.Tasks;
 using Unity.Netcode;
 using UnityEngine;
 using DedicatedServerMultiplayerSample.Server;
+using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
     public partial class RockPaperScissorsGame
     {
+        private List<ulong> m_PlayerIds = new();
+
         // ========== Server Initialization ==========
         partial void OnServerSpawn()
         {
@@ -30,17 +32,24 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             try
             {
-                // 1. ゲーム開始可能状態を待つ
-                var startState = await WaitForGameStartAsync();
+                var controller = GameSessionController.Instance;
+                if (controller == null)
+                {
+                    Debug.LogError("[RockPaperScissorsGame] No GameSessionController");
+                    return;
+                }
 
-                if (startState != GameSessionState.InGame)
+                // 1. ゲーム開始可能状態を待つ
+                var gameStarted = await controller.WaitForGameStartAsync();
+
+                if (!gameStarted)
                 {
                     HandleStartFailure();
                     return;
                 }
 
                 // 2. プレイヤー情報を配信
-                BroadcastPlayerInfo();
+                CacheConnectedPlayers();
 
                 // 3. ゲーム実行
                 await ExecuteGameRoundAsync();
@@ -54,41 +63,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
         }
 
-        private async Task<GameSessionState> WaitForGameStartAsync()
-        {
-            var controller = GameSessionController.Instance;
-            if (controller == null)
-            {
-                Debug.LogError("[RockPaperScissorsGame] No GameSessionController");
-                return GameSessionState.StartFailed;
-            }
-
-            // 既にInGameまたはStartFailedの場合はそのまま返す
-            if (controller.State == GameSessionState.InGame ||
-                controller.State == GameSessionState.StartFailed)
-            {
-                return controller.State;
-            }
-
-            // 状態変化を待つ
-            var tcs = new TaskCompletionSource<GameSessionState>();
-            Action<GameSessionState> handler = null;
-
-            handler = (state) =>
-            {
-                if (state == GameSessionState.InGame || state == GameSessionState.StartFailed)
-                {
-                    controller.OnStateChanged -= handler;
-                    tcs.TrySetResult(state);
-                }
-            };
-
-            controller.OnStateChanged += handler;
-
-            Debug.Log("[RockPaperScissorsGame] Waiting for game state...");
-            return await tcs.Task;
-        }
-
         private void HandleStartFailure()
         {
             Debug.LogError("[RockPaperScissorsGame] Game start failed");
@@ -96,24 +70,19 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             // サーバーがシャットダウンするのを待つ（GameSessionControllerが10秒後にシャットダウン）
         }
 
-        private void BroadcastPlayerInfo()
+        private void CacheConnectedPlayers()
         {
-            var connectedPlayers = ServerSingleton.Instance?.GameManager?.GetAllConnectedPlayers();
-            if (connectedPlayers != null)
+            var controller = GameSessionController.Instance;
+            var snapshot = controller?.GetConnectedPlayers();
+            if (snapshot == null || snapshot.Count == 0)
             {
-                m_PlayerConnectionData = connectedPlayers;
-                Debug.Log($"[RockPaperScissorsGame] Broadcasting {m_PlayerConnectionData.Count} players");
-
-                // 2人のプレイヤー情報を取得
-                var players = m_PlayerConnectionData.ToList();
-                if (players.Count >= 2)
-                {
-                    SendPlayerNamesClientRpc(
-                        players[0].Key, ExtractPlayerName(players[0].Value, players[0].Key),
-                        players[1].Key, ExtractPlayerName(players[1].Value, players[1].Key)
-                    );
-                }
+                Debug.LogWarning("[RockPaperScissorsGame] No connected player snapshot available");
+                m_PlayerIds.Clear();
+                return;
             }
+
+            m_PlayerIds = new List<ulong>(snapshot.Keys);
+            Debug.Log($"[RockPaperScissorsGame] Cached {m_PlayerIds.Count} players");
         }
 
         private async Task ExecuteGameRoundAsync()
@@ -135,8 +104,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
 
             // 未選択のプレイヤーにランダム手を割り当てて切断
-            var playerIds = new List<ulong>(m_PlayerConnectionData.Keys);
-            foreach (var playerId in playerIds)
+            foreach (var playerId in m_PlayerIds)
             {
                 if (!m_PlayerChoices.ContainsKey(playerId))
                 {
@@ -244,33 +212,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                     (myHand == Hand.Scissors && opponentHand == Hand.Paper))
                 ? GameResult.Win
                 : GameResult.Lose;
-        }
-
-        private static string ExtractPlayerName(Dictionary<string, object> payload, ulong fallbackId)
-        {
-            if (payload == null)
-            {
-                return $"Player{fallbackId}";
-            }
-
-            if (payload.TryGetValue("playerName", out var value) && value != null)
-            {
-                switch (value)
-                {
-                    case string name when !string.IsNullOrWhiteSpace(name):
-                        return name;
-                    case int i:
-                        return i.ToString();
-                    case long l:
-                        return l.ToString();
-                    case double d:
-                        return d.ToString();
-                    case bool b:
-                        return b.ToString();
-                }
-            }
-
-            return $"Player{fallbackId}";
         }
     }
 }

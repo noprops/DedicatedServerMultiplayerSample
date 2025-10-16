@@ -24,11 +24,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         Draw = 3
     }
     
+    [RequireComponent(typeof(PlayerInfoBroadcaster))]
     public partial class RockPaperScissorsGame : NetworkBehaviour
     {
         // ========== Events for UI ==========
         public static event Action<string> OnStatusUpdated;
-        public static event Action<Dictionary<ulong, string>> OnPlayerNamesReceived;
         public static event Action<Hand, Hand, GameResult> OnGameResultReceived;
 
         // ========== Static Instance ==========
@@ -36,7 +36,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
         // ========== Server State ==========
         private Dictionary<ulong, Hand> m_PlayerChoices = new Dictionary<ulong, Hand>();
-        private Dictionary<ulong, Dictionary<string, object>> m_PlayerConnectionData = new Dictionary<ulong, Dictionary<string, object>>();
         private TaskCompletionSource<bool> m_AllPlayersChosenTcs;
         private bool m_GameInProgress = false;
 
@@ -67,7 +66,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             if (IsClient)
             {
                 OnStatusUpdated = null;
-                OnPlayerNamesReceived = null;
                 OnGameResultReceived = null;
             }
 
@@ -105,22 +103,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         }
 
         [ClientRpc]
-        private void SendPlayerNamesClientRpc(
-            ulong player1Id, string player1Name,
-            ulong player2Id, string player2Name)
-        {
-            Debug.Log($"[Client] Received player names: {player1Name}, {player2Name}");
-
-            var names = new Dictionary<ulong, string>
-            {
-                { player1Id, player1Name },
-                { player2Id, player2Name }
-            };
-
-            OnPlayerNamesReceived?.Invoke(names);
-        }
-
-        [ClientRpc]
         private void SendGameResultClientRpc(
             ulong player1, Hand hand1, GameResult result1,
             ulong player2, Hand hand2, GameResult result2)
@@ -147,6 +129,5 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
             OnGameResultReceived?.Invoke(myHand, opponentHand, myResult);
         }
-
     }
 }

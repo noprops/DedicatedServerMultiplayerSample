@@ -7,6 +7,7 @@ using UnityEngine.SceneManagement;
 using UnityEngine.UI;
 using TMPro;
 using DedicatedServerMultiplayerSample.Client;
+using DedicatedServerMultiplayerSample.Shared;
 using DedicatedServerMultiplayerSample.Samples.Shared;
 
 namespace DedicatedServerMultiplayerSample.Samples.Client
@@ -105,14 +106,14 @@ namespace DedicatedServerMultiplayerSample.Samples.Client
         private void SubscribeToEvents()
         {
             RockPaperScissorsGame.OnStatusUpdated += OnStatusUpdated;
-            RockPaperScissorsGame.OnPlayerNamesReceived += OnPlayerNamesReceived;
+            PlayerInfoBroadcaster.OnPlayerNamesReceived += OnPlayerNamesReceived;
             RockPaperScissorsGame.OnGameResultReceived += OnGameResultReceived;
         }
 
         private void UnsubscribeFromEvents()
         {
             RockPaperScissorsGame.OnStatusUpdated -= OnStatusUpdated;
-            RockPaperScissorsGame.OnPlayerNamesReceived -= OnPlayerNamesReceived;
+            PlayerInfoBroadcaster.OnPlayerNamesReceived -= OnPlayerNamesReceived;
             RockPaperScissorsGame.OnGameResultReceived -= OnGameResultReceived;
         }
 

@@ -7,7 +7,10 @@
         "Unity.Services.Authentication",
         "Unity.Services.Multiplayer",
         "Unity.Services.Matchmaker",
-        "Unity.Services.Multiplay",
+        "Unity.Services.Authentication.Server",
+        "Unity.Services.Multiplayer.Server",
+        "Unity.Services.Multiplayer.Multiplay",
+        "Unity.Networking.Transport",
         "Unity.TextMeshPro"
     ],
     "includePlatforms": [],
