@@ -10,12 +10,14 @@ namespace DedicatedServerMultiplayerSample.Server
 #if UNITY_SERVER || ENABLE_UCS_SERVER
         public static ServerSingleton Instance { get; private set; }
 
+        [SerializeField] private int defaultMaxPlayers = 2;
+
         private ServerGameManager gameManager;
         public ServerGameManager GameManager => gameManager;
         
         private void Awake()
         {
-            Debug.Log("[ServerSingleton] Awake called");
+            Debug.Log($"[ServerSingleton] Awake (UNITY_SERVER/ENABLE_UCS_SERVER active) on '{gameObject.name}' in scene '{UnityEngine.SceneManagement.SceneManager.GetActiveScene().name}'");
 
             if (Instance == null)
             {
@@ -53,7 +55,7 @@ namespace DedicatedServerMultiplayerSample.Server
                     return;
                 }
 
-                gameManager = new ServerGameManager(NetworkManager.Singleton);
+                gameManager = new ServerGameManager(NetworkManager.Singleton, Mathf.Max(1, defaultMaxPlayers));
                 await gameManager.StartServerAsync();
 
                 Debug.Log("[ServerSingleton] Server created and started successfully");
@@ -75,6 +77,12 @@ namespace DedicatedServerMultiplayerSample.Server
         {
             Debug.Log("[ServerSingleton] Application quitting, cleaning up server");
             gameManager?.Dispose();
+        }
+#else
+        private void Awake()
+        {
+            Debug.LogWarning("[ServerSingleton] Awake but UNITY_SERVER / ENABLE_UCS_SERVER is NOT defined. Destroying this component.");
+            Destroy(this);
         }
 #endif
     }

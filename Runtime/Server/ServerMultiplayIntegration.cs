@@ -20,12 +20,12 @@ namespace DedicatedServerMultiplayerSample.Server
         private IMultiplaySessionManager m_SessionManager;
         private MultiplayServerOptions m_ServerOptions;
         private readonly ServerRuntimeConfig m_RuntimeConfig;
-        private readonly DedicatedServerMultiplayerSample.Shared.GameConfig m_GameConfig;
+        private readonly int m_DefaultMaxPlayers;
 
-        public ServerMultiplayIntegration(ServerRuntimeConfig runtimeConfig)
+        public ServerMultiplayIntegration(ServerRuntimeConfig runtimeConfig, int defaultMaxPlayers)
         {
             m_RuntimeConfig = runtimeConfig ?? throw new ArgumentNullException(nameof(runtimeConfig));
-            m_GameConfig = DedicatedServerMultiplayerSample.Shared.GameConfig.Instance;
+            m_DefaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
         }
 
         // ========== Events ==========
@@ -139,8 +139,8 @@ namespace DedicatedServerMultiplayerSample.Server
                     {
                         SessionOptions = new SessionOptions()
                         {
-                            MaxPlayers = (ushort)Mathf.Clamp(m_GameConfig.MaxHumanPlayers, 1, ushort.MaxValue)
-                        }.WithDirectNetwork(),
+                        MaxPlayers = (ushort)Mathf.Clamp(m_DefaultMaxPlayers, 1, ushort.MaxValue)
+                    }.WithDirectNetwork(),
 
                         MultiplayServerOptions = m_ServerOptions,
                         Callbacks = callbacks
@@ -219,11 +219,12 @@ namespace DedicatedServerMultiplayerSample.Server
 
             string resolvedMap = null;
             string resolvedGameMode = null;
-            int resolvedPlayerCount = results?.MatchProperties?.Players?.Count ?? 0;
+            int resolvedPlayerCount = m_DefaultMaxPlayers;
 
             var players = results?.MatchProperties?.Players;
             if (players != null)
             {
+                resolvedPlayerCount = players.Count;
                 foreach (var player in players)
                 {
                     if (player?.CustomData == null)

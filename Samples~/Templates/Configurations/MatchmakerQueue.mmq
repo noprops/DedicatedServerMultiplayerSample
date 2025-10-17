@@ -27,19 +27,35 @@
           }
         ],
         "matchRules": [
-          {
-            "name": "GameModeRule",
-            "type": "Equality",
-            "source": "Players.CustomData.gameMode",
-            "enableRule": true
-          },
-          {
-            "name": "MapRule",
-            "type": "Equality",
-            "source": "Players.CustomData.map",
-            "enableRule": true
-          }
-        ]
+            {
+              "name": "GameModeRule",
+              "type": "Equality",
+              "source": "Players.CustomData.gameMode",
+              "enableRule": true
+            },
+            {
+              "name": "MapRule",
+              "type": "Equality",
+              "source": "Players.CustomData.map",
+              "enableRule": true
+            },
+            {
+              "name": "RankDifferenceRule",
+              "type": "Difference",
+              "source": "Players.CustomData.rank",
+              "reference": {
+                "value": 5
+              },
+              "relaxations": [
+                {
+                  "type": "RuleControl.Disable",
+                  "ageType": "Oldest",
+                  "atSeconds": 30
+                }
+              ],
+              "enableRule": true
+            }
+          ]
       },
       "name": "Rules"
     },
@@ -93,9 +109,25 @@
               "type": "Equality",
               "source": "Players.CustomData.map",
               "enableRule": true
+            },
+            {
+              "name": "RankDifferenceRule",
+              "type": "Difference",
+              "source": "Players.CustomData.rank",
+              "reference": {
+                "value": 5
+              },
+              "relaxations": [
+                {
+                  "type": "RuleControl.Disable",
+                  "ageType": "Oldest",
+                  "atSeconds": 30
+                }
+              ],
+              "enableRule": true
             }
           ]
-        },
+      },
         "name": "Rules"
       },
       "matchHosting": {

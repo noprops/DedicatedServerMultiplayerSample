@@ -6,7 +6,6 @@
         "Unity.Services.Core",
         "Unity.Services.Authentication",
         "Unity.Services.Multiplayer",
-        "Unity.Services.Matchmaker",
         "Unity.Services.Authentication.Server",
         "Unity.Services.Multiplayer.Server",
         "Unity.Services.Multiplayer.Multiplay",
@@ -16,12 +15,10 @@
     "includePlatforms": [],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
-    "overrideReferences": false,
+    "overrideReferences": true,
     "precompiledReferences": [],
     "autoReferenced": true,
     "defineConstraints": [],
-    "noEngineReferences": false,
-    "optionalUnityReferences": [
-        "UnityEngine.UI"
-    ]
+    "versionDefines": [],
+    "noEngineReferences": false
 }

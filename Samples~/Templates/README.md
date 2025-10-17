@@ -8,9 +8,9 @@ Contents:
 - `Scenes/menu.unity` – basic menu scene ready to hook up to your matchmaking UI.
 - `Scenes/game.unity` – contains the `RockPaperScissorsGame` network behaviour and session controller.
 - `Scripts/Client` & `Scripts/Shared` – sample behaviours referenced by the scenes.
-- `Resources/Config/GameConfig.asset` – default configuration loaded by `GameConfig.Instance`.
+- `Configurations/` – deployment templates for Matchmaker & Multiplay.
 
 After import:
 1. Add the scenes to **Build Settings** (bootStrap → loading → menu → game).
 2. Customise the menu UI and gameplay elements to fit your project.
-3. Update `GameConfig.asset` and other serialized settings as needed.
+3. Edit the configuration templates under `Configurations/` to match your project (queue, map, rank rules, etc.).

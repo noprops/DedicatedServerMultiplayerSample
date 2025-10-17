@@ -10,9 +10,9 @@ namespace DedicatedServerMultiplayerSample.Client
     {
         public static ClientSingleton Instance { get; private set; }
 
-        [SerializeField] private MonoBehaviour matchmakingPayloadProviderBehaviour;
+        [SerializeField] private MatchmakingPayloadProviderBase matchmakingPayloadProvider;
+        [SerializeField] private int maxPlayers = 2;
 
-        private IMatchmakingPayloadProvider matchmakingPayloadProvider;
         private ClientGameManager gameManager;
         public ClientGameManager GameManager => gameManager;
 
@@ -26,18 +26,14 @@ namespace DedicatedServerMultiplayerSample.Client
                 DontDestroyOnLoad(gameObject);
                 Debug.Log("[ClientSingleton] Instance created");
 
-                if (matchmakingPayloadProviderBehaviour == null)
+                if (matchmakingPayloadProvider == null)
                 {
-                    matchmakingPayloadProviderBehaviour = GetComponent<IMatchmakingPayloadProvider>() as MonoBehaviour;
+                    matchmakingPayloadProvider = GetComponent<MatchmakingPayloadProviderBase>();
                 }
 
-                if (matchmakingPayloadProviderBehaviour != null)
+                if (matchmakingPayloadProvider != null)
                 {
-                    matchmakingPayloadProvider = matchmakingPayloadProviderBehaviour as IMatchmakingPayloadProvider;
-                    if (matchmakingPayloadProvider == null)
-                    {
-                        Debug.LogError("[ClientSingleton] Matchmaking payload provider behaviour does not implement IMatchmakingPayloadProvider");
-                    }
+                    Debug.Log($"[ClientSingleton] Using payload provider: {matchmakingPayloadProvider.GetType().Name}");
                 }
                 else
                 {
@@ -89,7 +85,7 @@ namespace DedicatedServerMultiplayerSample.Client
                     return;
                 }
 
-                gameManager = await ClientGameManager.CreateAsync(NetworkManager.Singleton, matchmakingPayloadProvider);
+                gameManager = await ClientGameManager.CreateAsync(NetworkManager.Singleton, matchmakingPayloadProvider, Mathf.Max(1, maxPlayers));
                 Debug.Log("[ClientSingleton] ✓ ClientGameManager created and initialized");
 
                 // ================================================================

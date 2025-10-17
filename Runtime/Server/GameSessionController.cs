@@ -173,6 +173,11 @@ namespace DedicatedServerMultiplayerSample.Server
                     return;
                 }
 
+                if (m_PlayerTracker.CurrentCount == 0)
+                {
+                    return;
+                }
+
                 // 2. ゲーム開始
                 Debug.Log("[GameSessionController] Starting game");
                 CacheConnectedPlayers();
@@ -182,6 +187,11 @@ namespace DedicatedServerMultiplayerSample.Server
                 // 3. 終了条件を待つ
                 Debug.Log("[GameSessionController] Waiting for end condition");
                 await m_GameEndTcs.Task;
+
+                if (m_PlayerTracker.CurrentCount == 0)
+                {
+                    return;
+                }
 
                 // 4. 終了処理
                 SetState(SessionState.GameEnded);

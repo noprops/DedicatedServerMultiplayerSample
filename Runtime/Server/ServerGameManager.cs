@@ -6,7 +6,6 @@ using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Server
 {
@@ -22,6 +21,7 @@ namespace DedicatedServerMultiplayerSample.Server
 
         // ========== Fields ==========
         private readonly NetworkManager m_NetworkManager;
+        private readonly int m_DefaultMaxPlayers;
         private ServerMultiplayIntegration m_MultiplayIntegration;
         private ServerPlayerValidator m_PlayerValidator;
         private readonly List<string> m_ExpectedAuthIds = new List<string>();
@@ -37,9 +37,10 @@ namespace DedicatedServerMultiplayerSample.Server
         private bool m_GameStarted = false;
 
         // ========== Constructor ==========
-        public ServerGameManager(NetworkManager networkManager)
+        public ServerGameManager(NetworkManager networkManager, int defaultMaxPlayers)
         {
             m_NetworkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
+            m_DefaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
             Debug.Log("[ServerGameManager] Created");
         }
 
@@ -61,7 +62,7 @@ namespace DedicatedServerMultiplayerSample.Server
                 // ================================================================
                 Debug.Log("[ServerGameManager] STEP 1: Getting allocation from Multiplay...");
 
-                var allocationHelper = new ServerAllocationHelper(m_RuntimeConfig);
+                var allocationHelper = new ServerAllocationHelper(m_RuntimeConfig, m_DefaultMaxPlayers);
                 var (success, matchResults, integration) = await allocationHelper.GetAllocationAsync();
 
                 if (!success)
@@ -143,7 +144,8 @@ namespace DedicatedServerMultiplayerSample.Server
                 m_PlayerValidator = new ServerPlayerValidator(
                     m_NetworkManager,
                     m_ExpectedAuthIds,
-                    m_ConnectedAuthIds
+                    m_ConnectedAuthIds,
+                    m_DefaultMaxPlayers
                 );
 
                 m_NetworkManager.ConnectionApprovalCallback = HandleConnectionApproval;

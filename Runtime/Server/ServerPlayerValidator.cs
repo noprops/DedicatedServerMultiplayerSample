@@ -3,7 +3,6 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.Netcode;
-using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Server
 {
@@ -26,13 +25,14 @@ namespace DedicatedServerMultiplayerSample.Server
         public ServerPlayerValidator(
             NetworkManager networkManager,
             List<string> expectedAuthIds,
-            Dictionary<ulong, string> connectedAuthIds)
+            Dictionary<ulong, string> connectedAuthIds,
+            int fallbackMaxPlayers)
         {
             m_NetworkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
             m_ExpectedAuthIds = expectedAuthIds ?? new List<string>();
             m_ConnectedAuthIds = connectedAuthIds ?? new Dictionary<ulong, string>();
             m_ConnectionDataMap = new Dictionary<ulong, Dictionary<string, object>>();
-            m_FallbackMaxPlayers = Mathf.Max(1, DedicatedServerMultiplayerSample.Shared.GameConfig.Instance.MaxHumanPlayers);
+            m_FallbackMaxPlayers = Mathf.Max(1, fallbackMaxPlayers);
         }
 
         // ========== Public Methods ==========
@@ -54,36 +54,11 @@ namespace DedicatedServerMultiplayerSample.Server
             }
 
             // ===== デバッグ用詳細ログ =====
-            Debug.Log($"[ServerPlayerValidator] ===== PAYLOAD DEBUG START =====");
-            Debug.Log($"[ServerPlayerValidator] Payload is null? {request.Payload == null}");
-            Debug.Log($"[ServerPlayerValidator] Payload length: {request.Payload?.Length ?? 0}");
-
-            if (request.Payload != null && request.Payload.Length > 0)
-            {
-                // バイト配列を16進数で表示
-                string hexString = BitConverter.ToString(request.Payload).Replace("-", " ");
-                Debug.Log($"[ServerPlayerValidator] Payload hex: {hexString}");
-
-                // UTF8文字列として表示
-                try
-                {
-                    string payloadString = System.Text.Encoding.UTF8.GetString(request.Payload);
-                    Debug.Log($"[ServerPlayerValidator] Payload as string: '{payloadString}'");
-                }
-                catch (Exception e)
-                {
-                    Debug.LogError($"[ServerPlayerValidator] Failed to decode as UTF8: {e.Message}");
-                }
-            }
-            Debug.Log($"[ServerPlayerValidator] ===== PAYLOAD DEBUG END =====");
+            // 詳細なペイロードログは開発時のみ有効化すること
+            // Debug.Log($"[ServerPlayerValidator] Payload length: {request.Payload?.Length ?? 0}");
 
             // ===== ConnectionData JSON版 =====
             var connectionData = ConnectionPayloadSerializer.DeserializeFromBytes(request.Payload);
-
-            if (connectionData.Count > 0)
-            {
-                Debug.Log($"[ServerPlayerValidator] ✓ Parsed connection payload with keys: {string.Join(", ", connectionData.Keys)}");
-            }
 
             var authId = connectionData.Count > 0 ? ExtractString(connectionData, "authId") : null;
 

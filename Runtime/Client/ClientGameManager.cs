@@ -8,7 +8,6 @@ using Unity.Services.Core;
 using Unity.Services.Multiplayer;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Client
 {
@@ -47,6 +46,7 @@ namespace DedicatedServerMultiplayerSample.Client
         // ========== Fields ==========
         private readonly NetworkManager networkManager;
         private readonly IMatchmakingPayloadProvider payloadProvider;
+        private readonly int maxPlayers;
         private ISession currentSession;
         private CancellationTokenSource matchmakerCancellationSource;
         private bool isDisposed = false;
@@ -58,18 +58,19 @@ namespace DedicatedServerMultiplayerSample.Client
         /// <summary>
         /// ClientGameManagerを作成して初期化（ファクトリメソッド）
         /// </summary>
-        public static async Task<ClientGameManager> CreateAsync(NetworkManager networkManager, IMatchmakingPayloadProvider payloadProvider)
+        public static async Task<ClientGameManager> CreateAsync(NetworkManager networkManager, IMatchmakingPayloadProvider payloadProvider, int maxPlayers)
         {
-            var manager = new ClientGameManager(networkManager, payloadProvider);
+            var manager = new ClientGameManager(networkManager, payloadProvider, maxPlayers);
             await manager.InitializeAsync();
             return manager;
         }
 
         // ========== Constructor ==========
-        private ClientGameManager(NetworkManager networkManager, IMatchmakingPayloadProvider payloadProvider)
+        private ClientGameManager(NetworkManager networkManager, IMatchmakingPayloadProvider payloadProvider, int maxPlayers)
         {
             this.networkManager = networkManager;
             this.payloadProvider = payloadProvider;
+            this.maxPlayers = Mathf.Max(1, maxPlayers);
             Debug.Log("[ClientGameManager] Created");
 
             // NetworkManagerのコールバックを監視
@@ -244,7 +245,7 @@ namespace DedicatedServerMultiplayerSample.Client
                 // セッションオプション設定
                 var sessionOptions = new SessionOptions()
                 {
-                    MaxPlayers = GameConfig.Instance.MaxHumanPlayers,
+                    MaxPlayers = this.maxPlayers,
                     SessionProperties = MatchmakingPayloadConverter.ToSessionProperties(sessionMetadata)
                 }.WithDirectNetwork(); // Dedicated Server用
 

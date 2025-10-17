@@ -7,7 +7,7 @@ Import the **Basic Scene Setup** sample via the Unity Package Manager to copy te
 ## Features
 - Client/Server singleton managers with out-of-the-box lifecycle logic
 - Multiplay session integration and allocation helper utilities
-- Shared configuration assets (e.g. `GameConfig`) for maximum player counts and team structure
+- Deployment templates for Matchmaker (`*.mmq`) and Multiplay (`*.gsh`) settings
 - Sample scenes (bootStrap, loading, menu, game) and helper scripts for rapid setup
 - Matchmaker/Multiplay configuration templates plus a Linux server build profile
 

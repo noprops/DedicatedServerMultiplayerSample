@@ -15,10 +15,12 @@ namespace DedicatedServerMultiplayerSample.Server
         private TaskCompletionSource<IMultiplayAllocation> m_AllocationTcs;
         private ServerMultiplayIntegration m_Integration;
         private readonly ServerRuntimeConfig m_RuntimeConfig;
+        private readonly int m_DefaultMaxPlayers;
 
-        public ServerAllocationHelper(ServerRuntimeConfig runtimeConfig)
+        public ServerAllocationHelper(ServerRuntimeConfig runtimeConfig, int defaultMaxPlayers)
         {
             m_RuntimeConfig = runtimeConfig ?? throw new ArgumentNullException(nameof(runtimeConfig));
+            m_DefaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
         }
 
         /// <summary>
@@ -33,7 +35,7 @@ namespace DedicatedServerMultiplayerSample.Server
                 // ================================================================
                 // 1. ServerMultiplayIntegrationを作成して接続
                 // ================================================================
-                m_Integration = new ServerMultiplayIntegration(m_RuntimeConfig);
+                m_Integration = new ServerMultiplayIntegration(m_RuntimeConfig, m_DefaultMaxPlayers);
                 m_AllocationTcs = new TaskCompletionSource<IMultiplayAllocation>();
 
                 void OnAllocated(IMultiplayAllocation allocation)
