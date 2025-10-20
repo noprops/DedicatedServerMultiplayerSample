@@ -72,8 +72,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
         private void CacheConnectedPlayers()
         {
-            var controller = GameSessionController.Instance;
-            var snapshot = controller?.GetConnectedPlayers();
+            var manager = ServerSingleton.Instance?.GameManager;
+            var snapshot = manager?.GetAllConnectedPlayers();
             if (snapshot == null || snapshot.Count == 0)
             {
                 Debug.LogWarning("[RockPaperScissorsGame] No connected player snapshot available");
@@ -82,7 +82,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
 
             m_PlayerIds = new List<ulong>(snapshot.Keys);
-            Debug.Log($"[RockPaperScissorsGame] Cached {m_PlayerIds.Count} players");
         }
 
         private async Task ExecuteGameRoundAsync()
@@ -113,10 +112,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
                     // 切断
                     Debug.Log($"[RockPaperScissorsGame] Disconnecting timeout player {playerId}");
-                    if (GameSessionController.Instance != null)
-                    {
-                        GameSessionController.Instance.DisconnectClient(playerId, "Selection timeout");
-                    }
+                    var manager = ServerSingleton.Instance?.GameManager;
+                    manager?.DisconnectClient(playerId, "Selection timeout");
                 }
             }
 

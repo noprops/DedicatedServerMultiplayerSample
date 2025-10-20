@@ -13,80 +13,32 @@ namespace DedicatedServerMultiplayerSample.Server
     public class GameSessionController : MonoBehaviour
     {
 #if UNITY_SERVER || ENABLE_UCS_SERVER
-
         public static GameSessionController Instance { get; private set; }
 
         private enum SessionState
         {
             WaitingForPlayers,
-            StartFailed,
             InGame,
-            GameEnded
+            GameEnded,
+            Failed
         }
 
-        // ========== State & Events ==========
-        private SessionState m_State;
-        public bool IsInGame => m_State == SessionState.InGame;
-
-        // ========== Configuration ==========
         [Header("Timeouts")]
-        [SerializeField] private float waitingPlayersTimeout = 10f;
+        [SerializeField] private float waitingPlayersTimeoutSeconds = 10f;
 
-        // ========== Components ==========
+        [Header("Shutdown Delays")]
+        [SerializeField] private float notEnoughPlayersShutdownDelaySeconds = 5f;
+        [SerializeField] private float gameCompletedShutdownDelaySeconds = 10f;
+        [SerializeField] private float fatalErrorShutdownDelaySeconds = 5f;
+
+        private SessionState m_State;
         private int m_RequiredPlayers;
         private PlayerConnectionTracker m_PlayerTracker;
 
-        // ========== Flow Control (Direct TCS) ==========
-        private TaskCompletionSource<bool> m_PlayersReadyTcs;
-        private TaskCompletionSource<bool> m_GameEndTcs;
-        private TaskCompletionSource<bool> m_GameStartTcs;
         private CancellationTokenSource m_ShutdownCts;
         private Task m_ShutdownTask;
-        private Dictionary<ulong, Dictionary<string, object>> m_ConnectedPlayers = new();
 
-        // ========== Public API ==========
-
-        /// <summary>
-        /// ゲーム正常終了を通知
-        /// </summary>
-        public void NotifyGameEnded()
-        {
-            if (m_State != SessionState.InGame) return;
-
-            Debug.Log("[GameSessionController] Game ended notification received");
-            m_GameEndTcs?.TrySetResult(true);
-        }
-
-        /// <summary>
-        /// 特定クライアントを強制切断
-        /// </summary>
-        public void DisconnectClient(ulong clientId, string reason = "Forced disconnect")
-        {
-            Debug.Log($"[GameSessionController] Disconnecting client {clientId}: {reason}");
-
-            if (NetworkManager.Singleton != null && NetworkManager.Singleton.IsServer)
-            {
-                NetworkManager.Singleton.DisconnectClient(clientId, reason);
-            }
-        }
-
-        /// <summary>
-        /// ゲーム開始状態になるまで待機する。成功で true、失敗で false を返す
-        /// </summary>
-        public Task<bool> WaitForGameStartAsync()
-        {
-            if (m_State == SessionState.InGame)
-                return Task.FromResult(true);
-            if (m_State == SessionState.StartFailed)
-                return Task.FromResult(false);
-
-            m_GameStartTcs ??= new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            return m_GameStartTcs.Task;
-        }
-
-        public IReadOnlyDictionary<ulong, Dictionary<string, object>> GetConnectedPlayers() => m_ConnectedPlayers;
-
-        // ========== Unity Lifecycle ==========
+        private event Action GameEnded;
 
         private void Awake()
         {
@@ -97,31 +49,9 @@ namespace DedicatedServerMultiplayerSample.Server
             }
 
             Instance = this;
-
             m_RequiredPlayers = ServerSingleton.Instance?.GameManager?.TeamCount ?? 2;
-            m_PlayerTracker = new PlayerConnectionTracker();
-            m_GameStartTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            // プレイヤー数変化を監視
-            m_PlayerTracker.OnPlayerCountChanged += count =>
-            {
-                if (m_State == SessionState.WaitingForPlayers && count >= m_RequiredPlayers)
-                {
-                    Debug.Log("[GameSessionController] Required players reached");
-                    m_PlayersReadyTcs?.TrySetResult(true);
-                }
-            };
-
-            m_PlayerTracker.OnAllPlayersDisconnected += () =>
-            {
-                var delay = m_State == SessionState.InGame ? 30f : 5f;
-                var reason = m_State == SessionState.InGame
-                    ? "All players disconnected during game"
-                    : "All players disconnected";
-
-                Debug.Log($"[GameSessionController] All players disconnected. Scheduling shutdown in {delay}s.");
-                _ = ScheduleShutdownAsync(reason, delay);
-            };
+            m_PlayerTracker = new PlayerConnectionTracker(m_RequiredPlayers);
+            m_PlayerTracker.AllPlayersDisconnected += HandleAllPlayersDisconnected;
         }
 
         private async void Start()
@@ -131,97 +61,28 @@ namespace DedicatedServerMultiplayerSample.Server
 
         private void OnDestroy()
         {
-            m_PlayerTracker?.Dispose();
-
-            // Cancel any pending TCS
-            m_PlayersReadyTcs?.TrySetCanceled();
-            m_GameEndTcs?.TrySetCanceled();
-            m_GameStartTcs?.TrySetCanceled();
+            if (m_PlayerTracker != null)
+            {
+                m_PlayerTracker.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
+                m_PlayerTracker.Dispose();
+                m_PlayerTracker = null;
+            }
             m_ShutdownCts?.Cancel();
             m_ShutdownCts?.Dispose();
+            GameEnded = null;
 
             if (Instance == this)
+            {
                 Instance = null;
-        }
-
-        // ========== Main Session Flow ==========
-
-        private async Task RunSessionLifecycleAsync()
-        {
-            Debug.Log("[GameSessionController] ========== SESSION START ==========");
-
-            try
-            {
-                var gameManager = ServerSingleton.Instance?.GameManager;
-
-                // Initialize TCS for this session
-                m_PlayersReadyTcs = new TaskCompletionSource<bool>();
-                m_GameEndTcs = new TaskCompletionSource<bool>();
-                m_GameStartTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-                // 1. プレイヤー待機
-                SetState(SessionState.WaitingForPlayers);
-                Debug.Log($"[GameSessionController] Waiting for {m_RequiredPlayers} players...");
-                bool ready = await WaitForPlayersAsync();
-
-                if (!ready)
-                {
-                    // タイムアウト → 即座にシャットダウン
-                    Debug.LogError("[GameSessionController] Timeout - not enough players");
-                    SetState(SessionState.StartFailed);
-                    await ScheduleShutdownAsync("Start timeout - not enough players", 10f);
-                    return;
-                }
-
-                if (m_PlayerTracker.CurrentCount == 0)
-                {
-                    return;
-                }
-
-                // 2. ゲーム開始
-                Debug.Log("[GameSessionController] Starting game");
-                CacheConnectedPlayers();
-                SetState(SessionState.InGame);
-                await gameManager.LockSessionForGameStartAsync();
-
-                // 3. 終了条件を待つ
-                Debug.Log("[GameSessionController] Waiting for end condition");
-                await m_GameEndTcs.Task;
-
-                if (m_PlayerTracker.CurrentCount == 0)
-                {
-                    return;
-                }
-
-                // 4. 終了処理
-                SetState(SessionState.GameEnded);
-                await ScheduleShutdownAsync("Game completed normally", 20f);
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[GameSessionController] Fatal error: {e.Message}");
-                await ScheduleShutdownAsync($"Fatal error: {e.Message}");
-            }
-            finally
-            {
-                Debug.Log("[GameSessionController] ========== SESSION END ==========");
             }
         }
 
-        private async Task<bool> WaitForPlayersAsync()
+        public void NotifyGameEnded()
         {
-            // 既に揃っている
-            if (m_PlayerTracker.CurrentCount >= m_RequiredPlayers)
-            {
-                Debug.Log("[GameSessionController] Players already connected");
-                return true;
-            }
+            if (m_State != SessionState.InGame) return;
 
-            // タイムアウト付き待機
-            var timeout = Task.Delay(TimeSpan.FromSeconds(waitingPlayersTimeout));
-            var ready = m_PlayersReadyTcs.Task;
-
-            return await Task.WhenAny(ready, timeout) == ready;
+            Debug.Log("[Session] Game end notified");
+            GameEnded?.Invoke();
         }
 
         public async Task ScheduleShutdownAsync(string reason, float delaySeconds = 10f)
@@ -246,7 +107,7 @@ namespace DedicatedServerMultiplayerSample.Server
             m_ShutdownCts = new CancellationTokenSource();
             var token = m_ShutdownCts.Token;
 
-            Debug.Log($"[Shutdown] Scheduled in {delaySeconds}s - Reason: {reason}");
+            Debug.Log($"[Shutdown] scheduled in {delaySeconds}s : {reason}");
             m_ShutdownTask = Task.Run(async () =>
             {
                 try
@@ -254,102 +115,181 @@ namespace DedicatedServerMultiplayerSample.Server
                     await Task.Delay(TimeSpan.FromSeconds(delaySeconds), token);
                     if (!token.IsCancellationRequested)
                     {
-                        Debug.Log($"[Shutdown] Executing shutdown - Reason: {reason}");
+                        Debug.Log($"[Shutdown] executing: {reason}");
                         ServerSingleton.Instance?.GameManager?.CloseServer();
                     }
                 }
                 catch (TaskCanceledException)
                 {
-                    // cancellation expected when a new schedule overrides the previous one
+                    // expected when rescheduled
                 }
             }, token);
         }
 
-        // ========== State Management ==========
-
-        private void SetState(SessionState newState)
+        private async Task RunSessionLifecycleAsync()
         {
-            if (m_State == newState) return;
+            Debug.Log("[Session] === START ===");
 
-            var oldState = m_State;
-            m_State = newState;
-            Debug.Log($"[GameSessionController] State: {oldState} → {newState}");
+            try
+            {
+                if (!await WaitForPlayersAsync(TimeSpan.FromSeconds(waitingPlayersTimeoutSeconds)))
+                {
+                    m_State = SessionState.Failed;
+                    Debug.LogError("[Session] Timeout: not enough players");
+                    await ScheduleShutdownAsync("Not enough players", notEnoughPlayersShutdownDelaySeconds);
+                    return;
+                }
 
-            if (newState == SessionState.InGame)
-                m_GameStartTcs?.TrySetResult(true);
-            else if (newState == SessionState.StartFailed)
-                m_GameStartTcs?.TrySetResult(false);
+                m_State = SessionState.InGame;
+                Debug.Log("[Session] Game started");
+
+                await WaitForGameEndAsync();
+                m_State = SessionState.GameEnded;
+                Debug.Log("[Session] Game ended");
+
+                await ScheduleShutdownAsync("Game completed", gameCompletedShutdownDelaySeconds);
+            }
+            catch (Exception e)
+            {
+                m_State = SessionState.Failed;
+                Debug.LogError($"[Session] Error: {e.Message}");
+                await ScheduleShutdownAsync("Fatal error", fatalErrorShutdownDelaySeconds);
+            }
+            finally
+            {
+                Debug.Log("[Session] === END ===");
+            }
         }
 
-        private void CacheConnectedPlayers()
+        private async Task<bool> WaitForPlayersAsync(TimeSpan timeout)
         {
-            var source = ServerSingleton.Instance?.GameManager?.GetAllConnectedPlayers();
-            if (source == null)
+            if (m_PlayerTracker.HasRequiredPlayers)
+                return true;
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            void OnReady()
             {
-                m_ConnectedPlayers = new Dictionary<ulong, Dictionary<string, object>>();
-                return;
+                tcs.TrySetResult(true);
             }
 
-            m_ConnectedPlayers = new Dictionary<ulong, Dictionary<string, object>>(source);
+            m_PlayerTracker.RequiredPlayersReady += OnReady;
+
+            try
+            {
+                var timeoutTask = Task.Delay(timeout);
+                var completed = await Task.WhenAny(tcs.Task, timeoutTask).ConfigureAwait(false);
+
+                if (completed == timeoutTask)
+                {
+                    return false;
+                }
+
+                await tcs.Task.ConfigureAwait(false);
+                Debug.Log("[Session] Required players reached");
+                return true;
+            }
+            finally
+            {
+                m_PlayerTracker.RequiredPlayersReady -= OnReady;
+            }
         }
 
-        // ========== Support Classes ==========
+        private async Task WaitForGameEndAsync()
+        {
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        /// <summary>
-        /// プレイヤー接続追跡
-        /// </summary>
+            void OnEnded()
+            {
+                GameEnded -= OnEnded;
+                tcs.TrySetResult(true);
+            }
+
+            GameEnded += OnEnded;
+
+            try
+            {
+                await tcs.Task.ConfigureAwait(false);
+            }
+            finally
+            {
+                GameEnded -= OnEnded;
+            }
+        }
+
+        private void HandleAllPlayersDisconnected()
+        {
+            var delay = m_State == SessionState.InGame
+                ? gameCompletedShutdownDelaySeconds
+                : notEnoughPlayersShutdownDelaySeconds;
+
+            var reason = m_State == SessionState.InGame
+                ? "All players disconnected during game"
+                : "All players disconnected";
+
+            Debug.Log($"[Session] All players disconnected. Scheduling shutdown in {delay}s.");
+            _ = ScheduleShutdownAsync(reason, delay);
+        }
+
         private class PlayerConnectionTracker : IDisposable
         {
-            private readonly HashSet<ulong> m_ConnectedPlayers = new();
+            private readonly HashSet<ulong> m_Players = new();
+            private readonly int m_RequiredPlayers;
+            private bool m_ReadyNotified;
 
-            public int CurrentCount => m_ConnectedPlayers.Count;
-            public event Action<int> OnPlayerCountChanged;
-            public event Action OnAllPlayersDisconnected;
+            public int CurrentCount => m_Players.Count;
+            public bool HasRequiredPlayers => CurrentCount >= m_RequiredPlayers;
+            public event Action RequiredPlayersReady;
+            public event Action AllPlayersDisconnected;
 
-            public PlayerConnectionTracker()
+            public PlayerConnectionTracker(int requiredPlayers)
             {
-                var nm = NetworkManager.Singleton;
-                if (nm != null)
-                {
-                    nm.OnClientConnectedCallback += HandleConnect;
-                    nm.OnClientDisconnectCallback += HandleDisconnect;
+                m_RequiredPlayers = Math.Max(1, requiredPlayers);
 
-                    // 初期状態を反映
-                    if (nm.ConnectedClients != null)
+                var nm = NetworkManager.Singleton;
+                if (nm == null) return;
+                nm.OnClientConnectedCallback += OnConnect;
+                nm.OnClientDisconnectCallback += OnDisconnect;
+
+                if (nm.ConnectedClients != null)
+                {
+                    foreach (var id in nm.ConnectedClients.Keys)
                     {
-                        foreach (var id in nm.ConnectedClients.Keys)
-                            m_ConnectedPlayers.Add(id);
+                        m_Players.Add(id);
                     }
                 }
+
+                CheckRequiredPlayersReached();
             }
 
-            private void HandleConnect(ulong clientId)
+            private void OnConnect(ulong id)
             {
-                m_ConnectedPlayers.Add(clientId);
-                Debug.Log($"[PlayerTracker] Connected: {clientId} (Total: {CurrentCount})");
-                OnPlayerCountChanged?.Invoke(CurrentCount);
+                if (!m_Players.Add(id)) return;
+                CheckRequiredPlayersReached();
             }
 
-            private void HandleDisconnect(ulong clientId)
+            private void OnDisconnect(ulong id)
             {
-                m_ConnectedPlayers.Remove(clientId);
-                Debug.Log($"[PlayerTracker] Disconnected: {clientId} (Total: {CurrentCount})");
-                OnPlayerCountChanged?.Invoke(CurrentCount);
-
+                if (!m_Players.Remove(id)) return;
                 if (CurrentCount == 0)
                 {
-                    OnAllPlayersDisconnected?.Invoke();
+                    AllPlayersDisconnected?.Invoke();
                 }
+            }
+
+            private void CheckRequiredPlayersReached()
+            {
+                if (m_ReadyNotified || !HasRequiredPlayers) return;
+                m_ReadyNotified = true;
+                RequiredPlayersReady?.Invoke();
             }
 
             public void Dispose()
             {
                 var nm = NetworkManager.Singleton;
-                if (nm != null)
-                {
-                    nm.OnClientConnectedCallback -= HandleConnect;
-                    nm.OnClientDisconnectCallback -= HandleDisconnect;
-                }
+                if (nm == null) return;
+                nm.OnClientConnectedCallback -= OnConnect;
+                nm.OnClientDisconnectCallback -= OnDisconnect;
             }
         }
 #endif

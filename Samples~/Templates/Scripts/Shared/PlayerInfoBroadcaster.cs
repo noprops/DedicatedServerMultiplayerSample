@@ -55,7 +55,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 return;
             }
 
-            var snapshot = controller.GetConnectedPlayers();
+            var snapshot = ServerSingleton.Instance?.GameManager?.GetAllConnectedPlayers();
             if (snapshot == null || snapshot.Count < 2)
             {
                 Debug.LogWarning("[PlayerInfoBroadcaster] Player info broadcast skipped (need 2 players)");

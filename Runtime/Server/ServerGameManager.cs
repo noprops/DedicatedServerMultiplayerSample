@@ -344,6 +344,16 @@ namespace DedicatedServerMultiplayerSample.Server
             return m_PlayerValidator?.GetAllConnectionData() ?? new Dictionary<ulong, Dictionary<string, object>>();
         }
 
+        public void DisconnectClient(ulong clientId, string reason = "Forced disconnect")
+        {
+            if (m_NetworkManager == null || !m_NetworkManager.IsServer)
+            {
+                return;
+            }
+
+            m_NetworkManager.DisconnectClient(clientId, reason);
+        }
+
         /// <summary>
         /// ゲーム開始時にセッションをロックし、新規プレイヤーの受け入れを停止する
         /// GameSessionControllerから呼ばれる

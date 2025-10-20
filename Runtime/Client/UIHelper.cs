@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
@@ -11,13 +12,16 @@ namespace DedicatedServerMultiplayerSample.Client
         /// <summary>
         /// 汎用的なボタン待機
         /// </summary>
-        public static async Task<T> WaitForButton<T>(
+        public static async Task<T> WaitForButtonAsync<T>(
             Button button,
             T returnValue,
+            CancellationToken ct = default,
             Action onShow = null,
             Action onHide = null)
         {
-            var tcs = new TaskCompletionSource<T>();
+            if (button == null) throw new ArgumentNullException(nameof(button));
+
+            var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
 
             void OnClick()
             {
@@ -27,40 +31,69 @@ namespace DedicatedServerMultiplayerSample.Client
             onShow?.Invoke();
             button.onClick.AddListener(OnClick);
 
-            T result = await tcs.Task;
+            CancellationTokenRegistration registration = default;
+            try
+            {
+                if (ct.CanBeCanceled)
+                {
+                    registration = ct.Register(() => tcs.TrySetCanceled(ct));
+                }
 
-            button.onClick.RemoveListener(OnClick);
-            onHide?.Invoke();
-
-            return result;
+                return await tcs.Task;
+            }
+            finally
+            {
+                registration.Dispose();
+                button.onClick.RemoveListener(OnClick);
+                onHide?.Invoke();
+            }
         }
 
         /// <summary>
         /// 複数ボタンからの選択
         /// </summary>
-        public static async Task<int> WaitForChoice(params Button[] buttons)
+        public static async Task<int> WaitForChoiceAsync(CancellationToken ct = default, params Button[] buttons)
         {
-            var tcs = new TaskCompletionSource<int>();
-            var listeners = new List<UnityEngine.Events.UnityAction>();
+            if (buttons == null || buttons.Length == 0)
+                throw new ArgumentException("buttons must not be empty.", nameof(buttons));
 
-            for (int i = 0; i < buttons.Length; i++)
+            var tcs = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            var listeners = new List<UnityEngine.Events.UnityAction>(buttons.Length);
+
+            void Cleanup()
             {
-                int index = i; // クロージャのためのコピー
-                void OnClick() => tcs.TrySetResult(index);
-
-                listeners.Add(OnClick);
-                buttons[i].onClick.AddListener(OnClick);
+                for (int i = 0; i < buttons.Length; i++)
+                {
+                    if (listeners[i] != null && buttons[i] != null)
+                    {
+                        buttons[i].onClick.RemoveListener(listeners[i]);
+                    }
+                }
             }
 
-            int selectedIndex = await tcs.Task;
-
-            // クリーンアップ
-            for (int i = 0; i < buttons.Length; i++)
+            CancellationTokenRegistration registration = default;
+            try
             {
-                buttons[i].onClick.RemoveListener(listeners[i]);
-            }
+                for (int i = 0; i < buttons.Length; i++)
+                {
+                    int index = i; // クロージャ用コピー
+                    void OnClick() => tcs.TrySetResult(index);
+                    listeners.Add(OnClick);
+                    buttons[i].onClick.AddListener(OnClick);
+                }
 
-            return selectedIndex;
+                if (ct.CanBeCanceled)
+                {
+                    registration = ct.Register(() => tcs.TrySetCanceled(ct));
+                }
+
+                return await tcs.Task;
+            }
+            finally
+            {
+                registration.Dispose();
+                Cleanup();
+            }
         }
     }
 }

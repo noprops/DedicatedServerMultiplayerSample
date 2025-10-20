@@ -192,15 +192,15 @@ namespace DedicatedServerMultiplayerSample.Shared
             public bool boolValue;
             public bool isIntegral;
             public long longValue;
-            public List<PayloadValue> arrayValues;
-            public List<PayloadEntry> objectValues;
+            [SerializeReference] public List<PayloadValue> arrayValues;
+            [SerializeReference] public List<PayloadEntry> objectValues;
         }
 
         [Serializable]
         private class PayloadEntry
         {
             public string key;
-            public PayloadValue value;
+            [SerializeReference] public PayloadValue value;
         }
 
         private enum PayloadValueType

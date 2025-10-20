@@ -120,9 +120,10 @@ namespace DedicatedServerMultiplayerSample.Client
             cancelButton.gameObject.SetActive(false);
             startButton.interactable = true;
 
-            await UIHelper.WaitForButton(
+            await UIHelper.WaitForButtonAsync(
                 startButton,
                 true,
+                default,
                 onShow: () =>
                 {
                     Debug.Log("[MatchmakingUI] Waiting for start button");
@@ -144,9 +145,10 @@ namespace DedicatedServerMultiplayerSample.Client
             cancelButton.gameObject.SetActive(true);
             cancelButton.interactable = true;
 
-            await UIHelper.WaitForButton(
+            await UIHelper.WaitForButtonAsync(
                 cancelButton,
                 true,
+                default,
                 onShow: () =>
                 {
                     Debug.Log("[MatchmakingUI] Waiting for cancel button");

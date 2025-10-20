@@ -91,16 +91,16 @@ namespace DedicatedServerMultiplayerSample.Client
             if (clientId == networkManager.LocalClientId)
             {
                 Debug.Log("[ClientGameManager] Local client disconnected - handling network shutdown");
-                ShutdownNetwork();
+                Disconnect();
             }
         }
 
         /// <summary>
-        /// ネットワークをシャットダウンし、必要に応じてloadingシーンに戻る
+        /// ネットワークを切断し、必要に応じてloadingシーンに戻る
         /// </summary>
-        public void ShutdownNetwork()
+        public void Disconnect()
         {
-            Debug.Log("[ClientGameManager] ShutdownNetwork called");
+            Debug.Log("[ClientGameManager] Disconnect called");
 
             // NetworkManagerをシャットダウン
             if (networkManager != null && networkManager.IsConnectedClient)
@@ -453,21 +453,6 @@ namespace DedicatedServerMultiplayerSample.Client
             else
             {
                 Debug.Log("[ClientGameManager] No current session to leave");
-            }
-        }
-
-        /// <summary>
-        /// NetworkManagerを切断
-        /// </summary>
-        public void Disconnect()
-        {
-            if (networkManager != null)
-            {
-                if (networkManager.IsClient)
-                {
-                    networkManager.Shutdown();
-                    Debug.Log("[ClientGameManager] NetworkManager shutdown");
-                }
             }
         }
 

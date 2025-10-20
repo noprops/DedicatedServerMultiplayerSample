@@ -17,8 +17,6 @@ namespace DedicatedServerMultiplayerSample.Server
         
         private void Awake()
         {
-            Debug.Log($"[ServerSingleton] Awake (UNITY_SERVER/ENABLE_UCS_SERVER active) on '{gameObject.name}' in scene '{UnityEngine.SceneManagement.SceneManager.GetActiveScene().name}'");
-
             if (Instance == null)
             {
                 Instance = this;

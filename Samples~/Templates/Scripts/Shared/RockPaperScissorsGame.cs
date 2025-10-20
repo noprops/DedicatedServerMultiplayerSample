@@ -28,7 +28,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
     public partial class RockPaperScissorsGame : NetworkBehaviour
     {
         // ========== Events for UI ==========
-        public static event Action<string> OnStatusUpdated;
         public static event Action<Hand, Hand, GameResult> OnGameResultReceived;
 
         // ========== Static Instance ==========
@@ -65,7 +64,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             // クライアント側でイベントをクリア（メモリリーク防止）
             if (IsClient)
             {
-                OnStatusUpdated = null;
                 OnGameResultReceived = null;
             }
 
@@ -94,13 +92,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         }
 
         // ========== ClientRpc Methods ==========
-
-        [ClientRpc]
-        private void UpdateStatusClientRpc(string message)
-        {
-            Debug.Log($"[Client] Status: {message}");
-            OnStatusUpdated?.Invoke(message);
-        }
 
         [ClientRpc]
         private void SendGameResultClientRpc(

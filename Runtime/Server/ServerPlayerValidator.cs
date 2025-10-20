@@ -3,6 +3,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 using Unity.Netcode;
+using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Server
 {
