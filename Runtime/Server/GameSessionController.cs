@@ -137,7 +137,7 @@ namespace DedicatedServerMultiplayerSample.Server
         /// <summary>
         /// Awaitable alternative to the GameStartSucceeded event with timeout and cancellation support.
         /// </summary>
-        public async Task<ulong[]> WaitForGameStartSucceededAsync(TimeSpan timeout, CancellationToken ct = default)
+        public async Task<ulong[]> WaitForGameStartSucceededAsync(CancellationToken ct = default)
         {
             if (_startEmitted)
             {
@@ -160,7 +160,6 @@ namespace DedicatedServerMultiplayerSample.Server
                         wrapper = null;
                     }
                 },
-                timeout: timeout,
                 ct: ct).ConfigureAwait(false);
 
             if (!success)
@@ -174,7 +173,7 @@ namespace DedicatedServerMultiplayerSample.Server
         /// <summary>
         /// Awaitable alternative to the GameStartFailed event with timeout and cancellation support.
         /// </summary>
-        public async Task WaitForGameStartFailedAsync(TimeSpan timeout, CancellationToken ct = default)
+        public async Task WaitForGameStartFailedAsync(CancellationToken ct = default)
         {
             if (_startFailed)
             {
@@ -185,7 +184,6 @@ namespace DedicatedServerMultiplayerSample.Server
                 isAlreadyTrue: () => m_StartFailed,
                 subscribe: handler => GameStartFailed += handler,
                 unsubscribe: handler => GameStartFailed -= handler,
-                timeout: timeout,
                 ct: ct).ConfigureAwait(false);
 
             if (!success)
@@ -197,7 +195,7 @@ namespace DedicatedServerMultiplayerSample.Server
         /// <summary>
         /// Awaitable alternative to the GameEnded event with timeout and cancellation support.
         /// </summary>
-        public async Task WaitForGameEndedAsync(TimeSpan timeout, CancellationToken ct = default)
+        public async Task WaitForGameEndedAsync(CancellationToken ct = default)
         {
             if (m_State == SessionState.GameEnded || m_State == SessionState.Failed)
             {
@@ -208,7 +206,6 @@ namespace DedicatedServerMultiplayerSample.Server
                 isAlreadyTrue: () => m_State == SessionState.GameEnded || m_State == SessionState.Failed,
                 subscribe: handler => GameEnded += handler,
                 unsubscribe: handler => GameEnded -= handler,
-                timeout: timeout,
                 ct: ct).ConfigureAwait(false);
 
             if (!success)

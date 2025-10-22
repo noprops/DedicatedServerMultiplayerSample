@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -76,7 +77,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
 
             m_Game.Phase.OnValueChanged += OnPhaseChanged;
             m_Game.LastResult.OnValueChanged += OnResultChanged;
-            m_Game.PlayerNames.OnListChanged += OnNamesChanged;
+            m_Game.ParticipantNames.OnListChanged += OnNamesChanged;
             m_Game.ParticipantIds.OnListChanged += OnParticipantsChanged;
 
             OnPhaseChanged(GamePhase.None, m_Game.Phase.Value);
@@ -91,7 +92,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
 
             m_Game.Phase.OnValueChanged -= OnPhaseChanged;
             m_Game.LastResult.OnValueChanged -= OnResultChanged;
-            m_Game.PlayerNames.OnListChanged -= OnNamesChanged;
+            m_Game.ParticipantNames.OnListChanged -= OnNamesChanged;
             m_Game.ParticipantIds.OnListChanged -= OnParticipantsChanged;
             m_Game = null;
         }
@@ -204,7 +205,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
             DisplayGameResult(myHand, opponentHand, myOutcome);
         }
 
-        private void OnNamesChanged(Unity.Netcode.NetworkListEvent<PlayerNameEntry> _)
+        private void OnNamesChanged(Unity.Netcode.NetworkListEvent<FixedString64Bytes> _)
         {
             RefreshPlayerNamesUI();
         }
@@ -329,11 +330,14 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
         {
             if (m_Game != null)
             {
-                foreach (var entry in m_Game.PlayerNames)
+                var ids = m_Game.ParticipantIds;
+                var names = m_Game.ParticipantNames;
+
+                for (int i = 0; i < ids.Count && i < names.Count; i++)
                 {
-                    if (entry.ClientId == clientId)
+                    if (ids[i] == clientId)
                     {
-                        var name = entry.Name.ToString();
+                        var name = names[i].ToString();
                         if (!string.IsNullOrWhiteSpace(name))
                         {
                             return name;

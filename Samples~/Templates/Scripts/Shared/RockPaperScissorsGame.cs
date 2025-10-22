@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
 using DedicatedServerMultiplayerSample.Server;
@@ -29,7 +30,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             readPerm: NetworkVariableReadPermission.Everyone,
             writePerm: NetworkVariableWritePermission.Server);
 
-        public NetworkList<PlayerNameEntry> PlayerNames { get; } = new(
+        public NetworkList<FixedString64Bytes> ParticipantNames { get; } = new(
             readPerm: NetworkVariableReadPermission.Everyone,
             writePerm: NetworkVariableWritePermission.Server);
 
@@ -66,7 +67,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         public override void OnDestroy()
         {
             ParticipantIds.Dispose();
-            PlayerNames.Dispose();
+            ParticipantNames.Dispose();
 
             if (Instance == this)
             {

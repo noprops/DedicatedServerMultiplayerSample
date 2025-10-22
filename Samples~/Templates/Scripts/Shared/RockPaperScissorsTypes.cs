@@ -48,35 +48,4 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         }
     }
 
-    public struct PlayerNameEntry : INetworkSerializable, System.IEquatable<PlayerNameEntry>
-    {
-        public ulong ClientId;
-        public FixedString64Bytes Name;
-
-        public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-        {
-            serializer.SerializeValue(ref ClientId);
-            serializer.SerializeValue(ref Name);
-        }
-
-        public bool Equals(PlayerNameEntry other)
-        {
-            return ClientId == other.ClientId && Name.Equals(other.Name);
-        }
-
-        public override bool Equals(object obj)
-        {
-            return obj is PlayerNameEntry other && Equals(other);
-        }
-
-        public override int GetHashCode()
-        {
-            unchecked
-            {
-                int hash = ClientId.GetHashCode();
-                hash = (hash * 397) ^ Name.GetHashCode();
-                return hash;
-            }
-        }
-    }
 }

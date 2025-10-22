@@ -82,5 +82,42 @@ namespace DedicatedServerMultiplayerSample.Shared
                 unsubscribe(Handler);
             }
         }
+
+        /// <summary>
+        /// Waits for a signal without applying a timeout.
+        /// </summary>
+        public static async Task<bool> WaitSignalAsync(
+            Func<bool> isAlreadyTrue,
+            Action<Action> subscribe,
+            Action<Action> unsubscribe,
+            CancellationToken ct = default)
+        {
+            if (isAlreadyTrue())
+            {
+                return true;
+            }
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            void Handler() => tcs.TrySetResult(true);
+            subscribe(Handler);
+
+            CancellationTokenRegistration registration = default;
+            if (ct.CanBeCanceled)
+            {
+                registration = ct.Register(() => tcs.TrySetCanceled(ct));
+            }
+
+            try
+            {
+                await tcs.Task.ConfigureAwait(false);
+                return true;
+            }
+            finally
+            {
+                registration.Dispose();
+                unsubscribe(Handler);
+            }
+        }
     }
 }
