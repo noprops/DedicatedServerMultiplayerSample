@@ -12,8 +12,21 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
     public partial class RockPaperScissorsGame
     {
         private List<ulong> m_ClientIds = new();
+        private bool m_SessionSubscribed;
 
         public IReadOnlyList<ulong> ClientIds => m_ClientIds;
+
+#if UNITY_SERVER || ENABLE_UCS_SERVER
+        private void OnEnable()
+        {
+            TrySubscribeToSession();
+        }
+
+        private void OnDisable()
+        {
+            TryUnsubscribeFromSession();
+        }
+#endif
 
         // ========== Server Initialization ==========
         partial void OnServerSpawn()
@@ -25,50 +38,112 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
             NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
             NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnected;
-            _ = RunServerGameFlowAsync();
+            TrySubscribeToSession();
         }
 
         partial void OnServerDespawn()
         {
             NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
             NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnected;
+            TryUnsubscribeFromSession();
 
         }
 
-        // ========== Server Main Flow ==========
-        private async Task RunServerGameFlowAsync()
+        private void TrySubscribeToSession()
+        {
+            if (m_SessionSubscribed)
+            {
+                return;
+            }
+
+            var controller = GameSessionController.Instance;
+            if (controller == null)
+            {
+                return;
+            }
+
+            controller.GameStartSucceeded += OnGameStartSucceeded;
+            controller.GameStartFailed += OnGameStartFailed;
+            controller.GameEnded += OnGameEnded;
+            m_SessionSubscribed = true;
+        }
+
+        private void TryUnsubscribeFromSession()
+        {
+            if (!m_SessionSubscribed)
+            {
+                return;
+            }
+
+            var controller = GameSessionController.Instance;
+            if (controller != null)
+            {
+                controller.GameStartSucceeded -= OnGameStartSucceeded;
+                controller.GameStartFailed -= OnGameStartFailed;
+                controller.GameEnded -= OnGameEnded;
+            }
+
+            m_SessionSubscribed = false;
+        }
+
+        private void OnGameStartSucceeded(ulong[] participantIds)
+        {
+            if (!IsServer)
+            {
+                return;
+            }
+
+            ApplyPlayerIds(participantIds);
+            Phase.Value = GamePhase.Choosing;
+            BeginGameFlow();
+        }
+
+        private void OnGameStartFailed()
+        {
+            if (!IsServer)
+            {
+                return;
+            }
+
+            Phase.Value = GamePhase.StartFailed;
+            ParticipantIds.Clear();
+            PlayerNames.Clear();
+            m_ClientIds.Clear();
+        }
+
+        private void OnGameEnded()
+        {
+            if (!IsServer)
+            {
+                return;
+            }
+
+            m_GameInProgress = false;
+        }
+
+        private void BeginGameFlow()
+        {
+            if (m_GameInProgress)
+            {
+                return;
+            }
+
+            _ = RunGameFlowAsync();
+        }
+
+        private async Task RunGameFlowAsync()
         {
             try
             {
-                var controller = GameSessionController.Instance;
-                if (controller == null)
-                {
-                    Debug.LogError("[RockPaperScissorsGame] No GameSessionController");
-                    return;
-                }
-
-                // 1. ゲーム開始可能状態を待つ
-                var gameStartInfo = await controller.WaitForGameStartAsync();
-
-                if (!gameStartInfo.Success)
-                {
-                    Phase.Value = GamePhase.StartFailed;
-                    return;
-                }
-
-                // 2. プレイヤー情報を用意
-                ApplyPlayerIds(gameStartInfo.ParticipantIds);
-                Phase.Value = GamePhase.Choosing;
-
-                // 3. ゲーム実行
                 await ExecuteGameRoundAsync();
-
-                // 4. 終了通知
-                GameSessionController.Instance.NotifyGameEnded();
             }
             catch (Exception e)
             {
                 Debug.LogError($"[RockPaperScissorsGame] Fatal error: {e.Message}");
+            }
+            finally
+            {
+                GameSessionController.Instance?.NotifyGameEnded();
             }
         }
 

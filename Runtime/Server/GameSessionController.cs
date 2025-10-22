@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Unity.Netcode;
@@ -8,18 +9,6 @@ using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Server
 {
-    public readonly struct GameStartInfo
-    {
-        public bool Success { get; }
-        public IReadOnlyList<ulong> ClientIds { get; }
-
-        public GameStartInfo(bool success, IReadOnlyList<ulong> clientIds)
-        {
-            Success = success;
-            ClientIds = clientIds ?? Array.Empty<ulong>();
-        }
-    }
-
     /// <summary>
     /// ゲームセッションの進行（プレイヤー待機〜ゲーム終了〜シャットダウン）を管理するコンポーネント。
     /// </summary>
@@ -49,11 +38,20 @@ namespace DedicatedServerMultiplayerSample.Server
         private PlayerConnectionTracker m_PlayerTracker;
 
         private DeferredActionScheduler m_ShutdownScheduler;
-        private readonly TaskCompletionSource<GameStartInfo> m_GameStartedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-        private readonly TaskCompletionSource<object?> m_GameEndedTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public event Action<ulong[]> GameStartSucceeded;
+        public event Action GameStartFailed;
+        public event Action GameEnded;
+
+        private bool m_StartEmitted;
+        private bool m_StartFailed;
+        private ulong[] m_StartIdsSnapshot = Array.Empty<ulong>();
 
         #region Unity lifecycle
 
+        /// <summary>
+        /// Initializes singletons, trackers, and event subscriptions for the server session.
+        /// </summary>
         private void Awake()
         {
             if (Instance != null && Instance != this)
@@ -71,6 +69,9 @@ namespace DedicatedServerMultiplayerSample.Server
             SetState(SessionState.WaitingForPlayers);
         }
 
+        /// <summary>
+        /// Schedules a shutdown when all players leave the session.
+        /// </summary>
         private void HandleAllPlayersDisconnected()
         {
             var delay = m_State == SessionState.InGame
@@ -85,11 +86,17 @@ namespace DedicatedServerMultiplayerSample.Server
             _ = m_ShutdownScheduler.ScheduleAsync(reason, delay);
         }
 
+        /// <summary>
+        /// Runs the session lifecycle coroutine on server start.
+        /// </summary>
         private async void Start()
         {
             await RunSessionLifecycleAsync();
         }
 
+        /// <summary>
+        /// Cleans up event handlers, trackers, and cached state when the controller is destroyed.
+        /// </summary>
         private void OnDestroy()
         {
             if (m_PlayerTracker != null)
@@ -100,13 +107,18 @@ namespace DedicatedServerMultiplayerSample.Server
             }
 
             m_ShutdownScheduler.Dispose();
-            m_GameStartedTcs.TrySetCanceled();
-            m_GameEndedTcs.TrySetCanceled();
 
             if (Instance == this)
             {
                 Instance = null;
             }
+
+            m_StartEmitted = false;
+            m_StartFailed = false;
+            m_StartIdsSnapshot = Array.Empty<ulong>();
+            GameStartSucceeded = null;
+            GameStartFailed = null;
+            GameEnded = null;
         }
 
         #endregion
@@ -114,28 +126,7 @@ namespace DedicatedServerMultiplayerSample.Server
         #region Public API
 
         /// <summary>
-        /// ゲーム開始を待機し、開始したかどうかを返す。
-        /// </summary>
-        public Task<GameStartInfo> WaitForGameStartAsync(CancellationToken ct = default)
-        {
-            if (!ct.CanBeCanceled)
-            {
-                return m_GameStartedTcs.Task;
-            }
-
-            return m_GameStartedTcs.Task.WaitOrCancel(ct);
-        }
-
-        /// <summary>
-        /// ゲーム終了を待機する。
-        /// </summary>
-        public Task WaitForGameEndAsync(CancellationToken ct = default)
-        {
-            return m_GameEndedTcs.Task.WaitOrCancel(ct);
-        }
-
-        /// <summary>
-        /// ゲーム終了を通知する。
+        /// Signals that gameplay has finished so dependent systems can progress.
         /// </summary>
         public void NotifyGameEnded()
         {
@@ -145,10 +136,98 @@ namespace DedicatedServerMultiplayerSample.Server
             SetState(SessionState.GameEnded);
         }
 
+        /// <summary>
+        /// Awaitable alternative to the GameStartSucceeded event with timeout and cancellation support.
+        /// </summary>
+        public async Task<ulong[]> WaitForGameStartSucceededAsync(TimeSpan timeout, CancellationToken ct = default)
+        {
+            if (_startEmitted)
+            {
+                return (ulong[])_startIdsSnapshot.Clone();
+            }
+
+            var handlerMap = new Dictionary<Action, Action<ulong[]>>();
+            var success = await AsyncExtensions.WaitSignalAsync(
+                isAlreadyTrue: () => _startEmitted,
+                subscribe: handler =>
+                {
+                    Action<ulong[]> wrapper = null;
+                    wrapper = _ => handler();
+                    handlerMap[handler] = wrapper;
+                    GameStartSucceeded += wrapper;
+                },
+                unsubscribe: handler =>
+                {
+                    if (handlerMap.TryGetValue(handler, out var wrapper))
+                    {
+                        GameStartSucceeded -= wrapper;
+                        handlerMap.Remove(handler);
+                    }
+                },
+                timeout: timeout,
+                ct: ct).ConfigureAwait(false);
+
+            if (!success)
+            {
+                throw new TimeoutException("Game start did not succeed before the timeout elapsed.");
+            }
+
+            return (ulong[])_startIdsSnapshot.Clone();
+        }
+
+        /// <summary>
+        /// Awaitable alternative to the GameStartFailed event with timeout and cancellation support.
+        /// </summary>
+        public async Task WaitForGameStartFailedAsync(TimeSpan timeout, CancellationToken ct = default)
+        {
+            if (_startFailed)
+            {
+                return;
+            }
+
+            var success = await AsyncExtensions.WaitSignalAsync(
+                isAlreadyTrue: () => _startFailed,
+                subscribe: handler => GameStartFailed += handler,
+                unsubscribe: handler => GameStartFailed -= handler,
+                timeout: timeout,
+                ct: ct).ConfigureAwait(false);
+
+            if (!success)
+            {
+                throw new TimeoutException("Game start did not fail before the timeout elapsed.");
+            }
+        }
+
+        /// <summary>
+        /// Awaitable alternative to the GameEnded event with timeout and cancellation support.
+        /// </summary>
+        public async Task WaitForGameEndedAsync(TimeSpan timeout, CancellationToken ct = default)
+        {
+            if (m_State == SessionState.GameEnded || m_State == SessionState.Failed)
+            {
+                return;
+            }
+
+            var success = await AsyncExtensions.WaitSignalAsync(
+                isAlreadyTrue: () => m_State == SessionState.GameEnded || m_State == SessionState.Failed,
+                subscribe: handler => GameEnded += handler,
+                unsubscribe: handler => GameEnded -= handler,
+                timeout: timeout,
+                ct: ct).ConfigureAwait(false);
+
+            if (!success)
+            {
+                throw new TimeoutException("Game did not end before the timeout elapsed.");
+            }
+        }
+
         #endregion
 
         #region Session flow
 
+        /// <summary>
+        /// Coordinates waiting for players, gameplay, and shutdown timing.
+        /// </summary>
         private async Task RunSessionLifecycleAsync()
         {
             Debug.Log("[Session] === START ===");
@@ -166,7 +245,7 @@ namespace DedicatedServerMultiplayerSample.Server
                 SetState(SessionState.InGame);
                 Debug.Log("[Session] Game started");
 
-                await WaitForGameEndAsync();
+                await WaitForGameEndedAsync(TimeSpan.Zero).ConfigureAwait(false);
                 Debug.Log("[Session] Game ended");
 
                 await m_ShutdownScheduler.ScheduleAsync("Game completed", gameCompletedShutdownDelaySeconds);
@@ -183,6 +262,9 @@ namespace DedicatedServerMultiplayerSample.Server
             }
         }
 
+        /// <summary>
+        /// Waits until the required number of players connect or the timeout elapses.
+        /// </summary>
         private async Task<bool> WaitForPlayersAsync(int timeoutSeconds)
         {
             var clampedSeconds = Mathf.Max(0, timeoutSeconds);
@@ -206,6 +288,9 @@ namespace DedicatedServerMultiplayerSample.Server
 
         #region Helpers
 
+        /// <summary>
+        /// Updates the internal session state and dispatches the corresponding latched events.
+        /// </summary>
         private void SetState(SessionState newState)
         {
             if (m_State == newState) return;
@@ -213,33 +298,46 @@ namespace DedicatedServerMultiplayerSample.Server
             switch (newState)
             {
                 case SessionState.InGame:
-                    m_GameStartedTcs.TrySetResult(new GameStartInfo(true, CollectKnownPlayerIds()));
+                    m_StartFailed = false;
+                    m_StartEmitted = true;
+                    m_StartIdsSnapshot = CollectKnownPlayerIds().ToArray();
+                    GameStartSucceeded?.Invoke((ulong[])m_StartIdsSnapshot.Clone());
                     break;
                 case SessionState.StartFailed:
-                    m_GameStartedTcs.TrySetResult(new GameStartInfo(false, Array.Empty<ulong>()));
+                    m_StartFailed = true;
+                    m_StartEmitted = false;
+                    m_StartIdsSnapshot = Array.Empty<ulong>();
+                    GameStartFailed?.Invoke();
                     break;
                 case SessionState.Failed:
-                    m_GameStartedTcs.TrySetResult(new GameStartInfo(false, Array.Empty<ulong>()));
-                    m_GameEndedTcs.TrySetResult(null);
+                    m_StartFailed = true;
+                    m_StartEmitted = false;
+                    m_StartIdsSnapshot = Array.Empty<ulong>();
+                    GameStartFailed?.Invoke();
+                    GameEnded?.Invoke();
                     break;
                 case SessionState.GameEnded:
-                    m_GameEndedTcs.TrySetResult(null);
+                    GameEnded?.Invoke();
                     break;
             }
         }
 
-        private IReadOnlyList<ulong> CollectKnownPlayerIds()
+        /// <summary>
+        /// Builds a unique list of all players the tracker currently knows about.
+        /// </summary>
+        private List<ulong> CollectKnownPlayerIds()
         {
             if (m_PlayerTracker == null)
             {
-                return Array.Empty<ulong>();
+                return new List<ulong>();
             }
 
             var connected = m_PlayerTracker.ConnectedClientIds;
             var disconnected = m_PlayerTracker.DisconnectedClientIds;
 
-            var result = new List<ulong>(connected.Count + disconnected.Count);
             var seen = new HashSet<ulong>();
+            var result = new List<ulong>(connected.Count + disconnected.Count);
+
             foreach (var id in connected)
             {
                 if (seen.Add(id))
