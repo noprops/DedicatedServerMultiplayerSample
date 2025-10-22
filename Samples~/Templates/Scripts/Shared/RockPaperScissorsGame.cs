@@ -26,11 +26,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             NetworkVariableReadPermission.Everyone,
             NetworkVariableWritePermission.Server);
 
-        public NetworkList<ulong> ParticipantIds { get; } = new(
+        public NetworkList<ulong> PlayerIds { get; } = new(
             readPerm: NetworkVariableReadPermission.Everyone,
             writePerm: NetworkVariableWritePermission.Server);
 
-        public NetworkList<FixedString64Bytes> ParticipantNames { get; } = new(
+        public NetworkList<FixedString64Bytes> PlayerNames { get; } = new(
             readPerm: NetworkVariableReadPermission.Everyone,
             writePerm: NetworkVariableWritePermission.Server);
 
@@ -66,8 +66,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
         public override void OnDestroy()
         {
-            ParticipantIds.Dispose();
-            ParticipantNames.Dispose();
+            PlayerIds.Dispose();
+            PlayerNames.Dispose();
 
             if (Instance == this)
             {

@@ -22,8 +22,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             Phase.Value = GamePhase.WaitingForPlayers;
             LastResult.Value = default;
-            ParticipantIds.Clear();
-            ParticipantNames.Clear();
+            PlayerIds.Clear();
+            PlayerNames.Clear();
 
             NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
             NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnected;
@@ -46,11 +46,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         private async Task RunServerGameFlowAsync(CancellationToken ct)
         {
-            if (!IsServer)
-            {
-                return;
-            }
-
             var controller = GameSessionController.Instance;
             if (controller == null)
             {
@@ -67,14 +62,14 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 if (completed == startFailedTask)
                 {
                     Phase.Value = GamePhase.StartFailed;
-                    ParticipantIds.Clear();
-                    ParticipantNames.Clear();
+                    PlayerIds.Clear();
+                    PlayerNames.Clear();
                     return;
                 }
 
                 var participantIds = await startSucceededTask.ConfigureAwait(false);
 
-                ApplyParticipantIds(participantIds);
+                ApplyPlayerIds(participantIds);
                 Phase.Value = GamePhase.Choosing;
 
                 await ExecuteGameRoundAsync().ConfigureAwait(false);
@@ -98,7 +93,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Copies participant IDs into the network lists, fills CPU slots, and refreshes player names.
         /// </summary>
-        private void ApplyParticipantIds(IReadOnlyList<ulong> participantIds)
+        private void ApplyPlayerIds(IReadOnlyList<ulong> participantIds)
         {
             var ids = participantIds != null ? new List<ulong>(participantIds) : new List<ulong>();
             var seen = new HashSet<ulong>(ids);
@@ -110,29 +105,29 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 ids.Add(cpuId);
             }
 
-            ParticipantIds.Clear();
-            ParticipantNames.Clear();
+            PlayerIds.Clear();
+            PlayerNames.Clear();
 
             foreach (var id in ids)
             {
-                ParticipantIds.Add(id);
+                PlayerIds.Add(id);
             }
 
-            RebuildParticipantNames();
+            RebuildPlayerNames();
         }
 
         /// <summary>
         /// Builds the networked player names list using server-side snapshots.
         /// </summary>
-        private void RebuildParticipantNames()
+        private void RebuildPlayerNames()
         {
-            ParticipantNames.Clear();
+            PlayerNames.Clear();
 
             var snapshot = ServerSingleton.Instance?.GameManager?.GetAllConnectedPlayers();
 
-            foreach (var id in ParticipantIds)
+            foreach (var id in PlayerIds)
             {
-                ParticipantNames.Add(GetDisplayName(snapshot, id));
+                PlayerNames.Add(GetDisplayName(snapshot, id));
             }
         }
 
@@ -168,13 +163,13 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             Debug.Log("[RockPaperScissorsGame] Starting game round");
 
-            if (ParticipantIds.Count == 0)
+            if (PlayerIds.Count == 0)
             {
                 Debug.LogError("[RockPaperScissorsGame] Cannot start round without player IDs");
                 return;
             }
 
-            var participants = new List<ulong>(ParticipantIds);
+            var participants = new List<ulong>(PlayerIds);
 
             m_GameInProgress = true;
             m_PlayerChoices.Clear();
@@ -217,9 +212,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
         private void OnClientDisconnected(ulong clientId)
         {
-            if (!IsServer) return;
-
-            RebuildParticipantNames();
+            RebuildPlayerNames();
 
             if (IsCpuId(clientId))
             {
@@ -230,7 +223,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             {
                 AssignRandomHandToPlayer(clientId, "disconnected");
 
-                if (m_PlayerChoices.Count >= ParticipantIds.Count)
+                if (m_PlayerChoices.Count >= PlayerIds.Count)
                 {
                     m_AllPlayersChosenTcs?.TrySetResult(true);
                 }
@@ -243,7 +236,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
         private void SeedCpuChoicesIfNeeded()
         {
-            foreach (var playerId in ParticipantIds)
+            foreach (var playerId in PlayerIds)
             {
                 if (IsCpuId(playerId) && !m_PlayerChoices.ContainsKey(playerId))
                 {
@@ -251,7 +244,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 }
             }
 
-            if (m_PlayerChoices.Count >= ParticipantIds.Count)
+            if (m_PlayerChoices.Count >= PlayerIds.Count)
             {
                 m_AllPlayersChosenTcs?.TrySetResult(true);
             }
@@ -262,7 +255,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             var randomHand = (Hand)UnityEngine.Random.Range(1, 4);
             m_PlayerChoices[playerId] = randomHand;
             Debug.Log($"[RockPaperScissorsGame] Auto-assigned {randomHand} to {reason} player {playerId}");
-            if (m_PlayerChoices.Count >= ParticipantIds.Count)
+            if (m_PlayerChoices.Count >= PlayerIds.Count)
             {
                 m_AllPlayersChosenTcs?.TrySetResult(true);
             }
@@ -280,9 +273,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
 
             m_PlayerChoices[clientId] = choice;
-            Debug.Log($"[Server] Choice received: {choice} from {clientId} ({m_PlayerChoices.Count}/{ParticipantIds.Count})");
+            Debug.Log($"[Server] Choice received: {choice} from {clientId} ({m_PlayerChoices.Count}/{PlayerIds.Count})");
 
-            if (m_PlayerChoices.Count >= ParticipantIds.Count)
+            if (m_PlayerChoices.Count >= PlayerIds.Count)
             {
                 m_AllPlayersChosenTcs?.TrySetResult(true);
             }
@@ -341,9 +334,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
         private void OnClientConnected(ulong clientId)
         {
-            if (!IsServer) return;
-
-            RebuildParticipantNames();
+            RebuildPlayerNames();
         }
 
         private static FixedString64Bytes ResolvePlayerName(Dictionary<string, object> payload, ulong clientId)

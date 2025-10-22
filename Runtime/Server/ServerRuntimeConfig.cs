@@ -7,7 +7,8 @@ using UnityEngine;
 namespace DedicatedServerMultiplayerSample.Server
 {
     /// <summary>
-    /// Captures runtime configuration supplied via command line and server.json.
+    /// Captures and exposes server runtime configuration sourced from command line arguments and Multiplay server.json.
+    /// Stores the resolved ports, identifiers, and log paths so other systems can read a consistent view of deployment data.
     /// </summary>
     public class ServerRuntimeConfig
     {

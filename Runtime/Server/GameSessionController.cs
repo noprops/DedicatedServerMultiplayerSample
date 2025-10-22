@@ -139,7 +139,7 @@ namespace DedicatedServerMultiplayerSample.Server
         /// </summary>
         public async Task<ulong[]> WaitForGameStartSucceededAsync(CancellationToken ct = default)
         {
-            if (_startEmitted)
+            if (m_StartEmitted)
             {
                 return m_PlayerTracker?.GetKnownClientIds()?.ToArray() ?? Array.Empty<ulong>();
             }
@@ -175,7 +175,7 @@ namespace DedicatedServerMultiplayerSample.Server
         /// </summary>
         public async Task WaitForGameStartFailedAsync(CancellationToken ct = default)
         {
-            if (_startFailed)
+            if (m_StartFailed)
             {
                 return;
             }
@@ -195,7 +195,7 @@ namespace DedicatedServerMultiplayerSample.Server
         /// <summary>
         /// Awaitable alternative to the GameEnded event with timeout and cancellation support.
         /// </summary>
-        public async Task WaitForGameEndedAsync(CancellationToken ct = default)
+        public async Task WaitForGameEndedAsync(TimeSpan timeout = default, CancellationToken ct = default)
         {
             if (m_State == SessionState.GameEnded || m_State == SessionState.Failed)
             {
@@ -206,6 +206,7 @@ namespace DedicatedServerMultiplayerSample.Server
                 isAlreadyTrue: () => m_State == SessionState.GameEnded || m_State == SessionState.Failed,
                 subscribe: handler => GameEnded += handler,
                 unsubscribe: handler => GameEnded -= handler,
+                timeout: timeout,
                 ct: ct).ConfigureAwait(false);
 
             if (!success)

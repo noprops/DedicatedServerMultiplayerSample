@@ -40,7 +40,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
         private bool m_HasSubmitted;
         private bool m_FinishFlowStarted;
         private RockPaperScissorsGame m_Game;
-        private readonly List<ulong> m_ParticipantIds = new();
+        private readonly List<ulong> m_PlayerIds = new();
 
         private void OnEnable()
         {
@@ -77,12 +77,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
 
             m_Game.Phase.OnValueChanged += OnPhaseChanged;
             m_Game.LastResult.OnValueChanged += OnResultChanged;
-            m_Game.ParticipantNames.OnListChanged += OnNamesChanged;
-            m_Game.ParticipantIds.OnListChanged += OnParticipantsChanged;
+            m_Game.PlayerNames.OnListChanged += OnNamesChanged;
+            m_Game.PlayerIds.OnListChanged += OnPlayerIdsChanged;
 
             OnPhaseChanged(GamePhase.None, m_Game.Phase.Value);
             OnResultChanged(default, m_Game.LastResult.Value);
-            RefreshParticipantIds();
+            RefreshPlayerIds();
             RefreshPlayerNamesUI();
         }
 
@@ -92,8 +92,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
 
             m_Game.Phase.OnValueChanged -= OnPhaseChanged;
             m_Game.LastResult.OnValueChanged -= OnResultChanged;
-            m_Game.ParticipantNames.OnListChanged -= OnNamesChanged;
-            m_Game.ParticipantIds.OnListChanged -= OnParticipantsChanged;
+            m_Game.PlayerNames.OnListChanged -= OnNamesChanged;
+            m_Game.PlayerIds.OnListChanged -= OnPlayerIdsChanged;
             m_Game = null;
         }
 
@@ -210,23 +210,23 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
             RefreshPlayerNamesUI();
         }
 
-        private void OnParticipantsChanged(Unity.Netcode.NetworkListEvent<ulong> _)
+        private void OnPlayerIdsChanged(Unity.Netcode.NetworkListEvent<ulong> _)
         {
-            RefreshParticipantIds();
+            RefreshPlayerIds();
             RefreshPlayerNamesUI();
         }
 
-        private void RefreshParticipantIds()
+        private void RefreshPlayerIds()
         {
-            m_ParticipantIds.Clear();
+            m_PlayerIds.Clear();
             if (m_Game == null)
             {
                 return;
             }
 
-            foreach (var id in m_Game.ParticipantIds)
+            foreach (var id in m_Game.PlayerIds)
             {
-                m_ParticipantIds.Add(id);
+                m_PlayerIds.Add(id);
             }
         }
 
@@ -237,12 +237,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
                 return;
             }
 
-            if (m_ParticipantIds.Count == 0)
+            if (m_PlayerIds.Count == 0)
             {
-                RefreshParticipantIds();
+                RefreshPlayerIds();
             }
 
-            if (m_ParticipantIds.Count == 0)
+            if (m_PlayerIds.Count == 0)
             {
                 myNameText.text = "You: --";
                 opponentNameText.text = "Opponent: --";
@@ -254,7 +254,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
             string opponentDisplay = "Opponent: --";
             bool opponentAssigned = false;
 
-            foreach (var id in m_ParticipantIds)
+            foreach (var id in m_PlayerIds)
             {
                 var name = ResolveDisplayName(id);
 
@@ -330,8 +330,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
         {
             if (m_Game != null)
             {
-                var ids = m_Game.ParticipantIds;
-                var names = m_Game.ParticipantNames;
+                var ids = m_Game.PlayerIds;
+                var names = m_Game.PlayerNames;
 
                 for (int i = 0; i < ids.Count && i < names.Count; i++)
                 {

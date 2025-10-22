@@ -12,15 +12,17 @@ using Unity.Services.Matchmaker.Http;
 namespace DedicatedServerMultiplayerSample.Server
 {
     /// <summary>
-    /// Unity Multiplayサービスとの統合を管理するクラス
+    /// Wraps Unity Multiplay session APIs: authenticates the server, starts the session manager,
+    /// reacts to allocation callbacks, and exposes helpers to lock the session or report readiness.
     /// </summary>
-    public class ServerMultiplayIntegration
+    public class ServerMultiplayIntegration : IDisposable
     {
         // ========== Member Variables ==========
         private IMultiplaySessionManager m_SessionManager;
         private MultiplayServerOptions m_ServerOptions;
         private readonly ServerRuntimeConfig m_RuntimeConfig;
         private readonly int m_DefaultMaxPlayers;
+        private bool m_Disposed;
 
         public ServerMultiplayIntegration(ServerRuntimeConfig runtimeConfig, int defaultMaxPlayers)
         {
@@ -317,6 +319,25 @@ namespace DedicatedServerMultiplayerSample.Server
             return false;
         }
 
+        public void Dispose()
+        {
+            if (m_Disposed)
+            {
+                return;
+            }
+
+            m_Disposed = true;
+
+            if (m_SessionManager is IDisposable disposableManager)
+            {
+                disposableManager.Dispose();
+            }
+
+            m_SessionManager = null;
+            m_ServerOptions = null;
+            OnMatchInfoReceived = null;
+            OnAllocationComplete = null;
+        }
     }
 }
 #endif

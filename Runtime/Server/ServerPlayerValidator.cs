@@ -8,9 +8,10 @@ using DedicatedServerMultiplayerSample.Shared;
 namespace DedicatedServerMultiplayerSample.Server
 {
     /// <summary>
-    /// プレイヤーの接続検証を行うクラス
+    /// Validates inbound connection payloads, tracks expected/connected auth identifiers,
+    /// and keeps a cache of per-client metadata for other server systems to query.
     /// </summary>
-    public class ServerPlayerValidator
+    public class ServerPlayerValidator : IDisposable
     {
         // ========== Constants ==========
         private const int k_MaxConnectPayload = 1024;
@@ -21,6 +22,7 @@ namespace DedicatedServerMultiplayerSample.Server
         private readonly List<string> m_ExpectedAuthIds;
         private readonly Dictionary<ulong, string> m_ConnectedAuthIds;
         private readonly Dictionary<ulong, Dictionary<string, object>> m_ConnectionDataMap;
+        private bool m_Disposed;
 
         // ========== Constructor ==========
         public ServerPlayerValidator(
@@ -220,6 +222,18 @@ namespace DedicatedServerMultiplayerSample.Server
             }
 
             m_ConnectedAuthIds.Remove(duplicateClientId);
+        }
+
+        public void Dispose()
+        {
+            if (m_Disposed)
+            {
+                return;
+            }
+
+            m_Disposed = true;
+            m_ConnectedAuthIds.Clear();
+            m_ConnectionDataMap.Clear();
         }
     }
 }
