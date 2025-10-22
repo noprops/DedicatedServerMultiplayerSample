@@ -146,22 +146,20 @@ namespace DedicatedServerMultiplayerSample.Server
                 return (ulong[])_startIdsSnapshot.Clone();
             }
 
-            var handlerMap = new Dictionary<Action, Action<ulong[]>>();
+            Action<ulong[]> wrapper = null;
             var success = await AsyncExtensions.WaitSignalAsync(
                 isAlreadyTrue: () => _startEmitted,
                 subscribe: handler =>
                 {
-                    Action<ulong[]> wrapper = null;
                     wrapper = _ => handler();
-                    handlerMap[handler] = wrapper;
                     GameStartSucceeded += wrapper;
                 },
                 unsubscribe: handler =>
                 {
-                    if (handlerMap.TryGetValue(handler, out var wrapper))
+                    if (wrapper != null)
                     {
                         GameStartSucceeded -= wrapper;
-                        handlerMap.Remove(handler);
+                        wrapper = null;
                     }
                 },
                 timeout: timeout,
