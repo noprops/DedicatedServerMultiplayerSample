@@ -4,9 +4,9 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
-using UnityEngine.Assertions.Must;
+using DedicatedServerMultiplayerSample.Client;
 
-namespace DedicatedServerMultiplayerSample.Client
+namespace DedicatedServerMultiplayerSample.Samples.Client.UI
 {
     public class MatchmakingUI : MonoBehaviour
     {

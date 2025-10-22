@@ -3,28 +3,36 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Unity.Netcode;
+using Unity.Collections;
 using UnityEngine;
 using DedicatedServerMultiplayerSample.Server;
-using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
     public partial class RockPaperScissorsGame
     {
-        private List<ulong> m_PlayerIds = new();
+        private List<ulong> m_ClientIds = new();
+
+        public IReadOnlyList<ulong> ClientIds => m_ClientIds;
 
         // ========== Server Initialization ==========
         partial void OnServerSpawn()
         {
-            if (!IsServer) return;
+            Phase.Value = GamePhase.WaitingForPlayers;
+            LastResult.Value = default;
+            ParticipantIds.Clear();
+            PlayerNames.Clear();
+
+            NetworkManager.Singleton.OnClientConnectedCallback += OnClientConnected;
             NetworkManager.Singleton.OnClientDisconnectCallback += OnClientDisconnected;
             _ = RunServerGameFlowAsync();
         }
 
         partial void OnServerDespawn()
         {
-            if (!IsServer) return;
+            NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
             NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnected;
+
         }
 
         // ========== Server Main Flow ==========
@@ -40,16 +48,17 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 }
 
                 // 1. ゲーム開始可能状態を待つ
-                var gameStarted = await controller.WaitForGameStartAsync();
+                var gameStartInfo = await controller.WaitForGameStartAsync();
 
-                if (!gameStarted)
+                if (!gameStartInfo.Success)
                 {
-                    HandleStartFailure();
+                    Phase.Value = GamePhase.StartFailed;
                     return;
                 }
 
-                // 2. プレイヤー情報を配信
-                CacheConnectedPlayers();
+                // 2. プレイヤー情報を用意
+                ApplyPlayerIds(gameStartInfo.ParticipantIds);
+                Phase.Value = GamePhase.Choosing;
 
                 // 3. ゲーム実行
                 await ExecuteGameRoundAsync();
@@ -63,36 +72,80 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
         }
 
-        private void HandleStartFailure()
+        private void ApplyPlayerIds(IReadOnlyList<ulong> participantIds)
         {
-            Debug.LogError("[RockPaperScissorsGame] Game start failed");
-            UpdateStatusClientRpc("Game aborted - not enough players. Server will shutdown soon...");
-            // サーバーがシャットダウンするのを待つ（GameSessionControllerが10秒後にシャットダウン）
-        }
+            m_ClientIds = participantIds != null ? new List<ulong>(participantIds) : new List<ulong>();
 
-        private void CacheConnectedPlayers()
-        {
-            var manager = ServerSingleton.Instance?.GameManager;
-            var snapshot = manager?.GetAllConnectedPlayers();
-            if (snapshot == null || snapshot.Count == 0)
+            while (m_ClientIds.Count < RequiredGamePlayers)
             {
-                Debug.LogWarning("[RockPaperScissorsGame] No connected player snapshot available");
-                m_PlayerIds.Clear();
-                return;
+                var cpuId = CpuPlayerBaseId;
+                while (m_ClientIds.Contains(cpuId))
+                {
+                    cpuId++;
+                }
+
+                m_ClientIds.Add(cpuId);
             }
 
-            m_PlayerIds = new List<ulong>(snapshot.Keys);
+            ParticipantIds.Clear();
+            foreach (var id in m_ClientIds)
+            {
+                ParticipantIds.Add(id);
+            }
+
+            UpdatePlayerNames();
         }
+
+        private void UpdatePlayerNames()
+        {
+            PlayerNames.Clear();
+
+            var snapshot = ServerSingleton.Instance?.GameManager?.GetAllConnectedPlayers();
+
+            foreach (var id in m_ClientIds)
+            {
+                FixedString64Bytes name;
+
+                if (IsCpuId(id))
+                {
+                    name = "CPU";
+                }
+                else if (snapshot != null && snapshot.TryGetValue(id, out var payload))
+                {
+                    name = ResolvePlayerName(payload, id);
+                }
+                else
+                {
+                    name = $"Player{id}";
+                }
+
+                PlayerNames.Add(new PlayerNameEntry
+                {
+                    ClientId = id,
+                    Name = name
+                });
+            }
+        }
+
+        private static bool IsCpuId(ulong clientId) => clientId >= CpuPlayerBaseId;
 
         private async Task ExecuteGameRoundAsync()
         {
             Debug.Log("[RockPaperScissorsGame] Starting game round");
 
+            if (m_ClientIds.Count == 0)
+            {
+                Debug.LogError("[RockPaperScissorsGame] Cannot start round without player IDs");
+                return;
+            }
+
             m_GameInProgress = true;
             m_PlayerChoices.Clear();
             m_AllPlayersChosenTcs = new TaskCompletionSource<bool>();
 
-            UpdateStatusClientRpc("Game started! Make your choice.");
+            LastResult.Value = default;
+
+            SeedCpuChoicesIfNeeded();
 
             // 選択を待つ（30秒タイムアウト）
             bool allChose = await WaitForAllChoicesAsync(TimeSpan.FromSeconds(30));
@@ -103,8 +156,13 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
 
             // 未選択のプレイヤーにランダム手を割り当てて切断
-            foreach (var playerId in m_PlayerIds)
+            foreach (var playerId in m_ClientIds)
             {
+                if (IsCpuId(playerId))
+                {
+                    continue;
+                }
+
                 if (!m_PlayerChoices.ContainsKey(playerId))
                 {
                     // ランダム手を割り当て
@@ -117,8 +175,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 }
             }
 
-            // 結果を処理・送信
-            ProcessAndSendResults();
+            ResolveRound();
 
             m_GameInProgress = false;
         }
@@ -131,23 +188,16 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             return await Task.WhenAny(choicesTask, timeoutTask) == choicesTask;
         }
 
-        private void ProcessAndSendResults()
-        {
-            var players = new List<ulong>(m_PlayerChoices.Keys);
-            if (players.Count < 2) return;
-
-            ulong p1 = players[0], p2 = players[1];
-            Hand h1 = m_PlayerChoices[p1], h2 = m_PlayerChoices[p2];
-
-            var result1 = DetermineResult(h1, h2);
-            var result2 = DetermineResult(h2, h1);
-
-            SendGameResultClientRpc(p1, h1, result1, p2, h2, result2);
-        }
-
         private void OnClientDisconnected(ulong clientId)
         {
             if (!IsServer) return;
+
+            if (IsCpuId(clientId))
+            {
+                return;
+            }
+
+            UpdatePlayerNames();
 
             // ゲーム中で、まだ選択していない場合はランダム手を割り当て
             if (m_GameInProgress && !m_PlayerChoices.ContainsKey(clientId))
@@ -155,7 +205,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 AssignRandomHandToPlayer(clientId, "disconnected");
 
                 // 必要な人数分の選択が揃ったらTCSを完了
-                if (m_PlayerChoices.Count >= 2)
+                if (m_PlayerChoices.Count >= m_ClientIds.Count)
                 {
                     m_AllPlayersChosenTcs?.TrySetResult(true);
                 }
@@ -167,11 +217,31 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
         }
 
+        private void SeedCpuChoicesIfNeeded()
+        {
+            foreach (var playerId in m_ClientIds)
+            {
+                if (IsCpuId(playerId) && !m_PlayerChoices.ContainsKey(playerId))
+                {
+                    AssignRandomHandToPlayer(playerId, "cpu");
+                }
+            }
+
+            if (m_PlayerChoices.Count >= m_ClientIds.Count)
+            {
+                m_AllPlayersChosenTcs?.TrySetResult(true);
+            }
+        }
+
         private void AssignRandomHandToPlayer(ulong playerId, string reason)
         {
             var randomHand = (Hand)UnityEngine.Random.Range(1, 4); // Rock(1), Paper(2), Scissors(3)
             m_PlayerChoices[playerId] = randomHand;
             Debug.Log($"[RockPaperScissorsGame] Auto-assigned {randomHand} to {reason} player {playerId}");
+            if (m_PlayerChoices.Count >= m_ClientIds.Count)
+            {
+                m_AllPlayersChosenTcs?.TrySetResult(true);
+            }
         }
 
         // ========== ServerRpc Implementation ==========
@@ -187,28 +257,83 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
 
             m_PlayerChoices[clientId] = choice;
-            Debug.Log($"[Server] Choice received: {choice} from {clientId} ({m_PlayerChoices.Count}/2)");
+            Debug.Log($"[Server] Choice received: {choice} from {clientId} ({m_PlayerChoices.Count}/{m_ClientIds.Count})");
 
-            if (m_PlayerChoices.Count >= 2)
+            if (m_PlayerChoices.Count >= m_ClientIds.Count)
             {
                 m_AllPlayersChosenTcs?.TrySetResult(true);
-            }
-            else
-            {
-                UpdateStatusClientRpc($"Waiting for other player... ({m_PlayerChoices.Count}/2)");
             }
         }
 
         // ========== Helper Methods ==========
-        private GameResult DetermineResult(Hand myHand, Hand opponentHand)
+        private static RoundOutcome DetermineOutcome(Hand myHand, Hand opponentHand)
         {
-            if (myHand == opponentHand) return GameResult.Draw;
+            if (myHand == opponentHand)
+            {
+                return RoundOutcome.Draw;
+            }
 
             return ((myHand == Hand.Rock && opponentHand == Hand.Scissors) ||
                     (myHand == Hand.Paper && opponentHand == Hand.Rock) ||
                     (myHand == Hand.Scissors && opponentHand == Hand.Paper))
-                ? GameResult.Win
-                : GameResult.Lose;
+                ? RoundOutcome.Win
+                : RoundOutcome.Lose;
+        }
+
+        private void ResolveRound()
+        {
+            if (m_ClientIds.Count < 2)
+            {
+                Debug.LogWarning("[RockPaperScissorsGame] Not enough participants to resolve round");
+                return;
+            }
+
+            ulong p1 = m_ClientIds[0];
+            ulong p2 = m_ClientIds[1];
+
+            if (!m_PlayerChoices.TryGetValue(p1, out var h1))
+            {
+                h1 = Hand.None;
+            }
+
+            if (!m_PlayerChoices.TryGetValue(p2, out var h2))
+            {
+                h2 = Hand.None;
+            }
+
+            var result = new RpsResult
+            {
+                P1 = p1,
+                P2 = p2,
+                H1 = h1,
+                H2 = h2,
+                P1Outcome = (byte)DetermineOutcome(h1, h2),
+                P2Outcome = (byte)DetermineOutcome(h2, h1)
+            };
+
+            Phase.Value = GamePhase.Resolving;
+            LastResult.Value = result;
+            Phase.Value = GamePhase.Finished;
+        }
+
+        private void OnClientConnected(ulong clientId)
+        {
+            if (!IsServer) return;
+
+            UpdatePlayerNames();
+        }
+
+        private static FixedString64Bytes ResolvePlayerName(Dictionary<string, object> payload, ulong clientId)
+        {
+            if (payload != null &&
+                payload.TryGetValue("playerName", out var value) &&
+                value is string name &&
+                !string.IsNullOrWhiteSpace(name))
+            {
+                return name;
+            }
+
+            return $"Player{clientId}";
         }
     }
 }

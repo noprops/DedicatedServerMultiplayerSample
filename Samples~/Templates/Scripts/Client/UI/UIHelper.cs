@@ -5,7 +5,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace DedicatedServerMultiplayerSample.Client
+namespace DedicatedServerMultiplayerSample.Samples.Client.UI
 {
     public static class UIHelper
     {

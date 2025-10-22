@@ -207,7 +207,7 @@ namespace DedicatedServerMultiplayerSample.Server
             }
         }
 
-        // ========== シーンロード（TCSでシンプルに） ==========
+        // ========== シーンロード ==========
         private async Task<bool> LoadSceneAsync(string sceneName, int timeout = 5000)
         {
             var loadTcs = new TaskCompletionSource<bool>();
@@ -290,7 +290,6 @@ namespace DedicatedServerMultiplayerSample.Server
                 response.Pending = false;
             }
         }
-
 
         private async Task WaitForSceneAndApproveAsync(NetworkManager.ConnectionApprovalResponse response)
         {
