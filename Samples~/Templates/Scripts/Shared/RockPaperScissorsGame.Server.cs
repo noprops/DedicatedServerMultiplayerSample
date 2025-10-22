@@ -14,9 +14,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         private List<ulong> m_ClientIds = new();
         private bool m_SessionSubscribed;
 
-        public IReadOnlyList<ulong> ClientIds => m_ClientIds;
-
-#if UNITY_SERVER || ENABLE_UCS_SERVER
         private void OnEnable()
         {
             TrySubscribeToSession();
@@ -26,7 +23,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             TryUnsubscribeFromSession();
         }
-#endif
 
         // ========== Server Initialization ==========
         partial void OnServerSpawn()

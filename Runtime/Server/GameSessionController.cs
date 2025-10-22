@@ -45,7 +45,6 @@ namespace DedicatedServerMultiplayerSample.Server
 
         private bool m_StartEmitted;
         private bool m_StartFailed;
-        private ulong[] m_StartIdsSnapshot = Array.Empty<ulong>();
 
         #region Unity lifecycle
 
@@ -115,7 +114,6 @@ namespace DedicatedServerMultiplayerSample.Server
 
             m_StartEmitted = false;
             m_StartFailed = false;
-            m_StartIdsSnapshot = Array.Empty<ulong>();
             GameStartSucceeded = null;
             GameStartFailed = null;
             GameEnded = null;
@@ -143,12 +141,12 @@ namespace DedicatedServerMultiplayerSample.Server
         {
             if (_startEmitted)
             {
-                return (ulong[])_startIdsSnapshot.Clone();
+                return m_PlayerTracker?.GetKnownClientIds()?.ToArray() ?? Array.Empty<ulong>();
             }
 
             Action<ulong[]> wrapper = null;
             var success = await AsyncExtensions.WaitSignalAsync(
-                isAlreadyTrue: () => _startEmitted,
+                isAlreadyTrue: () => m_StartEmitted,
                 subscribe: handler =>
                 {
                     wrapper = _ => handler();
@@ -170,7 +168,7 @@ namespace DedicatedServerMultiplayerSample.Server
                 throw new TimeoutException("Game start did not succeed before the timeout elapsed.");
             }
 
-            return (ulong[])_startIdsSnapshot.Clone();
+            return m_PlayerTracker?.GetKnownClientIds()?.ToArray() ?? Array.Empty<ulong>();
         }
 
         /// <summary>
@@ -184,7 +182,7 @@ namespace DedicatedServerMultiplayerSample.Server
             }
 
             var success = await AsyncExtensions.WaitSignalAsync(
-                isAlreadyTrue: () => _startFailed,
+                isAlreadyTrue: () => m_StartFailed,
                 subscribe: handler => GameStartFailed += handler,
                 unsubscribe: handler => GameStartFailed -= handler,
                 timeout: timeout,
@@ -298,19 +296,17 @@ namespace DedicatedServerMultiplayerSample.Server
                 case SessionState.InGame:
                     m_StartFailed = false;
                     m_StartEmitted = true;
-                    m_StartIdsSnapshot = CollectKnownPlayerIds().ToArray();
-                    GameStartSucceeded?.Invoke((ulong[])m_StartIdsSnapshot.Clone());
+                    var ids = m_PlayerTracker.GetKnownClientIds().ToArray();
+                    GameStartSucceeded?.Invoke((ulong[])ids.Clone());
                     break;
                 case SessionState.StartFailed:
                     m_StartFailed = true;
                     m_StartEmitted = false;
-                    m_StartIdsSnapshot = Array.Empty<ulong>();
                     GameStartFailed?.Invoke();
                     break;
                 case SessionState.Failed:
                     m_StartFailed = true;
                     m_StartEmitted = false;
-                    m_StartIdsSnapshot = Array.Empty<ulong>();
                     GameStartFailed?.Invoke();
                     GameEnded?.Invoke();
                     break;
@@ -321,40 +317,6 @@ namespace DedicatedServerMultiplayerSample.Server
         }
 
         /// <summary>
-        /// Builds a unique list of all players the tracker currently knows about.
-        /// </summary>
-        private List<ulong> CollectKnownPlayerIds()
-        {
-            if (m_PlayerTracker == null)
-            {
-                return new List<ulong>();
-            }
-
-            var connected = m_PlayerTracker.ConnectedClientIds;
-            var disconnected = m_PlayerTracker.DisconnectedClientIds;
-
-            var seen = new HashSet<ulong>();
-            var result = new List<ulong>(connected.Count + disconnected.Count);
-
-            foreach (var id in connected)
-            {
-                if (seen.Add(id))
-                {
-                    result.Add(id);
-                }
-            }
-
-            foreach (var id in disconnected)
-            {
-                if (seen.Add(id))
-                {
-                    result.Add(id);
-                }
-            }
-
-            return result;
-        }
-
         #endregion
 
 #endif
