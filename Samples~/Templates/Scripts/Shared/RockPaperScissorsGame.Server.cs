@@ -7,6 +7,7 @@ using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
 using DedicatedServerMultiplayerSample.Server.Bootstrap;
+using DedicatedServerMultiplayerSample.Server.Session;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {

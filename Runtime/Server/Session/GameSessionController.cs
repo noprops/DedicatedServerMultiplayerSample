@@ -36,17 +36,17 @@ namespace DedicatedServerMultiplayerSample.Server.Session
         [SerializeField] private float gameCompletedShutdownDelaySeconds = 10f;
         [SerializeField] private float fatalErrorShutdownDelaySeconds = 5f;
 
-        private SessionState m_State = SessionState.WaitingForPlayers;
-        private ServerConnectionTracker m_ConnectionTracker;
+        private SessionState _state = SessionState.WaitingForPlayers;
+        private ServerConnectionTracker _tracker;
 
-        private DeferredActionScheduler m_ShutdownScheduler;
+        private DeferredActionScheduler _shutdownScheduler;
 
         public event Action<ulong[]> GameStartSucceeded;
         public event Action GameStartFailed;
         public event Action GameEnded;
 
-        private bool m_StartEmitted;
-        private bool m_StartFailed;
+        private bool _startEmitted;
+        private bool _startFailed;
 
         #region Unity lifecycle
 
@@ -64,19 +64,19 @@ namespace DedicatedServerMultiplayerSample.Server.Session
             Instance = this;
             var manager = ServerSingleton.Instance?.GameManager;
             var requiredPlayers = manager?.TeamCount ?? 2;
-            m_ConnectionTracker = manager?.ConnectionTracker;
-            m_ConnectionTracker?.UpdateRequiredPlayers(requiredPlayers);
+            _tracker = manager?.ConnectionTracker;
+            _tracker?.UpdateRequiredPlayers(requiredPlayers);
 
-            if (m_ConnectionTracker != null)
+            if (_tracker != null)
             {
-                m_ConnectionTracker.AllPlayersDisconnected += HandleAllPlayersDisconnected;
+                _tracker.AllPlayersDisconnected += HandleAllPlayersDisconnected;
             }
             else
             {
                 Debug.LogWarning("[Session] Connection tracker unavailable; shutdown scheduling will not respond to disconnects.");
             }
 
-            m_ShutdownScheduler = new DeferredActionScheduler(() => ServerSingleton.Instance?.GameManager?.CloseServer());
+            _shutdownScheduler = new DeferredActionScheduler(() => ServerSingleton.Instance?.GameManager?.CloseServer());
 
             SetState(SessionState.WaitingForPlayers);
         }
@@ -86,16 +86,16 @@ namespace DedicatedServerMultiplayerSample.Server.Session
         /// </summary>
         private void HandleAllPlayersDisconnected()
         {
-            var delay = m_State == SessionState.InGame
+            var delay = _state == SessionState.InGame
                 ? gameCompletedShutdownDelaySeconds
                 : notEnoughPlayersShutdownDelaySeconds;
 
-            var reason = m_State == SessionState.InGame
+            var reason = _state == SessionState.InGame
                 ? "All players disconnected during game"
                 : "All players disconnected";
 
             Debug.Log($"[Session] All players disconnected. Scheduling shutdown in {delay}s.");
-            _ = m_ShutdownScheduler.ScheduleAsync(reason, delay);
+            _ = _shutdownScheduler.ScheduleAsync(reason, delay);
         }
 
         /// <summary>
@@ -111,21 +111,21 @@ namespace DedicatedServerMultiplayerSample.Server.Session
         /// </summary>
         private void OnDestroy()
         {
-            if (m_ConnectionTracker != null)
+            if (_tracker != null)
             {
-                m_ConnectionTracker.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
-                m_ConnectionTracker = null;
+                _tracker.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
+                _tracker = null;
             }
 
-            m_ShutdownScheduler.Dispose();
+            _shutdownScheduler.Dispose();
 
             if (Instance == this)
             {
                 Instance = null;
             }
 
-            m_StartEmitted = false;
-            m_StartFailed = false;
+            _startEmitted = false;
+            _startFailed = false;
             GameStartSucceeded = null;
             GameStartFailed = null;
             GameEnded = null;
@@ -140,7 +140,7 @@ namespace DedicatedServerMultiplayerSample.Server.Session
         /// </summary>
         public void NotifyGameEnded()
         {
-            if (m_State != SessionState.InGame) return;
+            if (_state != SessionState.InGame) return;
 
             Debug.Log("[Session] Game end notified");
             SetState(SessionState.GameEnded);
@@ -151,14 +151,14 @@ namespace DedicatedServerMultiplayerSample.Server.Session
         /// </summary>
         public async Task<ulong[]> WaitForGameStartSucceededAsync(CancellationToken ct = default)
         {
-            if (m_StartEmitted)
+            if (_startEmitted)
             {
                 return GetKnownClientIdsSnapshot();
             }
 
             Action<ulong[]> wrapper = null;
             var success = await AsyncExtensions.WaitSignalAsync(
-                isAlreadyTrue: () => m_StartEmitted,
+                isAlreadyTrue: () => _startEmitted,
                 subscribe: handler =>
                 {
                     wrapper = _ => handler();
@@ -187,13 +187,13 @@ namespace DedicatedServerMultiplayerSample.Server.Session
         /// </summary>
         public async Task WaitForGameStartFailedAsync(CancellationToken ct = default)
         {
-            if (m_StartFailed)
+            if (_startFailed)
             {
                 return;
             }
 
             var success = await AsyncExtensions.WaitSignalAsync(
-                isAlreadyTrue: () => m_StartFailed,
+                isAlreadyTrue: () => _startFailed,
                 subscribe: handler => GameStartFailed += handler,
                 unsubscribe: handler => GameStartFailed -= handler,
                 ct: ct).ConfigureAwait(false);
@@ -209,13 +209,13 @@ namespace DedicatedServerMultiplayerSample.Server.Session
         /// </summary>
         public async Task WaitForGameEndedAsync(TimeSpan timeout = default, CancellationToken ct = default)
         {
-            if (m_State == SessionState.GameEnded || m_State == SessionState.Failed)
+            if (_state == SessionState.GameEnded || _state == SessionState.Failed)
             {
                 return;
             }
 
             var success = await AsyncExtensions.WaitSignalAsync(
-                isAlreadyTrue: () => m_State == SessionState.GameEnded || m_State == SessionState.Failed,
+                isAlreadyTrue: () => _state == SessionState.GameEnded || _state == SessionState.Failed,
                 subscribe: handler => GameEnded += handler,
                 unsubscribe: handler => GameEnded -= handler,
                 timeout: timeout,
@@ -244,7 +244,7 @@ namespace DedicatedServerMultiplayerSample.Server.Session
                 {
                     SetState(SessionState.StartFailed);
                     Debug.LogError("[Session] Timeout: not enough players");
-                    await m_ShutdownScheduler.ScheduleAsync("Not enough players", notEnoughPlayersShutdownDelaySeconds);
+                    await _shutdownScheduler.ScheduleAsync("Not enough players", notEnoughPlayersShutdownDelaySeconds);
                     return;
                 }
 
@@ -254,13 +254,13 @@ namespace DedicatedServerMultiplayerSample.Server.Session
                 await WaitForGameEndedAsync(TimeSpan.Zero).ConfigureAwait(false);
                 Debug.Log("[Session] Game ended");
 
-                await m_ShutdownScheduler.ScheduleAsync("Game completed", gameCompletedShutdownDelaySeconds);
+                await _shutdownScheduler.ScheduleAsync("Game completed", gameCompletedShutdownDelaySeconds);
             }
             catch (Exception e)
             {
                 SetState(SessionState.Failed);
                 Debug.LogError($"[Session] Error: {e.Message}");
-                await m_ShutdownScheduler.ScheduleAsync("Fatal error", fatalErrorShutdownDelaySeconds);
+                await _shutdownScheduler.ScheduleAsync("Fatal error", fatalErrorShutdownDelaySeconds);
             }
             finally
             {
@@ -273,7 +273,7 @@ namespace DedicatedServerMultiplayerSample.Server.Session
         /// </summary>
         private async Task<bool> WaitForPlayersAsync(int timeoutSeconds)
         {
-            if (m_ConnectionTracker == null)
+            if (_tracker == null)
             {
                 Debug.LogWarning("[Session] Connection tracker missing; skipping player wait.");
                 return true;
@@ -282,9 +282,9 @@ namespace DedicatedServerMultiplayerSample.Server.Session
             var clampedSeconds = Mathf.Max(0, timeoutSeconds);
 
             var ok = await AsyncExtensions.WaitSignalAsync(
-                isAlreadyTrue: () => m_ConnectionTracker.HasRequiredPlayers,
-                subscribe: handler => m_ConnectionTracker.RequiredPlayersReady += handler,
-                unsubscribe: handler => m_ConnectionTracker.RequiredPlayersReady -= handler,
+                isAlreadyTrue: () => _tracker.HasRequiredPlayers,
+                subscribe: handler => _tracker.RequiredPlayersReady += handler,
+                unsubscribe: handler => _tracker.RequiredPlayersReady -= handler,
                 timeout: TimeSpan.FromSeconds(clampedSeconds)
             );
 
@@ -305,24 +305,24 @@ namespace DedicatedServerMultiplayerSample.Server.Session
         /// </summary>
         private void SetState(SessionState newState)
         {
-            if (m_State == newState) return;
-            m_State = newState;
+            if (_state == newState) return;
+            _state = newState;
             switch (newState)
             {
                 case SessionState.InGame:
-                    m_StartFailed = false;
-                    m_StartEmitted = true;
+                    _startFailed = false;
+                    _startEmitted = true;
                     var ids = GetKnownClientIdsSnapshot();
                     GameStartSucceeded?.Invoke((ulong[])ids.Clone());
                     break;
                 case SessionState.StartFailed:
-                    m_StartFailed = true;
-                    m_StartEmitted = false;
+                    _startFailed = true;
+                    _startEmitted = false;
                     GameStartFailed?.Invoke();
                     break;
                 case SessionState.Failed:
-                    m_StartFailed = true;
-                    m_StartEmitted = false;
+                    _startFailed = true;
+                    _startEmitted = false;
                     GameStartFailed?.Invoke();
                     GameEnded?.Invoke();
                     break;
@@ -337,7 +337,7 @@ namespace DedicatedServerMultiplayerSample.Server.Session
         /// </summary>
         private ulong[] GetKnownClientIdsSnapshot()
         {
-            return m_ConnectionTracker?.GetKnownClientIds()?.ToArray() ?? Array.Empty<ulong>();
+            return _tracker?.GetKnownClientIds()?.ToArray() ?? Array.Empty<ulong>();
         }
 
         /// <summary>
