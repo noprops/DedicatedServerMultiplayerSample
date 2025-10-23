@@ -4,7 +4,6 @@ using System.Threading.Tasks;
 using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
-using DedicatedServerMultiplayerSample.Server;
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
     public partial class RockPaperScissorsGame : NetworkBehaviour

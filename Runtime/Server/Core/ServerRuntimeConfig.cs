@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using Unity.Services.Multiplay;
 using UnityEngine;
 
-namespace DedicatedServerMultiplayerSample.Server
+namespace DedicatedServerMultiplayerSample.Server.Core
 {
     /// <summary>
     /// Captures and exposes server runtime configuration sourced from command line arguments and Multiplay server.json.

@@ -1,7 +1,7 @@
 #if UNITY_SERVER || ENABLE_UCS_SERVER
 using UnityEngine;
 
-namespace DedicatedServerMultiplayerSample.Server
+namespace DedicatedServerMultiplayerSample.Server.Infrastructure
 {
     /// <summary>
     /// サーバー専用のパフォーマンス最適化設定

@@ -9,7 +9,7 @@ using UnityEngine;
 using Unity.Services.Authentication.Server;
 using Unity.Services.Matchmaker.Http;
 
-namespace DedicatedServerMultiplayerSample.Server
+namespace DedicatedServerMultiplayerSample.Server.Core
 {
     /// <summary>
     /// Wraps Unity Multiplay session APIs: authenticates the server, starts the session manager,

@@ -6,8 +6,10 @@ using System.Threading.Tasks;
 using Unity.Netcode;
 using UnityEngine;
 using DedicatedServerMultiplayerSample.Shared;
+using DedicatedServerMultiplayerSample.Server.Core;
+using DedicatedServerMultiplayerSample.Server.Bootstrap;
 
-namespace DedicatedServerMultiplayerSample.Server
+namespace DedicatedServerMultiplayerSample.Server.Session
 {
     /// <summary>
     /// ゲームセッションの進行（プレイヤー待機〜ゲーム終了〜シャットダウン）を管理するコンポーネント。
@@ -35,7 +37,7 @@ namespace DedicatedServerMultiplayerSample.Server
         [SerializeField] private float fatalErrorShutdownDelaySeconds = 5f;
 
         private SessionState m_State = SessionState.WaitingForPlayers;
-        private PlayerConnectionTracker m_PlayerTracker;
+        private ServerConnectionTracker m_ConnectionTracker;
 
         private DeferredActionScheduler m_ShutdownScheduler;
 
@@ -60,10 +62,21 @@ namespace DedicatedServerMultiplayerSample.Server
             }
 
             Instance = this;
-            var requiredPlayers = ServerSingleton.Instance?.GameManager?.TeamCount ?? 2;
-            m_PlayerTracker = new PlayerConnectionTracker(requiredPlayers);
+            var manager = ServerSingleton.Instance?.GameManager;
+            var requiredPlayers = manager?.TeamCount ?? 2;
+            m_ConnectionTracker = manager?.ConnectionTracker;
+            m_ConnectionTracker?.UpdateRequiredPlayers(requiredPlayers);
+
+            if (m_ConnectionTracker != null)
+            {
+                m_ConnectionTracker.AllPlayersDisconnected += HandleAllPlayersDisconnected;
+            }
+            else
+            {
+                Debug.LogWarning("[Session] Connection tracker unavailable; shutdown scheduling will not respond to disconnects.");
+            }
+
             m_ShutdownScheduler = new DeferredActionScheduler(() => ServerSingleton.Instance?.GameManager?.CloseServer());
-            m_PlayerTracker.AllPlayersDisconnected += HandleAllPlayersDisconnected;
 
             SetState(SessionState.WaitingForPlayers);
         }
@@ -98,11 +111,10 @@ namespace DedicatedServerMultiplayerSample.Server
         /// </summary>
         private void OnDestroy()
         {
-            if (m_PlayerTracker != null)
+            if (m_ConnectionTracker != null)
             {
-                m_PlayerTracker.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
-                m_PlayerTracker.Dispose();
-                m_PlayerTracker = null;
+                m_ConnectionTracker.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
+                m_ConnectionTracker = null;
             }
 
             m_ShutdownScheduler.Dispose();
@@ -141,7 +153,7 @@ namespace DedicatedServerMultiplayerSample.Server
         {
             if (m_StartEmitted)
             {
-                return m_PlayerTracker?.GetKnownClientIds()?.ToArray() ?? Array.Empty<ulong>();
+                return GetKnownClientIdsSnapshot();
             }
 
             Action<ulong[]> wrapper = null;
@@ -167,7 +179,7 @@ namespace DedicatedServerMultiplayerSample.Server
                 throw new TimeoutException("Game start did not succeed before the timeout elapsed.");
             }
 
-            return m_PlayerTracker?.GetKnownClientIds()?.ToArray() ?? Array.Empty<ulong>();
+            return GetKnownClientIdsSnapshot();
         }
 
         /// <summary>
@@ -261,12 +273,18 @@ namespace DedicatedServerMultiplayerSample.Server
         /// </summary>
         private async Task<bool> WaitForPlayersAsync(int timeoutSeconds)
         {
+            if (m_ConnectionTracker == null)
+            {
+                Debug.LogWarning("[Session] Connection tracker missing; skipping player wait.");
+                return true;
+            }
+
             var clampedSeconds = Mathf.Max(0, timeoutSeconds);
 
             var ok = await AsyncExtensions.WaitSignalAsync(
-                isAlreadyTrue: () => m_PlayerTracker.HasRequiredPlayers,
-                subscribe: handler => m_PlayerTracker.RequiredPlayersReady += handler,
-                unsubscribe: handler => m_PlayerTracker.RequiredPlayersReady -= handler,
+                isAlreadyTrue: () => m_ConnectionTracker.HasRequiredPlayers,
+                subscribe: handler => m_ConnectionTracker.RequiredPlayersReady += handler,
+                unsubscribe: handler => m_ConnectionTracker.RequiredPlayersReady -= handler,
                 timeout: TimeSpan.FromSeconds(clampedSeconds)
             );
 
@@ -294,7 +312,7 @@ namespace DedicatedServerMultiplayerSample.Server
                 case SessionState.InGame:
                     m_StartFailed = false;
                     m_StartEmitted = true;
-                    var ids = m_PlayerTracker.GetKnownClientIds().ToArray();
+                    var ids = GetKnownClientIdsSnapshot();
                     GameStartSucceeded?.Invoke((ulong[])ids.Clone());
                     break;
                 case SessionState.StartFailed:
@@ -312,6 +330,14 @@ namespace DedicatedServerMultiplayerSample.Server
                     GameEnded?.Invoke();
                     break;
             }
+        }
+
+        /// <summary>
+        /// Returns a snapshot of known clients for event consumers.
+        /// </summary>
+        private ulong[] GetKnownClientIdsSnapshot()
+        {
+            return m_ConnectionTracker?.GetKnownClientIds()?.ToArray() ?? Array.Empty<ulong>();
         }
 
         /// <summary>

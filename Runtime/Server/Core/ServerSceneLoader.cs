@@ -6,7 +6,7 @@ using System.Threading.Tasks;
 using Unity.Netcode;
 using UnityEngine.SceneManagement;
 
-namespace DedicatedServerMultiplayerSample.Server
+namespace DedicatedServerMultiplayerSample.Server.Core
 {
     /// <summary>
     /// Provides a small utility façade around the Netcode scene manager to load a server scene with timeout handling,

@@ -8,7 +8,9 @@ using Unity.Netcode.Transports.UTP;
 using UnityEngine;
 using Unity.Services.Matchmaker.Models;
 
-namespace DedicatedServerMultiplayerSample.Server
+using DedicatedServerMultiplayerSample.Server.Core;
+
+namespace DedicatedServerMultiplayerSample.Server.Infrastructure
 {
     /// <summary>
     /// Handles runtime configuration capture, Multiplay allocation, and transport setup.

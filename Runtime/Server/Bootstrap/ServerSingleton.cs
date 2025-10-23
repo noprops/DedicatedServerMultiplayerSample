@@ -2,8 +2,10 @@ using System.Threading.Tasks;
 using Unity.Netcode;
 using Unity.Services.Core;
 using UnityEngine;
+using DedicatedServerMultiplayerSample.Server.Core;
+using DedicatedServerMultiplayerSample.Server.Infrastructure;
 
-namespace DedicatedServerMultiplayerSample.Server
+namespace DedicatedServerMultiplayerSample.Server.Bootstrap
 {
     public class ServerSingleton : MonoBehaviour
     {

@@ -5,7 +5,9 @@ using Unity.Services.Multiplayer;
 using Unity.Services.Matchmaker.Models;
 using UnityEngine;
 
-namespace DedicatedServerMultiplayerSample.Server
+using DedicatedServerMultiplayerSample.Server.Core;
+
+namespace DedicatedServerMultiplayerSample.Server.Infrastructure
 {
     /// <summary>
     /// Multiplayアロケーション処理をシンプルにするヘルパー
