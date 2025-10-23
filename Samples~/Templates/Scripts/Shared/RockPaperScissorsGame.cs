@@ -33,11 +33,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             readPerm: NetworkVariableReadPermission.Everyone,
             writePerm: NetworkVariableWritePermission.Server);
 
-        // ========== Server State ==========
-        private readonly Dictionary<ulong, Hand> m_PlayerChoices = new();
-        private TaskCompletionSource<bool> m_AllPlayersChosenTcs;
-        private bool m_GameInProgress = false;
-
         // ========== Unity Lifecycle ==========
 
         private void Awake()

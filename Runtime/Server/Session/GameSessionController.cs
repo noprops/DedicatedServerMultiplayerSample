@@ -117,7 +117,7 @@ namespace DedicatedServerMultiplayerSample.Server.Session
                 _tracker = null;
             }
 
-            _shutdownScheduler.Dispose();
+            _shutdownScheduler?.Dispose();
 
             if (Instance == this)
             {
@@ -313,7 +313,7 @@ namespace DedicatedServerMultiplayerSample.Server.Session
                     _startFailed = false;
                     _startEmitted = true;
                     var ids = GetKnownClientIdsSnapshot();
-                    GameStartSucceeded?.Invoke((ulong[])ids.Clone());
+                    GameStartSucceeded?.Invoke(ids);
                     break;
                 case SessionState.StartFailed:
                     _startFailed = true;
