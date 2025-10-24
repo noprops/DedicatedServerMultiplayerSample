@@ -18,16 +18,16 @@ namespace DedicatedServerMultiplayerSample.Server.Core
     public class ServerMultiplayIntegration : IDisposable
     {
         // ========== Member Variables ==========
-        private IMultiplaySessionManager m_SessionManager;
-        private MultiplayServerOptions m_ServerOptions;
-        private readonly ServerRuntimeConfig m_RuntimeConfig;
-        private readonly int m_DefaultMaxPlayers;
-        private bool m_Disposed;
+        private IMultiplaySessionManager _sessionManager;
+        private MultiplayServerOptions _serverOptions;
+        private readonly ServerRuntimeConfig _runtimeConfig;
+        private readonly int _defaultMaxPlayers;
+        private bool _disposed;
 
         public ServerMultiplayIntegration(ServerRuntimeConfig runtimeConfig, int defaultMaxPlayers)
         {
-            m_RuntimeConfig = runtimeConfig ?? throw new ArgumentNullException(nameof(runtimeConfig));
-            m_DefaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
+            _runtimeConfig = runtimeConfig ?? throw new ArgumentNullException(nameof(runtimeConfig));
+            _defaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
         }
 
         // ========== Events ==========
@@ -35,7 +35,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         public event Action<IMultiplayAllocation> OnAllocationComplete;
 
         // ========== Public Properties ==========
-        public bool IsConnected => m_SessionManager != null;
+        public bool IsConnected => _sessionManager != null;
 
         // ========== Public Methods ==========
 
@@ -44,9 +44,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         /// </summary>
         public async Task SetPlayerReadinessAsync(bool ready)
         {
-            if (m_SessionManager != null)
+            if (_sessionManager != null)
             {
-                await m_SessionManager.SetPlayerReadinessAsync(ready);
+                await _sessionManager.SetPlayerReadinessAsync(ready);
                 Debug.Log($"[ServerMultiplayIntegration] Player readiness set to: {ready}");
             }
             else
@@ -60,12 +60,12 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         /// </summary>
         public async Task LockSessionAsync()
         {
-            if (m_SessionManager != null)
+            if (_sessionManager != null)
             {
                 try
                 {
                     // セッションを取得
-                    var session = m_SessionManager.Session;
+                    var session = _sessionManager.Session;
                     if (session != null)
                     {
                         // IHostSessionとして取得（サーバーはホストなので可能）
@@ -114,14 +114,14 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     var callbacks = new MultiplaySessionManagerEventCallbacks();
                     callbacks.Allocated += HandleServerAllocated;
 
-                    var serverName = !string.IsNullOrEmpty(m_RuntimeConfig?.GeneratedServerName)
-                        ? m_RuntimeConfig.GeneratedServerName
+                    var serverName = !string.IsNullOrEmpty(_runtimeConfig?.GeneratedServerName)
+                        ? _runtimeConfig.GeneratedServerName
                         : "GameServer";
                     Debug.Log($"[ServerMultiplayIntegration] Using server name: {serverName}");
                     
-                    if (m_RuntimeConfig != null && m_RuntimeConfig.ServerConfigAvailable)
+                    if (_runtimeConfig != null && _runtimeConfig.ServerConfigAvailable)
                     {
-                        Debug.Log($"[ServerMultiplayIntegration] ServerConfig detected - ServerId: {m_RuntimeConfig.ServerId}, AllocationId: {m_RuntimeConfig.AllocationId}");
+                        Debug.Log($"[ServerMultiplayIntegration] ServerConfig detected - ServerId: {_runtimeConfig.ServerId}, AllocationId: {_runtimeConfig.AllocationId}");
                     }
                     else
                     {
@@ -129,7 +129,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     }
 
                     // セッションマネージャーのオプション設定
-                    m_ServerOptions = new MultiplayServerOptions(
+                    _serverOptions = new MultiplayServerOptions(
                         serverName: serverName,
                         gameType: "default",
                         buildId: null,
@@ -141,15 +141,15 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     {
                         SessionOptions = new SessionOptions()
                         {
-                        MaxPlayers = (ushort)Mathf.Clamp(m_DefaultMaxPlayers, 1, ushort.MaxValue)
+                        MaxPlayers = (ushort)Mathf.Clamp(_defaultMaxPlayers, 1, ushort.MaxValue)
                     }.WithDirectNetwork(),
 
-                        MultiplayServerOptions = m_ServerOptions,
+                        MultiplayServerOptions = _serverOptions,
                         Callbacks = callbacks
                     };
 
                     // セッションマネージャーを開始
-                    m_SessionManager = await MultiplayerServerService.Instance.StartMultiplaySessionManagerAsync(sessionManagerOptions);
+                    _sessionManager = await MultiplayerServerService.Instance.StartMultiplaySessionManagerAsync(sessionManagerOptions);
                     Debug.Log("[ServerMultiplayIntegration] Session manager started successfully");
                     return true;
                 }
@@ -171,7 +171,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         /// </summary>
         public ISession GetCurrentSession()
         {
-            return m_SessionManager?.Session;
+            return _sessionManager?.Session;
         }
 
         /// <summary>
@@ -179,7 +179,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         /// </summary>
         public async Task<MatchmakingResults> GetMatchmakingResultsAsync()
         {
-            if (m_SessionManager == null)
+            if (_sessionManager == null)
             {
                 Debug.LogWarning("[ServerMultiplayIntegration] SessionManager is null");
                 return null;
@@ -187,7 +187,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             try
             {
-                var results = await m_SessionManager.GetAllocationPayloadFromJsonAsAsync<Unity.Services.Matchmaker.Models.MatchmakingResults>();
+                var results = await _sessionManager.GetAllocationPayloadFromJsonAsAsync<Unity.Services.Matchmaker.Models.MatchmakingResults>();
                 return results;
             }
             catch (Exception e)
@@ -207,7 +207,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         public void UpdateServerMetadata(MatchmakingResults results)
         {
-            if (m_ServerOptions == null)
+            if (_serverOptions == null)
             {
                 Debug.LogWarning("[ServerMultiplayIntegration] Server options not initialized; skipping metadata update");
                 return;
@@ -221,7 +221,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             string resolvedMap = null;
             string resolvedGameMode = null;
-            int resolvedPlayerCount = m_DefaultMaxPlayers;
+            int resolvedPlayerCount = _defaultMaxPlayers;
 
             var players = results?.MatchProperties?.Players;
             if (players != null)
@@ -253,7 +253,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             if (string.IsNullOrEmpty(resolvedMap) || string.IsNullOrEmpty(resolvedGameMode))
             {
-                var session = m_SessionManager?.Session;
+                var session = _sessionManager?.Session;
                 if (session != null)
                 {
                     try
@@ -282,8 +282,8 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             resolvedMap ??= "default";
             resolvedGameMode ??= "standard";
 
-            m_ServerOptions.Map = resolvedMap;
-            m_ServerOptions.GameType = resolvedGameMode;
+            _serverOptions.Map = resolvedMap;
+            _serverOptions.GameType = resolvedGameMode;
 
             Debug.Log($"[ServerMultiplayIntegration] Updated server metadata - GameType: {resolvedGameMode}, Map: {resolvedMap}, MaxPlayers: {resolvedPlayerCount}");
 
@@ -321,20 +321,20 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         public void Dispose()
         {
-            if (m_Disposed)
+            if (_disposed)
             {
                 return;
             }
 
-            m_Disposed = true;
+            _disposed = true;
 
-            if (m_SessionManager is IDisposable disposableManager)
+            if (_sessionManager is IDisposable disposableManager)
             {
                 disposableManager.Dispose();
             }
 
-            m_SessionManager = null;
-            m_ServerOptions = null;
+            _sessionManager = null;
+            _serverOptions = null;
             OnMatchInfoReceived = null;
             OnAllocationComplete = null;
         }

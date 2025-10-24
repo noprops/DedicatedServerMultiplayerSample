@@ -11,23 +11,23 @@ namespace DedicatedServerMultiplayerSample.Server.Core
     /// </summary>
     public sealed class ServerConnectionTracker : IDisposable
     {
-        private readonly NetworkManager m_NetworkManager;
-        private readonly ConnectionDirectory m_Directory;
-        private readonly HashSet<ulong> m_DisconnectedClients = new();
+        private readonly NetworkManager _networkManager;
+        private readonly ConnectionDirectory _directory;
+        private readonly HashSet<ulong> _disconnectedClients = new();
 
-        private int m_RequiredPlayers;
-        private bool m_ReadyNotified;
+        private int _requiredPlayers;
+        private bool _readyNotified;
 
         public ServerConnectionTracker(NetworkManager networkManager,
                                        ConnectionDirectory directory,
                                        int requiredPlayers)
         {
-            m_NetworkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
-            m_Directory = directory ?? throw new ArgumentNullException(nameof(directory));
-            m_RequiredPlayers = Math.Max(1, requiredPlayers);
+            _networkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
+            _directory = directory ?? throw new ArgumentNullException(nameof(directory));
+            _requiredPlayers = Math.Max(1, requiredPlayers);
 
-            m_NetworkManager.OnClientConnectedCallback += HandleClientConnected;
-            m_NetworkManager.OnClientDisconnectCallback += HandleClientDisconnected;
+            _networkManager.OnClientConnectedCallback += HandleClientConnected;
+            _networkManager.OnClientDisconnectCallback += HandleClientDisconnected;
 
             CheckRequiredPlayersReached();
         }
@@ -37,51 +37,40 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         public event Action RequiredPlayersReady;
         public event Action AllPlayersDisconnected;
 
-        public bool HasRequiredPlayers => m_Directory.Count >= m_RequiredPlayers;
+        public bool HasRequiredPlayers => _directory.Count >= _requiredPlayers;
 
         public Dictionary<ulong, Dictionary<string, object>> GetAllConnectionData()
         {
-            return m_Directory.GetAllConnectionData();
+            return _directory.GetAllConnectionData();
         }
 
         public IReadOnlyCollection<ulong> GetKnownClientIds()
         {
-            var snapshot = m_Directory.GetAllConnectionData();
+            var snapshot = _directory.GetAllConnectionData();
             var result = new HashSet<ulong>(snapshot.Keys);
-            result.UnionWith(m_DisconnectedClients);
+            result.UnionWith(_disconnectedClients);
             return result;
-        }
-
-        public void UpdateRequiredPlayers(int requiredPlayers)
-        {
-            m_RequiredPlayers = Math.Max(1, requiredPlayers);
-            if (m_Directory.Count < m_RequiredPlayers)
-            {
-                m_ReadyNotified = false;
-            }
-
-            CheckRequiredPlayersReached();
         }
 
         public void Dispose()
         {
-            m_NetworkManager.OnClientConnectedCallback -= HandleClientConnected;
-            m_NetworkManager.OnClientDisconnectCallback -= HandleClientDisconnected;
+            _networkManager.OnClientConnectedCallback -= HandleClientConnected;
+            _networkManager.OnClientDisconnectCallback -= HandleClientDisconnected;
         }
 
         private void HandleClientConnected(ulong clientId)
         {
-            m_DisconnectedClients.Remove(clientId);
+            _disconnectedClients.Remove(clientId);
 
-            if (!m_Directory.TryGetAuthId(clientId, out var authId))
+            if (!_directory.TryGetAuthId(clientId, out var authId))
             {
                 authId = "Unknown";
             }
 
             Debug.Log($"[ConnectionTracker] Client connected. ClientId={clientId}, AuthId={authId}");
-            Debug.Log($"[ConnectionTracker] Total clients: {m_Directory.Count}");
+            Debug.Log($"[ConnectionTracker] Total clients: {_directory.Count}");
 
-            var payload = m_Directory.GetPayload(clientId);
+            var payload = _directory.GetPayload(clientId);
             if (payload is { Count: > 0 })
             {
                 Debug.Log("[ConnectionTracker] Connection payload:");
@@ -97,15 +86,15 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         private void HandleClientDisconnected(ulong clientId)
         {
-            m_Directory.Unregister(clientId);
-            m_DisconnectedClients.Add(clientId);
+            _directory.Unregister(clientId);
+            _disconnectedClients.Add(clientId);
 
             Debug.Log($"[ConnectionTracker] Client disconnected. ClientId={clientId}");
-            Debug.Log($"[ConnectionTracker] Remaining clients: {m_Directory.Count}");
+            Debug.Log($"[ConnectionTracker] Remaining clients: {_directory.Count}");
 
-            if (m_Directory.Count == 0)
+            if (_directory.Count == 0)
             {
-                m_ReadyNotified = false;
+                _readyNotified = false;
                 AllPlayersDisconnected?.Invoke();
             }
 
@@ -114,12 +103,12 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         private void CheckRequiredPlayersReached()
         {
-            if (m_ReadyNotified || !HasRequiredPlayers)
+            if (_readyNotified || !HasRequiredPlayers)
             {
                 return;
             }
 
-            m_ReadyNotified = true;
+            _readyNotified = true;
             RequiredPlayersReady?.Invoke();
         }
     }

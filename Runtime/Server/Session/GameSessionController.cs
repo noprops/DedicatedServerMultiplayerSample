@@ -63,9 +63,7 @@ namespace DedicatedServerMultiplayerSample.Server.Session
 
             Instance = this;
             var manager = ServerSingleton.Instance?.GameManager;
-            var requiredPlayers = manager?.TeamCount ?? 2;
             _tracker = manager?.ConnectionTracker;
-            _tracker?.UpdateRequiredPlayers(requiredPlayers);
 
             if (_tracker != null)
             {

@@ -10,11 +10,11 @@ namespace DedicatedServerMultiplayerSample.Server.Core
     /// </summary>
     public sealed class ConnectionDirectory
     {
-        private readonly Dictionary<ulong, Dictionary<string, object>> m_PayloadByClient = new();
-        private readonly Dictionary<ulong, string> m_AuthByClient = new();
-        private readonly Dictionary<string, int> m_AuthRefCounts = new(StringComparer.Ordinal);
+        private readonly Dictionary<ulong, Dictionary<string, object>> _payloadByClient = new();
+        private readonly Dictionary<ulong, string> _authByClient = new();
+        private readonly Dictionary<string, int> _authRefCounts = new(StringComparer.Ordinal);
 
-        public int Count => m_AuthByClient.Count;
+        public int Count => _authByClient.Count;
 
         public void Register(ulong clientId, Dictionary<string, object> payload)
         {
@@ -24,30 +24,30 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             var authId = ExtractAuthId(payload) ?? "Unknown";
 
-            if (m_AuthByClient.TryGetValue(clientId, out var previousAuth))
+            if (_authByClient.TryGetValue(clientId, out var previousAuth))
             {
                 DecrementAuth(previousAuth);
             }
 
-            m_PayloadByClient[clientId] = payload;
-            m_AuthByClient[clientId] = authId;
+            _payloadByClient[clientId] = payload;
+            _authByClient[clientId] = authId;
             IncrementAuth(authId);
         }
 
         public void Unregister(ulong clientId)
         {
-            if (m_AuthByClient.TryGetValue(clientId, out var authId))
+            if (_authByClient.TryGetValue(clientId, out var authId))
             {
-                m_AuthByClient.Remove(clientId);
+                _authByClient.Remove(clientId);
                 DecrementAuth(authId);
             }
 
-            m_PayloadByClient.Remove(clientId);
+            _payloadByClient.Remove(clientId);
         }
 
         public bool TryGetAuthId(ulong clientId, out string authId)
         {
-            return m_AuthByClient.TryGetValue(clientId, out authId);
+            return _authByClient.TryGetValue(clientId, out authId);
         }
 
         public bool IsAuthConnected(string authId)
@@ -57,18 +57,18 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 return false;
             }
 
-            return m_AuthRefCounts.TryGetValue(authId, out var count) && count > 0;
+            return _authRefCounts.TryGetValue(authId, out var count) && count > 0;
         }
 
         public Dictionary<string, object> GetPayload(ulong clientId)
         {
-            return m_PayloadByClient.TryGetValue(clientId, out var payload) ? payload : null;
+            return _payloadByClient.TryGetValue(clientId, out var payload) ? payload : null;
         }
 
         public Dictionary<ulong, Dictionary<string, object>> GetAllConnectionData()
         {
-            var snapshot = new Dictionary<ulong, Dictionary<string, object>>(m_PayloadByClient.Count);
-            foreach (var pair in m_PayloadByClient)
+            var snapshot = new Dictionary<ulong, Dictionary<string, object>>(_payloadByClient.Count);
+            foreach (var pair in _payloadByClient)
             {
                 snapshot[pair.Key] = new Dictionary<string, object>(pair.Value);
             }
@@ -78,9 +78,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         public void Clear()
         {
-            m_PayloadByClient.Clear();
-            m_AuthByClient.Clear();
-            m_AuthRefCounts.Clear();
+            _payloadByClient.Clear();
+            _authByClient.Clear();
+            _authRefCounts.Clear();
         }
 
         public static string ExtractAuthId(Dictionary<string, object> payload)
@@ -103,30 +103,30 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         private void IncrementAuth(string authId)
         {
-            if (m_AuthRefCounts.TryGetValue(authId, out var count))
+            if (_authRefCounts.TryGetValue(authId, out var count))
             {
-                m_AuthRefCounts[authId] = count + 1;
+                _authRefCounts[authId] = count + 1;
             }
             else
             {
-                m_AuthRefCounts[authId] = 1;
+                _authRefCounts[authId] = 1;
             }
         }
 
         private void DecrementAuth(string authId)
         {
-            if (!m_AuthRefCounts.TryGetValue(authId, out var count))
+            if (!_authRefCounts.TryGetValue(authId, out var count))
             {
                 return;
             }
 
             if (count <= 1)
             {
-                m_AuthRefCounts.Remove(authId);
+                _authRefCounts.Remove(authId);
             }
             else
             {
-                m_AuthRefCounts[authId] = count - 1;
+                _authRefCounts[authId] = count - 1;
             }
         }
     }

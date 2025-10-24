@@ -14,28 +14,28 @@ namespace DedicatedServerMultiplayerSample.Server.Core
     /// </summary>
     public class ServerGameManager : IDisposable
     {
-        private readonly NetworkManager m_NetworkManager;
-        private readonly int m_DefaultMaxPlayers;
+        private readonly NetworkManager _networkManager;
+        private readonly int _defaultMaxPlayers;
 
-        private ServerRuntimeConfig m_RuntimeConfig;
-        private ServerMultiplayIntegration m_MultiplayIntegration;
-        private readonly ConnectionDirectory m_ConnectionDirectory = new();
-        private ServerConnectionGate m_ConnectionGate;
-        private ServerConnectionTracker m_ConnectionTracker;
-        private ServerSceneLoader m_SceneLoader;
-        private readonly List<string> m_ExpectedAuthIds = new();
+        private ServerRuntimeConfig _runtimeConfig;
+        private ServerMultiplayIntegration _multiplayIntegration;
+        private readonly ConnectionDirectory _connectionDirectory = new();
+        private ServerConnectionGate _connectionGate;
+        private ServerConnectionTracker _connectionTracker;
+        private ServerSceneLoader _sceneLoader;
+        private readonly List<string> _expectedAuthIds = new();
 
-        private int m_TeamCount = 2;
-        private bool m_IsSceneLoaded;
-        private bool m_IsDisposed;
+        private int _teamCount = 2;
+        private bool _isSceneLoaded;
+        private bool _isDisposed;
 
-        public int TeamCount => m_TeamCount;
-        public ServerConnectionTracker ConnectionTracker => m_ConnectionTracker;
+        public int TeamCount => _teamCount;
+        public ServerConnectionTracker ConnectionTracker => _connectionTracker;
 
         public ServerGameManager(NetworkManager networkManager, int defaultMaxPlayers)
         {
-            m_NetworkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
-            m_DefaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
+            _networkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
+            _defaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
             Debug.Log("[ServerGameManager] Created");
         }
 
@@ -45,7 +45,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             try
             {
-                var configurator = new ServerAllocationConfigurator(m_NetworkManager, m_DefaultMaxPlayers);
+                var configurator = new ServerAllocationConfigurator(_networkManager, _defaultMaxPlayers);
                 var allocationResult = await configurator.RunAsync(cancellationToken);
                 if (!allocationResult.Success)
                 {
@@ -56,38 +56,38 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
                 cancellationToken.ThrowIfCancellationRequested();
 
-                m_RuntimeConfig = allocationResult.RuntimeConfig;
-                m_MultiplayIntegration = allocationResult.MultiplayIntegration;
-                m_TeamCount = allocationResult.TeamCount;
+                _runtimeConfig = allocationResult.RuntimeConfig;
+                _multiplayIntegration = allocationResult.MultiplayIntegration;
+                _teamCount = allocationResult.TeamCount;
 
-                m_ExpectedAuthIds.Clear();
+                _expectedAuthIds.Clear();
                 if (allocationResult.ExpectedAuthIds != null)
                 {
-                    m_ExpectedAuthIds.AddRange(allocationResult.ExpectedAuthIds);
+                    _expectedAuthIds.AddRange(allocationResult.ExpectedAuthIds);
                 }
 
-                m_ConnectionDirectory.Clear();
+                _connectionDirectory.Clear();
 
-                m_ConnectionGate = new ServerConnectionGate(
-                    m_NetworkManager,
-                    m_ConnectionDirectory,
+                _connectionGate = new ServerConnectionGate(
+                    _networkManager,
+                    _connectionDirectory,
                     new ServerConnectionPolicy())
                 {
-                    SceneIsLoaded = () => m_IsSceneLoaded,
-                    CurrentPlayers = () => m_ConnectionDirectory.Count,
-                    Capacity = () => m_ExpectedAuthIds.Count > 0 ? m_ExpectedAuthIds.Count : m_DefaultMaxPlayers,
-                    ExpectedAuthIds = () => m_ExpectedAuthIds,
+                    SceneIsLoaded = () => _isSceneLoaded,
+                    CurrentPlayers = () => _connectionDirectory.Count,
+                    Capacity = () => _expectedAuthIds.Count > 0 ? _expectedAuthIds.Count : _defaultMaxPlayers,
+                    ExpectedAuthIds = () => _expectedAuthIds,
                     AllowNewConnections = true
                 };
 
-                m_ConnectionTracker = new ServerConnectionTracker(m_NetworkManager, m_ConnectionDirectory, m_TeamCount);
+                _connectionTracker = new ServerConnectionTracker(_networkManager, _connectionDirectory, _teamCount);
 
-                m_SceneLoader = new ServerSceneLoader(m_NetworkManager);
-                m_IsSceneLoaded = false;
-                var sceneLoaded = await m_SceneLoader.LoadAsync("game", 5000, () =>
+                _sceneLoader = new ServerSceneLoader(_networkManager);
+                _isSceneLoaded = false;
+                var sceneLoaded = await _sceneLoader.LoadAsync("game", 5000, () =>
                 {
-                    m_IsSceneLoaded = true;
-                    m_ConnectionGate?.ReleasePendingApprovals();
+                    _isSceneLoaded = true;
+                    _connectionGate?.ReleasePendingApprovals();
                 }, cancellationToken);
 
                 if (!sceneLoaded)
@@ -97,9 +97,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     return false;
                 }
 
-                if (m_MultiplayIntegration != null && m_MultiplayIntegration.IsConnected)
+                if (_multiplayIntegration != null && _multiplayIntegration.IsConnected)
                 {
-                    await m_MultiplayIntegration.SetPlayerReadinessAsync(true);
+                    await _multiplayIntegration.SetPlayerReadinessAsync(true);
                 }
 
                 Debug.Log("[ServerGameManager] ========== SERVER STARTUP COMPLETE ==========");
@@ -120,33 +120,33 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         public async Task LockSessionForGameStartAsync()
         {
-            if (m_ConnectionGate != null)
+            if (_connectionGate != null)
             {
-                m_ConnectionGate.AllowNewConnections = false;
+                _connectionGate.AllowNewConnections = false;
             }
             Debug.Log("[ServerGameManager] Locking session; new connections will be rejected");
 
-            if (m_MultiplayIntegration != null && m_MultiplayIntegration.IsConnected)
+            if (_multiplayIntegration != null && _multiplayIntegration.IsConnected)
             {
-                await m_MultiplayIntegration.LockSessionAsync();
-                await m_MultiplayIntegration.SetPlayerReadinessAsync(false);
+                await _multiplayIntegration.LockSessionAsync();
+                await _multiplayIntegration.SetPlayerReadinessAsync(false);
             }
             Debug.Log("[ServerGameManager] Player readiness disabled");
         }
 
         public Dictionary<ulong, Dictionary<string, object>> GetAllConnectedPlayers()
         {
-            return m_ConnectionDirectory?.GetAllConnectionData() ?? new Dictionary<ulong, Dictionary<string, object>>();
+            return _connectionDirectory?.GetAllConnectionData() ?? new Dictionary<ulong, Dictionary<string, object>>();
         }
 
         public void DisconnectClient(ulong clientId, string reason = "Forced disconnect")
         {
-            if (m_NetworkManager == null || !m_NetworkManager.IsServer)
+            if (_networkManager == null || !_networkManager.IsServer)
             {
                 return;
             }
 
-            m_NetworkManager.DisconnectClient(clientId, reason);
+            _networkManager.DisconnectClient(clientId, reason);
         }
 
         public void CloseServer()
@@ -157,28 +157,28 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         public void Dispose()
         {
-            if (m_IsDisposed)
+            if (_isDisposed)
             {
                 return;
             }
 
-            m_IsDisposed = true;
+            _isDisposed = true;
 
-            m_ConnectionGate?.Dispose();
-            m_ConnectionTracker?.Dispose();
-            m_MultiplayIntegration?.Dispose();
+            _connectionGate?.Dispose();
+            _connectionTracker?.Dispose();
+            _multiplayIntegration?.Dispose();
 
-            if (m_NetworkManager != null)
+            if (_networkManager != null)
             {
-                m_NetworkManager.ConnectionApprovalCallback = null;
+                _networkManager.ConnectionApprovalCallback = null;
 
-                if (m_NetworkManager.IsListening || m_NetworkManager.IsServer)
+                if (_networkManager.IsListening || _networkManager.IsServer)
                 {
-                    m_NetworkManager.Shutdown();
+                    _networkManager.Shutdown();
                 }
             }
 
-            m_ConnectionDirectory.Clear();
+            _connectionDirectory.Clear();
 
             Debug.Log("[ServerGameManager] Disposed");
         }

@@ -14,15 +14,15 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
     /// </summary>
     public class ServerAllocationHelper
     {
-        private TaskCompletionSource<IMultiplayAllocation> m_AllocationTcs;
-        private ServerMultiplayIntegration m_Integration;
-        private readonly ServerRuntimeConfig m_RuntimeConfig;
-        private readonly int m_DefaultMaxPlayers;
+        private TaskCompletionSource<IMultiplayAllocation> _allocationTcs;
+        private ServerMultiplayIntegration _integration;
+        private readonly ServerRuntimeConfig _runtimeConfig;
+        private readonly int _defaultMaxPlayers;
 
         public ServerAllocationHelper(ServerRuntimeConfig runtimeConfig, int defaultMaxPlayers)
         {
-            m_RuntimeConfig = runtimeConfig ?? throw new ArgumentNullException(nameof(runtimeConfig));
-            m_DefaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
+            _runtimeConfig = runtimeConfig ?? throw new ArgumentNullException(nameof(runtimeConfig));
+            _defaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
         }
 
         /// <summary>
@@ -37,19 +37,19 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
                 // ================================================================
                 // 1. ServerMultiplayIntegrationを作成して接続
                 // ================================================================
-                m_Integration = new ServerMultiplayIntegration(m_RuntimeConfig, m_DefaultMaxPlayers);
-                m_AllocationTcs = new TaskCompletionSource<IMultiplayAllocation>();
+                _integration = new ServerMultiplayIntegration(_runtimeConfig, _defaultMaxPlayers);
+                _allocationTcs = new TaskCompletionSource<IMultiplayAllocation>();
 
                 void OnAllocated(IMultiplayAllocation allocation)
                 {
-                    m_Integration.OnAllocationComplete -= OnAllocated;
-                    m_AllocationTcs.TrySetResult(allocation);
+                    _integration.OnAllocationComplete -= OnAllocated;
+                    _allocationTcs.TrySetResult(allocation);
                 }
 
                 // アロケーションコールバックを設定
-                m_Integration.OnAllocationComplete += OnAllocated;
+                _integration.OnAllocationComplete += OnAllocated;
 
-                bool connected = await m_Integration.ConnectAsync();
+                bool connected = await _integration.ConnectAsync();
                 if (!connected)
                 {
                     Debug.LogError("[ServerAllocationHelper] Failed to connect to Multiplay");
@@ -60,7 +60,7 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
                 // 2. アロケーション完了を待つ
                 // ================================================================
                 Debug.Log("[ServerAllocationHelper] Waiting for allocation...");
-                var allocation = await m_AllocationTcs.Task;
+                var allocation = await _allocationTcs.Task;
                 Debug.Log("[ServerAllocationHelper] Allocation received");
 
                 // ================================================================
@@ -69,20 +69,20 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
                 Debug.Log("[ServerAllocationHelper] Getting matchmaking results...");
                 try
                 {
-                    if (m_Integration.IsConnected)
+                    if (_integration.IsConnected)
                     {
-                        var results = await m_Integration.GetMatchmakingResultsAsync();
-                        m_Integration.UpdateServerMetadata(results);
+                        var results = await _integration.GetMatchmakingResultsAsync();
+                        _integration.UpdateServerMetadata(results);
                         Debug.Log("[ServerAllocationHelper] Allocation process complete");
-                        return (results != null, results, m_Integration);
+                        return (results != null, results, _integration);
                     }
                     Debug.LogError("[ServerAllocationHelper] Integration disconnected while fetching results");
-                    return (false, null, m_Integration);
+                    return (false, null, _integration);
                 }
                 catch (Exception e)
                 {
                     Debug.LogError($"[ServerAllocationHelper] Error getting matchmaking results: {e.Message}");
-                    return (false, null, m_Integration);
+                    return (false, null, _integration);
                 }
             }
             catch (Exception e)

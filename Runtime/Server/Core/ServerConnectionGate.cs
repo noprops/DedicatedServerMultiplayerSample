@@ -13,18 +13,18 @@ namespace DedicatedServerMultiplayerSample.Server.Core
     {
         private const int k_MaxConnectPayload = 1024;
 
-        private readonly NetworkManager m_NetworkManager;
-        private readonly ConnectionDirectory m_Directory;
-        private readonly IConnectionPolicy m_Policy;
-        private readonly List<NetworkManager.ConnectionApprovalResponse> m_PendingApprovals = new();
+        private readonly NetworkManager _networkManager;
+        private readonly ConnectionDirectory _directory;
+        private readonly IConnectionPolicy _policy;
+        private readonly List<NetworkManager.ConnectionApprovalResponse> _pendingApprovals = new();
 
         public ServerConnectionGate(NetworkManager networkManager, ConnectionDirectory directory, IConnectionPolicy policy)
         {
-            m_NetworkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
-            m_Directory = directory ?? throw new ArgumentNullException(nameof(directory));
-            m_Policy = policy ?? throw new ArgumentNullException(nameof(policy));
+            _networkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
+            _directory = directory ?? throw new ArgumentNullException(nameof(directory));
+            _policy = policy ?? throw new ArgumentNullException(nameof(policy));
 
-            m_NetworkManager.ConnectionApprovalCallback = HandleApproval;
+            _networkManager.ConnectionApprovalCallback = HandleApproval;
         }
 
         public Func<bool> SceneIsLoaded { get; set; } = () => false;
@@ -35,22 +35,22 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         public void ReleasePendingApprovals()
         {
-            for (int i = 0; i < m_PendingApprovals.Count; i++)
+            for (int i = 0; i < _pendingApprovals.Count; i++)
             {
-                var response = m_PendingApprovals[i];
+                var response = _pendingApprovals[i];
                 response.Pending = false;
-                m_PendingApprovals[i] = response;
+                _pendingApprovals[i] = response;
             }
 
-            m_PendingApprovals.Clear();
+            _pendingApprovals.Clear();
         }
 
         public void Dispose()
         {
-            m_PendingApprovals.Clear();
-            if (m_NetworkManager != null)
+            _pendingApprovals.Clear();
+            if (_networkManager != null)
             {
-                m_NetworkManager.ConnectionApprovalCallback = null;
+                _networkManager.ConnectionApprovalCallback = null;
             }
         }
 
@@ -75,12 +75,12 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             var payload = ConnectionPayloadSerializer.DeserializeFromBytes(request.Payload);
 
-            var (success, reason) = m_Policy.Validate(
+            var (success, reason) = _policy.Validate(
                 payload,
                 CurrentPlayers(),
                 Capacity(),
                 ExpectedAuthIds(),
-                m_Directory.IsAuthConnected);
+                _directory.IsAuthConnected);
 
             if (!success)
             {
@@ -90,7 +90,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 return;
             }
 
-            m_Directory.Register(request.ClientNetworkId, payload);
+            _directory.Register(request.ClientNetworkId, payload);
 
             response.Approved = true;
             response.CreatePlayerObject = false;
@@ -98,7 +98,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             if (!SceneIsLoaded())
             {
                 response.Pending = true;
-                m_PendingApprovals.Add(response);
+                _pendingApprovals.Add(response);
                 return;
             }
 

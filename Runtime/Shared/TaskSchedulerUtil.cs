@@ -10,25 +10,25 @@ namespace DedicatedServerMultiplayerSample.Shared
     /// </summary>
     public sealed class DeferredActionScheduler : IDisposable
     {
-        private readonly Action m_OnExecute;
-        private CancellationTokenSource m_Cts;
-        private Task m_ScheduledTask;
+        private readonly Action _onExecute;
+        private CancellationTokenSource _cts;
+        private Task _scheduledTask;
 
         public DeferredActionScheduler(Action onExecute)
         {
-            m_OnExecute = onExecute ?? throw new ArgumentNullException(nameof(onExecute));
+            _onExecute = onExecute ?? throw new ArgumentNullException(nameof(onExecute));
         }
 
         public async Task ScheduleAsync(string reason, float delaySeconds)
         {
             CancelCurrent();
 
-            m_Cts = new CancellationTokenSource();
-            var token = m_Cts.Token;
+            _cts = new CancellationTokenSource();
+            var token = _cts.Token;
 
             Debug.Log($"[DeferredAction] scheduled in {delaySeconds}s : {reason}");
-            m_ScheduledTask = RunDelayAsync(reason, delaySeconds, token);
-            await m_ScheduledTask.ConfigureAwait(false);
+            _scheduledTask = RunDelayAsync(reason, delaySeconds, token);
+            await _scheduledTask.ConfigureAwait(false);
         }
 
         private async Task RunDelayAsync(string reason, float delaySeconds, CancellationToken token)
@@ -39,7 +39,7 @@ namespace DedicatedServerMultiplayerSample.Shared
                 if (!token.IsCancellationRequested)
                 {
                     Debug.Log($"[DeferredAction] executing: {reason}");
-                    m_OnExecute();
+                    _onExecute();
                 }
             }
             catch (TaskCanceledException)
@@ -55,14 +55,14 @@ namespace DedicatedServerMultiplayerSample.Shared
 
         private void CancelCurrent()
         {
-            if (m_Cts == null)
+            if (_cts == null)
                 return;
 
             try
             {
-                m_Cts.Cancel();
-                var task = m_ScheduledTask;
-                m_ScheduledTask = null;
+                _cts.Cancel();
+                var task = _scheduledTask;
+                _scheduledTask = null;
 
                 if (task != null)
                 {
@@ -78,8 +78,8 @@ namespace DedicatedServerMultiplayerSample.Shared
             }
             finally
             {
-                m_Cts.Dispose();
-                m_Cts = null;
+                _cts.Dispose();
+                _cts = null;
             }
         }
 

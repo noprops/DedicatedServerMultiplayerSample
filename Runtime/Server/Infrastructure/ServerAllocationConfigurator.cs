@@ -17,13 +17,13 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
     /// </summary>
     internal sealed class ServerAllocationConfigurator
     {
-        private readonly NetworkManager m_NetworkManager;
-        private readonly int m_DefaultMaxPlayers;
+        private readonly NetworkManager _networkManager;
+        private readonly int _defaultMaxPlayers;
 
         public ServerAllocationConfigurator(NetworkManager networkManager, int defaultMaxPlayers)
         {
-            m_NetworkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
-            m_DefaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
+            _networkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
+            _defaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
         }
 
         /// <summary>
@@ -36,7 +36,7 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
 
             ct.ThrowIfCancellationRequested();
 
-            var helper = new ServerAllocationHelper(runtimeConfig, m_DefaultMaxPlayers);
+            var helper = new ServerAllocationHelper(runtimeConfig, _defaultMaxPlayers);
             var (success, matchResults, integration) = await helper.GetAllocationAsync();
             if (!success)
             {
@@ -61,10 +61,10 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
 
         private void ConfigureNetworkTransport(ServerRuntimeConfig runtimeConfig)
         {
-            var transport = m_NetworkManager.GetComponent<UnityTransport>();
+            var transport = _networkManager.GetComponent<UnityTransport>();
             ushort port = runtimeConfig.GamePort;
             transport.SetConnectionData("0.0.0.0", port);
-            m_NetworkManager.NetworkConfig.NetworkTransport = transport;
+            _networkManager.NetworkConfig.NetworkTransport = transport;
             Debug.Log($"[AllocationConfigurator] Listening on port {port}");
         }
 

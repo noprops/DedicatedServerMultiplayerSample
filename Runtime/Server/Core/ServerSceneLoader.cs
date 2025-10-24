@@ -14,11 +14,11 @@ namespace DedicatedServerMultiplayerSample.Server.Core
     /// </summary>
     internal sealed class ServerSceneLoader
     {
-        private readonly NetworkManager m_NetworkManager;
+        private readonly NetworkManager _networkManager;
 
         public ServerSceneLoader(NetworkManager networkManager)
         {
-            m_NetworkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
+            _networkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
         }
 
         public async Task<bool> LoadAsync(string sceneName, int timeoutMilliseconds = 5000, Action onLoaded = null, CancellationToken ct = default)
@@ -32,24 +32,24 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     return;
                 }
 
-                m_NetworkManager.SceneManager.OnLoadEventCompleted -= Handler;
+                _networkManager.SceneManager.OnLoadEventCompleted -= Handler;
                 onLoaded?.Invoke();
                 tcs.TrySetResult(true);
             }
 
-            m_NetworkManager.SceneManager.OnLoadEventCompleted += Handler;
-            var status = m_NetworkManager.SceneManager.LoadScene(sceneName, LoadSceneMode.Single);
+            _networkManager.SceneManager.OnLoadEventCompleted += Handler;
+            var status = _networkManager.SceneManager.LoadScene(sceneName, LoadSceneMode.Single);
 
             if (status != SceneEventProgressStatus.Started)
             {
-                m_NetworkManager.SceneManager.OnLoadEventCompleted -= Handler;
+                _networkManager.SceneManager.OnLoadEventCompleted -= Handler;
                 return false;
             }
 
             var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMilliseconds, ct));
             if (completedTask != tcs.Task)
             {
-                m_NetworkManager.SceneManager.OnLoadEventCompleted -= Handler;
+                _networkManager.SceneManager.OnLoadEventCompleted -= Handler;
                 return false;
             }
 

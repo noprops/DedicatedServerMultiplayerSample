@@ -37,17 +37,17 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
         [SerializeField] private TMP_Text myNameText;
         [SerializeField] private TMP_Text opponentNameText;
 
-        private bool m_HasSubmitted;
-        private bool m_FinishFlowStarted;
-        private RockPaperScissorsGame m_Game;
-        private readonly List<ulong> m_PlayerIds = new();
+        private bool _hasSubmitted;
+        private bool _finishFlowStarted;
+        private RockPaperScissorsGame _game;
+        private readonly List<ulong> _playerIds = new();
 
         private void OnEnable()
         {
             resultPanel.SetActive(false);
             choicePanel.SetActive(false);
-            m_HasSubmitted = false;
-            m_FinishFlowStarted = false;
+            _hasSubmitted = false;
+            _finishFlowStarted = false;
 
             rockButton.onClick.AddListener(OnRockClicked);
             paperButton.onClick.AddListener(OnPaperClicked);
@@ -67,34 +67,34 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
 
         private void AttachToGame()
         {
-            m_Game = RockPaperScissorsGame.Instance ?? FindObjectOfType<RockPaperScissorsGame>();
-            if (m_Game == null)
+            _game = RockPaperScissorsGame.Instance ?? FindObjectOfType<RockPaperScissorsGame>();
+            if (_game == null)
             {
                 Debug.LogWarning("[RockPaperScissorsUI] RockPaperScissorsGame not found");
                 SetStatus("Waiting for server...");
                 return;
             }
 
-            m_Game.Phase.OnValueChanged += OnPhaseChanged;
-            m_Game.LastResult.OnValueChanged += OnResultChanged;
-            m_Game.PlayerNames.OnListChanged += OnNamesChanged;
-            m_Game.PlayerIds.OnListChanged += OnPlayerIdsChanged;
+            _game.Phase.OnValueChanged += OnPhaseChanged;
+            _game.LastResult.OnValueChanged += OnResultChanged;
+            _game.PlayerNames.OnListChanged += OnNamesChanged;
+            _game.PlayerIds.OnListChanged += OnPlayerIdsChanged;
 
-            OnPhaseChanged(GamePhase.None, m_Game.Phase.Value);
-            OnResultChanged(default, m_Game.LastResult.Value);
+            OnPhaseChanged(GamePhase.None, _game.Phase.Value);
+            OnResultChanged(default, _game.LastResult.Value);
             RefreshPlayerIds();
             RefreshPlayerNamesUI();
         }
 
         private void DetachFromGame()
         {
-            if (m_Game == null) return;
+            if (_game == null) return;
 
-            m_Game.Phase.OnValueChanged -= OnPhaseChanged;
-            m_Game.LastResult.OnValueChanged -= OnResultChanged;
-            m_Game.PlayerNames.OnListChanged -= OnNamesChanged;
-            m_Game.PlayerIds.OnListChanged -= OnPlayerIdsChanged;
-            m_Game = null;
+            _game.Phase.OnValueChanged -= OnPhaseChanged;
+            _game.LastResult.OnValueChanged -= OnResultChanged;
+            _game.PlayerNames.OnListChanged -= OnNamesChanged;
+            _game.PlayerIds.OnListChanged -= OnPlayerIdsChanged;
+            _game = null;
         }
 
         private void OnRockClicked() => SubmitChoice(Hand.Rock);
@@ -103,20 +103,20 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
 
         private void SubmitChoice(Hand choice)
         {
-            if (m_HasSubmitted || m_Game == null || NetworkManager.Singleton == null || !NetworkManager.Singleton.IsClient)
+            if (_hasSubmitted || _game == null || NetworkManager.Singleton == null || !NetworkManager.Singleton.IsClient)
             {
                 return;
             }
 
-            if (m_Game.Phase.Value != GamePhase.Choosing)
+            if (_game.Phase.Value != GamePhase.Choosing)
             {
                 Debug.LogWarning("[RockPaperScissorsUI] Cannot submit choice outside Choosing phase");
                 return;
             }
 
-            m_HasSubmitted = true;
+            _hasSubmitted = true;
             SetChoiceButtonsInteractable(false);
-            m_Game.SubmitChoiceServerRpc(choice);
+            _game.SubmitChoiceServerRpc(choice);
         }
 
         private void OnPhaseChanged(GamePhase previous, GamePhase current)
@@ -128,8 +128,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
                     SetStatus("Waiting for players...");
                     choicePanel.SetActive(false);
                     resultPanel.SetActive(false);
-                    m_HasSubmitted = false;
-                    m_FinishFlowStarted = false;
+                    _hasSubmitted = false;
+                    _finishFlowStarted = false;
                     SetChoiceButtonsInteractable(false);
                     break;
 
@@ -137,8 +137,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
                     SetStatus("Choose your hand!");
                     choicePanel.SetActive(true);
                     resultPanel.SetActive(false);
-                    m_HasSubmitted = false;
-                    m_FinishFlowStarted = false;
+                    _hasSubmitted = false;
+                    _finishFlowStarted = false;
                     SetChoiceButtonsInteractable(true);
                     break;
 
@@ -150,9 +150,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
                 case GamePhase.Finished:
                     SetStatus("Round finished");
                     SetChoiceButtonsInteractable(false);
-                    if (!m_FinishFlowStarted)
+                    if (!_finishFlowStarted)
                     {
-                        m_FinishFlowStarted = true;
+                        _finishFlowStarted = true;
                         HandleFinishedPhaseAsync();
                     }
                     break;
@@ -218,31 +218,31 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
 
         private void RefreshPlayerIds()
         {
-            m_PlayerIds.Clear();
-            if (m_Game == null)
+            _playerIds.Clear();
+            if (_game == null)
             {
                 return;
             }
 
-            foreach (var id in m_Game.PlayerIds)
+            foreach (var id in _game.PlayerIds)
             {
-                m_PlayerIds.Add(id);
+                _playerIds.Add(id);
             }
         }
 
         private void RefreshPlayerNamesUI()
         {
-            if (m_Game == null)
+            if (_game == null)
             {
                 return;
             }
 
-            if (m_PlayerIds.Count == 0)
+            if (_playerIds.Count == 0)
             {
                 RefreshPlayerIds();
             }
 
-            if (m_PlayerIds.Count == 0)
+            if (_playerIds.Count == 0)
             {
                 myNameText.text = "You: --";
                 opponentNameText.text = "Opponent: --";
@@ -254,7 +254,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
             string opponentDisplay = "Opponent: --";
             bool opponentAssigned = false;
 
-            foreach (var id in m_PlayerIds)
+            foreach (var id in _playerIds)
             {
                 var name = ResolveDisplayName(id);
 
@@ -328,10 +328,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
 
         private string ResolveDisplayName(ulong clientId)
         {
-            if (m_Game != null)
+            if (_game != null)
             {
-                var ids = m_Game.PlayerIds;
-                var names = m_Game.PlayerNames;
+                var ids = _game.PlayerIds;
+                var names = _game.PlayerNames;
 
                 for (int i = 0; i < ids.Count && i < names.Count; i++)
                 {
