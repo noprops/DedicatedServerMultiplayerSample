@@ -13,6 +13,11 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private readonly ConnectionDirectory _directory;
 
         /// <summary>
+        /// Optional callback that reports whether an auth identifier is already in use.
+        /// </summary>
+        public Func<string, bool> AuthInUse { get; set; } = _ => false;
+
+        /// <summary>
         /// Creates a new gate that encapsulates connection approval rules.
         /// </summary>
         public ServerConnectionGate(NetworkManager networkManager, ConnectionDirectory directory)
@@ -83,7 +88,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 }
             }
 
-            if (_directory != null && _directory.IsAuthConnected(authId))
+            if (AuthInUse != null && AuthInUse(authId))
             {
                 reason = "Duplicate login";
                 return false;

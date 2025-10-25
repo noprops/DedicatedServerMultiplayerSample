@@ -163,13 +163,11 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     await _multiplayIntegration.SetPlayerReadinessAsync(true);
                 }
 
-                _approvalHandler?.Dispose();
                 _approvalHandler = new ClientApprovalHandler(
                     _networkManager,
                     _connectionDirectory,
                     _connectionGate,
                     () => _isSceneLoaded);
-                _approvalHandler.Install();
 
                 if (_connectionTracker != null)
                 {
@@ -248,13 +246,14 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 _networkManager,
                 _connectionDirectory)
             {
-                CurrentPlayers = () => _connectionDirectory.Count,
+                CurrentPlayers = () => _connectionTracker?.ActiveClientCount ?? 0,
                 Capacity = () => _expectedAuthIds.Count > 0 ? _expectedAuthIds.Count : _defaultMaxPlayers,
                 ExpectedAuthIds = () => _expectedAuthIds,
                 AllowNewConnections = true
             };
 
             _connectionTracker = new ServerConnectionTracker(_networkManager, _connectionDirectory, _teamCount);
+            _connectionGate.AuthInUse = auth => _connectionTracker.IsAuthConnected(auth);
         }
 
         /// <summary>

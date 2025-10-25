@@ -6,17 +6,21 @@ using DedicatedServerMultiplayerSample.Shared;
 namespace DedicatedServerMultiplayerSample.Server.Core
 {
     /// <summary>
-    /// Stores connection payloads and auth identifiers for connected clients.
-    /// Acts as the single source of truth for connection metadata.
+    /// Stores payload data and auth identifiers for clients. Entries remain available even after disconnection.
     /// </summary>
     public sealed class ConnectionDirectory
     {
         private readonly Dictionary<ulong, Dictionary<string, object>> _payloadByClient = new();
         private readonly Dictionary<ulong, string> _authByClient = new();
-        private readonly Dictionary<string, int> _authRefCounts = new(StringComparer.Ordinal);
 
-        public int Count => _authByClient.Count;
+        /// <summary>
+        /// Total number of payload entries tracked in the directory.
+        /// </summary>
+        public int Count => _payloadByClient.Count;
 
+        /// <summary>
+        /// Registers or updates payload information for the specified client.
+        /// </summary>
         public void Register(ulong clientId, Dictionary<string, object> payload)
         {
             payload = payload != null
@@ -25,52 +29,37 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             var authId = ResolveAuthId(payload);
 
-            if (_authByClient.TryGetValue(clientId, out var previousAuth))
-            {
-                DecrementAuth(previousAuth);
-            }
-
             _payloadByClient[clientId] = payload;
             _authByClient[clientId] = authId;
-            IncrementAuth(authId);
         }
 
-        public void Unregister(ulong clientId)
-        {
-            if (_authByClient.TryGetValue(clientId, out var authId))
-            {
-                _authByClient.Remove(clientId);
-                DecrementAuth(authId);
-            }
-
-            _payloadByClient.Remove(clientId);
-        }
-
+        /// <summary>
+        /// Retrieves the auth identifier associated with the specified client, if any.
+        /// </summary>
         public bool TryGetAuthId(ulong clientId, out string authId)
         {
             return _authByClient.TryGetValue(clientId, out authId);
         }
 
-        public bool IsAuthConnected(string authId)
-        {
-            if (string.IsNullOrEmpty(authId))
-            {
-                return false;
-            }
-
-            return _authRefCounts.TryGetValue(authId, out var count) && count > 0;
-        }
-
+        /// <summary>
+        /// Retrieves the payload stored for the specified client. Returns null if the client has never registered.
+        /// </summary>
         public Dictionary<string, object> GetPayload(ulong clientId)
         {
             return _payloadByClient.TryGetValue(clientId, out var payload) ? payload : null;
         }
 
+        /// <summary>
+        /// Returns all client identifiers that have registered payload data.
+        /// </summary>
         public IReadOnlyCollection<ulong> GetClientIds()
         {
             return new List<ulong>(_payloadByClient.Keys);
         }
 
+        /// <summary>
+        /// Attempts to parse an auth identifier from serialized payload bytes.
+        /// </summary>
         public bool TryParseAuthId(byte[] payloadBytes, out string authId)
         {
             authId = null;
@@ -83,6 +72,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             return TryExtractAuthId(payload, out authId);
         }
 
+        /// <summary>
+        /// Attempts to retrieve a payload value associated with the specified client.
+        /// </summary>
         public bool TryGet(ulong clientId, string key, out object value)
         {
             value = null;
@@ -105,6 +97,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             return true;
         }
 
+        /// <summary>
+        /// Attempts to retrieve and cast a payload value for the specified client.
+        /// </summary>
         public bool TryGet<T>(ulong clientId, string key, out T value)
         {
             value = default;
@@ -129,12 +124,15 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             }
             catch
             {
-                // ignored: conversion failure
+                // ignored - conversion failure
             }
 
             return false;
         }
 
+        /// <summary>
+        /// Retrieves the specified keys for each client id and returns them as a nested dictionary.
+        /// </summary>
         public Dictionary<ulong, Dictionary<string, object>> GetValues(IEnumerable<ulong> clientIds, params string[] keys)
         {
             var result = new Dictionary<ulong, Dictionary<string, object>>();
@@ -176,40 +174,13 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             return result;
         }
 
+        /// <summary>
+        /// Clears all stored payload and auth data.
+        /// </summary>
         public void Clear()
         {
             _payloadByClient.Clear();
             _authByClient.Clear();
-            _authRefCounts.Clear();
-        }
-
-        private void IncrementAuth(string authId)
-        {
-            if (_authRefCounts.TryGetValue(authId, out var count))
-            {
-                _authRefCounts[authId] = count + 1;
-            }
-            else
-            {
-                _authRefCounts[authId] = 1;
-            }
-        }
-
-        private void DecrementAuth(string authId)
-        {
-            if (!_authRefCounts.TryGetValue(authId, out var count))
-            {
-                return;
-            }
-
-            if (count <= 1)
-            {
-                _authRefCounts.Remove(authId);
-            }
-            else
-            {
-                _authRefCounts[authId] = count - 1;
-            }
         }
 
         private static string ResolveAuthId(Dictionary<string, object> payload)

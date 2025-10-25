@@ -26,10 +26,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             _directory = directory ?? throw new ArgumentNullException(nameof(directory));
             _gate = gate ?? throw new ArgumentNullException(nameof(gate));
             _isSceneLoaded = isSceneLoaded ?? throw new ArgumentNullException(nameof(isSceneLoaded));
-        }
 
-        public void Install()
-        {
             _network.ConnectionApprovalCallback = OnApproval;
         }
 
