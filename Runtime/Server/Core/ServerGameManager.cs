@@ -60,9 +60,19 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         public ShutdownKind? LastRequestedShutdownKind => _shutdownEmitted ? _lastShutdownKind : (ShutdownKind?)null;
         public string LastRequestedShutdownReason => _lastShutdownReason;
 
+        /// <summary>
+        /// Fired once when the required clients have connected. Replayed to late subscribers if requested.
+        /// </summary>
         public event Action<ulong[]> AllClientsConnected;
+        /// <summary>
+        /// Fired when a shutdown is requested. Replayed to late subscribers if requested.
+        /// </summary>
         public event Action<ShutdownKind, string> ShutdownRequested;
 
+        /// <summary>
+        /// Subscribes to the client-connected notification. When <paramref name="replay"/> is true and the event
+        /// already fired, the handler is invoked immediately with the cached client list.
+        /// </summary>
         public void AddAllClientsConnected(Action<ulong[]> handler, bool replay = true)
         {
             if (handler == null) return;
@@ -73,12 +83,19 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             }
         }
 
+        /// <summary>
+        /// Removes a previously registered all-clients-connected handler.
+        /// </summary>
         public void RemoveAllClientsConnected(Action<ulong[]> handler)
         {
             if (handler == null) return;
             AllClientsConnected -= handler;
         }
 
+        /// <summary>
+        /// Subscribes to shutdown notifications. When <paramref name="replay"/> is true and a shutdown was already
+        /// requested, the handler is invoked immediately with the cached kind and reason.
+        /// </summary>
         public void AddShutdownRequested(Action<ShutdownKind, string> handler, bool replay = true)
         {
             if (handler == null) return;
@@ -89,12 +106,18 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             }
         }
 
+        /// <summary>
+        /// Removes a previously registered shutdown handler.
+        /// </summary>
         public void RemoveShutdownRequested(Action<ShutdownKind, string> handler)
         {
             if (handler == null) return;
             ShutdownRequested -= handler;
         }
 
+        /// <summary>
+        /// Constructs a new server game manager with the provided network manager and player capacity.
+        /// </summary>
         public ServerGameManager(NetworkManager networkManager, int defaultMaxPlayers)
         {
             _networkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
@@ -103,6 +126,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             Debug.Log("[ServerGameManager] Created");
         }
 
+        /// <summary>
+        /// Starts the dedicated server workflow, acquiring allocations, loading scenes, and opening the gate for clients.
+        /// </summary>
         public async Task<bool> StartServerAsync(CancellationToken cancellationToken = default)
         {
             Debug.Log("[ServerGameManager] ========== SERVER STARTUP BEGIN ==========");
@@ -153,6 +179,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     _isSceneLoaded = true;
                     _connectionGate?.ReleasePendingApprovals();
                 }, cancellationToken);
+                
                 if (!sceneLoaded)
                 {
                     Debug.LogError("[ServerGameManager] Failed to load game scene");
@@ -165,7 +192,10 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     await _multiplayIntegration.SetPlayerReadinessAsync(true);
                 }
 
-                SubscribeSessionEvents();
+                if (_connectionTracker != null)
+                {
+                    _connectionTracker.AllPlayersDisconnected += HandleAllPlayersDisconnected;
+                }
                 _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
                 _ = MonitorClientReadinessAsync(_sessionCts.Token);
 
@@ -185,6 +215,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             }
         }
 
+        /// <summary>
+        /// Locks the session to prevent new clients from joining once the game is about to start.
+        /// </summary>
         public async Task LockSessionForGameStartAsync()
         {
             if (_connectionGate != null)
@@ -201,11 +234,17 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             Debug.Log("[ServerGameManager] Player readiness disabled");
         }
 
+        /// <summary>
+        /// Returns a snapshot of all known connected players and their payload data.
+        /// </summary>
         public Dictionary<ulong, Dictionary<string, object>> GetAllConnectedPlayers()
         {
             return _connectionDirectory?.GetAllConnectionData() ?? new Dictionary<ulong, Dictionary<string, object>>();
         }
 
+        /// <summary>
+        /// Forces the specified client to disconnect with an optional reason.
+        /// </summary>
         public void DisconnectClient(ulong clientId, string reason = "Forced disconnect")
         {
             if (_networkManager == null || !_networkManager.IsServer)
@@ -216,12 +255,18 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             _networkManager.DisconnectClient(clientId, reason);
         }
 
-        public void CloseServer()
+        /// <summary>
+        /// Initiates server shutdown and quits the application immediately.
+        /// </summary>
+        private void CloseServer()
         {
             Dispose();
             Application.Quit();
         }
 
+        /// <summary>
+        /// Releases all managed resources and stops the network server if it is running.
+        /// </summary>
         public void Dispose()
         {
             if (_isDisposed)
@@ -261,6 +306,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             Debug.Log("[ServerGameManager] Disposed");
         }
 
+        /// <summary>
+        /// Schedules a shutdown with the given reason, emitting a single notification the first time it is requested.
+        /// </summary>
         public void RequestShutdown(ShutdownKind kind, string reason, float delaySeconds = NormalShutdownDelaySeconds)
         {
             if (!_shutdownEmitted)
@@ -276,18 +324,15 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 Debug.Log($"[ServerGameManager] Shutdown already requested ({_lastShutdownKind}); rescheduling with {kind} - {reason}");
             }
 
-            var scheduler = _shutdownScheduler ??= new DeferredActionScheduler(CloseServer);
-            _ = scheduler.ScheduleAsync(reason, delaySeconds);
-        }
-
-        private void SubscribeSessionEvents()
-        {
-            if (_connectionTracker != null)
+            if (_shutdownScheduler != null)
             {
-                _connectionTracker.AllPlayersDisconnected += HandleAllPlayersDisconnected;
+                _ = _shutdownScheduler.ScheduleAsync(reason, delaySeconds);
             }
         }
 
+        /// <summary>
+        /// Monitors the connection tracker until the required players are present or a timeout occurs.
+        /// </summary>
         private async Task MonitorClientReadinessAsync(CancellationToken token)
         {
             if (_connectionTracker == null)
@@ -325,6 +370,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             }
         }
 
+        /// <summary>
+        /// Emits the client-connected notification exactly once with a cached snapshot.
+        /// </summary>
         private void EmitAllClientsConnected()
         {
             if (_allConnectedEmitted)
@@ -339,6 +387,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             AllClientsConnected?.Invoke(replayPayload);
         }
 
+        /// <summary>
+        /// Handles the "all players disconnected" event by scheduling a shutdown.
+        /// </summary>
         private void HandleAllPlayersDisconnected()
         {
             RequestShutdown(ShutdownKind.AllPlayersDisconnected, "All players disconnected", StartTimeoutShutdownDelaySeconds);
