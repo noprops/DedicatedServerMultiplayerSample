@@ -30,13 +30,13 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private ServerRuntimeConfig _runtimeConfig;
         private ServerMultiplayIntegration _multiplayIntegration;
         private readonly ConnectionDirectory _connectionDirectory = new();
-        private ServerConnectionGate _connectionGate;
+        private ConnectionApprover _connectionApprover;
         private ServerConnectionTracker _connectionTracker;
         private ServerSceneLoader _sceneLoader;
+        // auth ids supplied by the matchmaker for the players assigned to this session
         private readonly List<string> _expectedAuthIds = new();
         private DeferredActionScheduler _shutdownScheduler;
         private CancellationTokenSource _sessionCts;
-        private ClientApprovalHandler _approvalHandler;
 
         private int _teamCount = 2;
         private bool _isSceneLoaded;
@@ -163,12 +163,6 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     await _multiplayIntegration.SetPlayerReadinessAsync(true);
                 }
 
-                _approvalHandler = new ClientApprovalHandler(
-                    _networkManager,
-                    _connectionDirectory,
-                    _connectionGate,
-                    () => _isSceneLoaded);
-
                 if (_connectionTracker != null)
                 {
                     _connectionTracker.AllPlayersDisconnected += HandleAllPlayersDisconnected;
@@ -242,18 +236,26 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         {
             _connectionDirectory.Clear();
 
-            _connectionGate = new ServerConnectionGate(
-                _networkManager,
-                _connectionDirectory)
+            _connectionApprover?.Dispose();
+            _connectionApprover = null;
+
+            if (_connectionTracker != null)
             {
-                CurrentPlayers = () => _connectionTracker?.ActiveClientCount ?? 0,
-                Capacity = () => _expectedAuthIds.Count > 0 ? _expectedAuthIds.Count : _defaultMaxPlayers,
-                ExpectedAuthIds = () => _expectedAuthIds,
-                AllowNewConnections = true
-            };
+                _connectionTracker.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
+                _connectionTracker.Dispose();
+            }
 
             _connectionTracker = new ServerConnectionTracker(_networkManager, _connectionDirectory, _teamCount);
-            _connectionGate.AuthInUse = auth => _connectionTracker.IsAuthConnected(auth);
+
+            _connectionApprover = new ConnectionApprover(
+                networkManager: _networkManager,
+                isSceneLoaded: () => _isSceneLoaded,
+                currentPlayers: () => _connectionTracker?.ActiveClientCount ?? 0,
+                capacity: () => _expectedAuthIds.Count > 0 ? _expectedAuthIds.Count : _defaultMaxPlayers,
+                expectedAuthIds: () => _expectedAuthIds,
+                authInUse: auth => _connectionTracker != null && _connectionTracker.IsAuthConnected(auth),
+                resolveAuthId: payloadBytes => _connectionDirectory.TryParseAuthId(payloadBytes, out var parsed) ? parsed : null,
+                registerPayload: (clientId, payload) => _connectionDirectory.Register(clientId, payload));
         }
 
         /// <summary>
@@ -267,7 +269,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             var ok = await _sceneLoader.LoadAsync("game", 5000, () =>
             {
                 _isSceneLoaded = true;
-                _approvalHandler?.ReleasePending();
+                _connectionApprover?.ReleasePending();
             }, ct);
 
             if (!ok)
@@ -314,12 +316,12 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 _connectionTracker.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
             }
 
+            _connectionApprover?.Dispose();
+            _connectionApprover = null;
             _connectionTracker?.Dispose();
             _multiplayIntegration?.Dispose();
             _shutdownScheduler?.Dispose();
             _shutdownScheduler = null;
-            _approvalHandler?.Dispose();
-            _approvalHandler = null;
 
             if (_networkManager != null)
             {
@@ -374,9 +376,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         /// </summary>
         private async Task LockSessionAsync()
         {
-            if (_connectionGate != null)
+            if (_connectionApprover != null)
             {
-                _connectionGate.AllowNewConnections = false;
+                _connectionApprover.AllowNewConnections = false;
             }
 
             if (_multiplayIntegration != null && _multiplayIntegration.IsConnected)

@@ -37,7 +37,6 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         public event Action AllPlayersDisconnected;
 
         /// <summary>
-        /// <summary>
         /// Current number of connected clients.
         /// </summary>
         public int ActiveClientCount => _connectedClients.Count;
