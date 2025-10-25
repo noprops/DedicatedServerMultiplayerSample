@@ -36,6 +36,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private readonly List<string> _expectedAuthIds = new();
         private DeferredActionScheduler _shutdownScheduler;
         private CancellationTokenSource _sessionCts;
+        private ClientApprovalHandler _approvalHandler;
 
         private int _teamCount = 2;
         private bool _isSceneLoaded;
@@ -53,12 +54,6 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private const float ErrorShutdownDelaySeconds = 5f;
 
         public int TeamCount => _teamCount;
-        public ServerConnectionTracker ConnectionTracker => _connectionTracker;
-        public bool HasAllClientsConnected => _allConnectedEmitted;
-        public ulong[] ConnectedClientsSnapshot => _allConnectedIds;
-        public bool IsShutdownRequested => _shutdownEmitted;
-        public ShutdownKind? LastRequestedShutdownKind => _shutdownEmitted ? _lastShutdownKind : (ShutdownKind?)null;
-        public string LastRequestedShutdownReason => _lastShutdownReason;
 
         /// <summary>
         /// Fired once when the required clients have connected. Replayed to late subscribers if requested.
@@ -68,6 +63,17 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         /// Fired when a shutdown is requested. Replayed to late subscribers if requested.
         /// </summary>
         public event Action<ShutdownKind, string> ShutdownRequested;
+
+        /// <summary>
+        /// Constructs a new server game manager with the provided network manager and player capacity.
+        /// </summary>
+        public ServerGameManager(NetworkManager networkManager, int defaultMaxPlayers)
+        {
+            _networkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
+            _defaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
+            _shutdownScheduler = new DeferredActionScheduler(CloseServer);
+            Debug.Log("[ServerGameManager] Created");
+        }
 
         /// <summary>
         /// Subscribes to the client-connected notification. When <paramref name="replay"/> is true and the event
@@ -116,17 +122,6 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         }
 
         /// <summary>
-        /// Constructs a new server game manager with the provided network manager and player capacity.
-        /// </summary>
-        public ServerGameManager(NetworkManager networkManager, int defaultMaxPlayers)
-        {
-            _networkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
-            _defaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
-            _shutdownScheduler = new DeferredActionScheduler(CloseServer);
-            Debug.Log("[ServerGameManager] Created");
-        }
-
-        /// <summary>
         /// Starts the dedicated server workflow, acquiring allocations, loading scenes, and opening the gate for clients.
         /// </summary>
         public async Task<bool> StartServerAsync(CancellationToken cancellationToken = default)
@@ -156,34 +151,10 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     _expectedAuthIds.AddRange(allocationResult.ExpectedAuthIds);
                 }
 
-                _connectionDirectory.Clear();
+                BuildConnectionStack();
 
-                _connectionGate = new ServerConnectionGate(
-                    _networkManager,
-                    _connectionDirectory,
-                    new ServerConnectionPolicy())
+                if (!await LoadGameSceneOrShutdownAsync(cancellationToken))
                 {
-                    SceneIsLoaded = () => _isSceneLoaded,
-                    CurrentPlayers = () => _connectionDirectory.Count,
-                    Capacity = () => _expectedAuthIds.Count > 0 ? _expectedAuthIds.Count : _defaultMaxPlayers,
-                    ExpectedAuthIds = () => _expectedAuthIds,
-                    AllowNewConnections = true
-                };
-
-                _connectionTracker = new ServerConnectionTracker(_networkManager, _connectionDirectory, _teamCount);
-
-                _sceneLoader = new ServerSceneLoader(_networkManager);
-                _isSceneLoaded = false;
-                var sceneLoaded = await _sceneLoader.LoadAsync("game", 5000, () =>
-                {
-                    _isSceneLoaded = true;
-                    _connectionGate?.ReleasePendingApprovals();
-                }, cancellationToken);
-                
-                if (!sceneLoaded)
-                {
-                    Debug.LogError("[ServerGameManager] Failed to load game scene");
-                    RequestShutdown(ShutdownKind.Error, "Failed to load game scene", ErrorShutdownDelaySeconds);
                     return false;
                 }
 
@@ -192,12 +163,35 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     await _multiplayIntegration.SetPlayerReadinessAsync(true);
                 }
 
+                _approvalHandler?.Dispose();
+                _approvalHandler = new ClientApprovalHandler(
+                    _networkManager,
+                    _connectionDirectory,
+                    _connectionGate,
+                    () => _isSceneLoaded);
+                _approvalHandler.Install();
+
                 if (_connectionTracker != null)
                 {
                     _connectionTracker.AllPlayersDisconnected += HandleAllPlayersDisconnected;
                 }
                 _sessionCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-                _ = MonitorClientReadinessAsync(_sessionCts.Token);
+                var ready = await AwaitRequiredPlayersAsync(_sessionCts.Token);
+
+                if (_sessionCts.IsCancellationRequested)
+                {
+                    return true;
+                }
+
+                if (ready)
+                {
+                    await LockSessionAsync();
+                    EmitAllClientsConnected();
+                }
+                else
+                {
+                    RequestShutdown(ShutdownKind.StartTimeout, "Not enough players", StartTimeoutShutdownDelaySeconds);
+                }
 
                 Debug.Log("[ServerGameManager] ========== SERVER STARTUP COMPLETE ==========");
                 return true;
@@ -216,30 +210,75 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         }
 
         /// <summary>
-        /// Locks the session to prevent new clients from joining once the game is about to start.
+        /// Schedules a shutdown with the given reason, emitting a single notification the first time it is requested.
         /// </summary>
-        public async Task LockSessionForGameStartAsync()
+        public bool RequestShutdown(ShutdownKind kind, string reason, float delaySeconds = NormalShutdownDelaySeconds)
         {
-            if (_connectionGate != null)
-            {
-                _connectionGate.AllowNewConnections = false;
-            }
-            Debug.Log("[ServerGameManager] Locking session; new connections will be rejected");
+            var firstRequest = !_shutdownEmitted;
 
-            if (_multiplayIntegration != null && _multiplayIntegration.IsConnected)
+            if (firstRequest)
             {
-                await _multiplayIntegration.LockSessionAsync();
-                await _multiplayIntegration.SetPlayerReadinessAsync(false);
+                _shutdownEmitted = true;
+                _lastShutdownKind = kind;
+                _lastShutdownReason = reason;
+                Debug.Log($"[ServerGameManager] Emitting shutdown request: {kind} - {reason}");
+                ShutdownRequested?.Invoke(kind, reason);
             }
-            Debug.Log("[ServerGameManager] Player readiness disabled");
+            else
+            {
+                Debug.Log($"[ServerGameManager] Shutdown already requested ({_lastShutdownKind}); rescheduling with {kind} - {reason}");
+            }
+
+            if (_shutdownScheduler != null)
+            {
+                _ = _shutdownScheduler.ScheduleAsync(reason, delaySeconds);
+            }
+
+            return firstRequest;
         }
 
         /// <summary>
-        /// Returns a snapshot of all known connected players and their payload data.
+        /// Builds the connection gate and tracker used to control and observe incoming clients.
         /// </summary>
-        public Dictionary<ulong, Dictionary<string, object>> GetAllConnectedPlayers()
+        private void BuildConnectionStack()
         {
-            return _connectionDirectory?.GetAllConnectionData() ?? new Dictionary<ulong, Dictionary<string, object>>();
+            _connectionDirectory.Clear();
+
+            _connectionGate = new ServerConnectionGate(
+                _networkManager,
+                _connectionDirectory)
+            {
+                CurrentPlayers = () => _connectionDirectory.Count,
+                Capacity = () => _expectedAuthIds.Count > 0 ? _expectedAuthIds.Count : _defaultMaxPlayers,
+                ExpectedAuthIds = () => _expectedAuthIds,
+                AllowNewConnections = true
+            };
+
+            _connectionTracker = new ServerConnectionTracker(_networkManager, _connectionDirectory, _teamCount);
+        }
+
+        /// <summary>
+        /// Loads the gameplay scene and requests shutdown if the operation fails.
+        /// </summary>
+        private async Task<bool> LoadGameSceneOrShutdownAsync(CancellationToken ct)
+        {
+            _sceneLoader ??= new ServerSceneLoader(_networkManager);
+            _isSceneLoaded = false;
+
+            var ok = await _sceneLoader.LoadAsync("game", 5000, () =>
+            {
+                _isSceneLoaded = true;
+                _approvalHandler?.ReleasePending();
+            }, ct);
+
+            if (!ok)
+            {
+                Debug.LogError("[ServerGameManager] Failed to load game scene");
+                RequestShutdown(ShutdownKind.Error, "Failed to load game scene", ErrorShutdownDelaySeconds);
+                return false;
+            }
+
+            return true;
         }
 
         /// <summary>
@@ -253,15 +292,6 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             }
 
             _networkManager.DisconnectClient(clientId, reason);
-        }
-
-        /// <summary>
-        /// Initiates server shutdown and quits the application immediately.
-        /// </summary>
-        private void CloseServer()
-        {
-            Dispose();
-            Application.Quit();
         }
 
         /// <summary>
@@ -285,11 +315,12 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 _connectionTracker.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
             }
 
-            _connectionGate?.Dispose();
             _connectionTracker?.Dispose();
             _multiplayIntegration?.Dispose();
             _shutdownScheduler?.Dispose();
             _shutdownScheduler = null;
+            _approvalHandler?.Dispose();
+            _approvalHandler = null;
 
             if (_networkManager != null)
             {
@@ -307,38 +338,14 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         }
 
         /// <summary>
-        /// Schedules a shutdown with the given reason, emitting a single notification the first time it is requested.
+        /// Waits until the required number of clients have connected or a timeout elapses, then signals outcome.
         /// </summary>
-        public void RequestShutdown(ShutdownKind kind, string reason, float delaySeconds = NormalShutdownDelaySeconds)
-        {
-            if (!_shutdownEmitted)
-            {
-                _shutdownEmitted = true;
-                _lastShutdownKind = kind;
-                _lastShutdownReason = reason;
-                Debug.Log($"[ServerGameManager] Emitting shutdown request: {kind} - {reason}");
-                ShutdownRequested?.Invoke(kind, reason);
-            }
-            else
-            {
-                Debug.Log($"[ServerGameManager] Shutdown already requested ({_lastShutdownKind}); rescheduling with {kind} - {reason}");
-            }
-
-            if (_shutdownScheduler != null)
-            {
-                _ = _shutdownScheduler.ScheduleAsync(reason, delaySeconds);
-            }
-        }
-
-        /// <summary>
-        /// Monitors the connection tracker until the required players are present or a timeout occurs.
-        /// </summary>
-        private async Task MonitorClientReadinessAsync(CancellationToken token)
+        private async Task<bool> AwaitRequiredPlayersAsync(CancellationToken token)
         {
             if (_connectionTracker == null)
             {
                 Debug.LogWarning("[ServerGameManager] Connection tracker unavailable; skipping client readiness monitoring.");
-                return;
+                return false;
             }
 
             try
@@ -348,25 +355,42 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     subscribe: handler => _connectionTracker.RequiredPlayersReady += handler,
                     unsubscribe: handler => _connectionTracker.RequiredPlayersReady -= handler,
                     timeout: TimeSpan.FromSeconds(WaitingPlayersTimeoutSeconds),
-                    ct: token).ConfigureAwait(false);
+                    ct: token);
 
                 if (token.IsCancellationRequested)
                 {
-                    return;
+                    return false;
                 }
 
-                if (ready)
-                {
-                    EmitAllClientsConnected();
-                }
-                else
-                {
-                    RequestShutdown(ShutdownKind.StartTimeout, "Not enough players", StartTimeoutShutdownDelaySeconds);
-                }
+                return ready;
             }
             catch (OperationCanceledException)
             {
-                // ignored - session ended/cancelled
+                return false;
+            }
+        }
+
+        /// <summary>
+        /// Locks the session to reject further connections once participants are confirmed.
+        /// </summary>
+        private async Task LockSessionAsync()
+        {
+            if (_connectionGate != null)
+            {
+                _connectionGate.AllowNewConnections = false;
+            }
+
+            if (_multiplayIntegration != null && _multiplayIntegration.IsConnected)
+            {
+                try
+                {
+                    await _multiplayIntegration.LockSessionAsync();
+                    await _multiplayIntegration.SetPlayerReadinessAsync(false);
+                }
+                catch (Exception ex)
+                {
+                    Debug.LogWarning($"[ServerGameManager] Failed to lock session: {ex.Message}");
+                }
             }
         }
 
@@ -375,7 +399,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         /// </summary>
         private void EmitAllClientsConnected()
         {
-            if (_allConnectedEmitted)
+            if (_shutdownEmitted || _allConnectedEmitted)
             {
                 return;
             }
@@ -394,6 +418,16 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         {
             RequestShutdown(ShutdownKind.AllPlayersDisconnected, "All players disconnected", StartTimeoutShutdownDelaySeconds);
         }
+
+        /// <summary>
+        /// Initiates server shutdown and quits the application immediately.
+        /// </summary>
+        private void CloseServer()
+        {
+            Dispose();
+            Application.Quit();
+        }
+
     }
 }
 #endif

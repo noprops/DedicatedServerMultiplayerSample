@@ -1,108 +1,96 @@
 #if UNITY_SERVER || ENABLE_UCS_SERVER
 using System;
 using System.Collections.Generic;
-using DedicatedServerMultiplayerSample.Shared;
 using Unity.Netcode;
 
 namespace DedicatedServerMultiplayerSample.Server.Core
 {
     /// <summary>
-    /// Handles Netcode connection approval and defers approved responses until the gameplay scene is ready.
+    /// Evaluates whether an incoming connection should be approved based on authId and capacity rules.
     /// </summary>
-    public sealed class ServerConnectionGate : IDisposable
+    public sealed class ServerConnectionGate
     {
-        private const int k_MaxConnectPayload = 1024;
-
-        private readonly NetworkManager _networkManager;
         private readonly ConnectionDirectory _directory;
-        private readonly IConnectionPolicy _policy;
-        private readonly List<NetworkManager.ConnectionApprovalResponse> _pendingApprovals = new();
 
-        public ServerConnectionGate(NetworkManager networkManager, ConnectionDirectory directory, IConnectionPolicy policy)
+        /// <summary>
+        /// Creates a new gate that encapsulates connection approval rules.
+        /// </summary>
+        public ServerConnectionGate(NetworkManager networkManager, ConnectionDirectory directory)
         {
-            _networkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
+            _ = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
             _directory = directory ?? throw new ArgumentNullException(nameof(directory));
-            _policy = policy ?? throw new ArgumentNullException(nameof(policy));
-
-            _networkManager.ConnectionApprovalCallback = HandleApproval;
         }
 
-        public Func<bool> SceneIsLoaded { get; set; } = () => false;
+        /// <summary>
+        /// Provides the current number of connected players.
+        /// </summary>
         public Func<int> CurrentPlayers { get; set; } = () => 0;
+        /// <summary>
+        /// Provides the maximum allowed number of players.
+        /// </summary>
         public Func<int> Capacity { get; set; } = () => int.MaxValue;
+        /// <summary>
+        /// Supplies the list of expected auth identifiers, if any.
+        /// </summary>
         public Func<IReadOnlyCollection<string>> ExpectedAuthIds { get; set; } = Array.Empty<string>;
+        /// <summary>
+        /// Indicates whether new connections are currently accepted.
+        /// </summary>
         public bool AllowNewConnections { get; set; } = true;
 
-        public void ReleasePendingApprovals()
+        /// <summary>
+        /// Determines whether the supplied auth identifier should be approved and produces a rejection reason when denied.
+        /// </summary>
+        public bool ShouldApprove(string authId, out string reason)
         {
-            for (int i = 0; i < _pendingApprovals.Count; i++)
+            if (string.IsNullOrWhiteSpace(authId))
             {
-                var response = _pendingApprovals[i];
-                response.Pending = false;
-                _pendingApprovals[i] = response;
+                reason = "Missing authId";
+                return false;
             }
 
-            _pendingApprovals.Clear();
-        }
-
-        public void Dispose()
-        {
-            _pendingApprovals.Clear();
-            if (_networkManager != null)
-            {
-                _networkManager.ConnectionApprovalCallback = null;
-            }
-        }
-
-        private void HandleApproval(NetworkManager.ConnectionApprovalRequest request,
-                                     NetworkManager.ConnectionApprovalResponse response)
-        {
             if (!AllowNewConnections)
             {
-                response.Approved = false;
-                response.Pending = false;
-                response.Reason = "Game already started";
-                return;
+                reason = "Game already started";
+                return false;
             }
 
-            if (request.Payload.Length > k_MaxConnectPayload)
+            var currentPlayers = CurrentPlayers();
+            var capacity = Capacity();
+            if (currentPlayers >= Math.Max(1, capacity))
             {
-                response.Approved = false;
-                response.Pending = false;
-                response.Reason = "Payload too large";
-                return;
+                reason = "Server full";
+                return false;
             }
 
-            var payload = ConnectionPayloadSerializer.DeserializeFromBytes(request.Payload);
-
-            var (success, reason) = _policy.Validate(
-                payload,
-                CurrentPlayers(),
-                Capacity(),
-                ExpectedAuthIds(),
-                _directory.IsAuthConnected);
-
-            if (!success)
+            var expected = ExpectedAuthIds?.Invoke();
+            if (expected != null && expected.Count > 0)
             {
-                response.Approved = false;
-                response.Pending = false;
-                response.Reason = reason;
-                return;
+                var match = false;
+                foreach (var expectedId in expected)
+                {
+                    if (string.Equals(expectedId, authId, StringComparison.Ordinal))
+                    {
+                        match = true;
+                        break;
+                    }
+                }
+
+                if (!match)
+                {
+                    reason = "AuthId not expected";
+                    return false;
+                }
             }
 
-            _directory.Register(request.ClientNetworkId, payload);
-
-            response.Approved = true;
-            response.CreatePlayerObject = false;
-
-            if (!SceneIsLoaded())
+            if (_directory != null && _directory.IsAuthConnected(authId))
             {
-                response.Pending = true;
-                _pendingApprovals.Add(response);
-                return;
+                reason = "Duplicate login";
+                return false;
             }
 
-            response.Pending = false;
+            reason = null;
+            return true;
         }
     }
 }

@@ -18,6 +18,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private int _requiredPlayers;
         private bool _readyNotified;
 
+        /// <summary>
+        /// Creates a tracker that observes client connections using the provided NetworkManager and directory.
+        /// </summary>
         public ServerConnectionTracker(NetworkManager networkManager,
                                        ConnectionDirectory directory,
                                        int requiredPlayers)
@@ -37,27 +40,33 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         public event Action RequiredPlayersReady;
         public event Action AllPlayersDisconnected;
 
+        /// <summary>
+        /// True when the number of connected players meets or exceeds the configured requirement.
+        /// </summary>
         public bool HasRequiredPlayers => _directory.Count >= _requiredPlayers;
 
-        public Dictionary<ulong, Dictionary<string, object>> GetAllConnectionData()
-        {
-            return _directory.GetAllConnectionData();
-        }
-
+        /// <summary>
+        /// Returns a snapshot of known client ids including those recently disconnected.
+        /// </summary>
         public IReadOnlyCollection<ulong> GetKnownClientIds()
         {
-            var snapshot = _directory.GetAllConnectionData();
-            var result = new HashSet<ulong>(snapshot.Keys);
+            var result = new HashSet<ulong>(_directory.GetClientIds());
             result.UnionWith(_disconnectedClients);
             return result;
         }
 
+        /// <summary>
+        /// Unsubscribes from NetworkManager callbacks.
+        /// </summary>
         public void Dispose()
         {
             _networkManager.OnClientConnectedCallback -= HandleClientConnected;
             _networkManager.OnClientDisconnectCallback -= HandleClientDisconnected;
         }
 
+        /// <summary>
+        /// Handles newly connected clients, registers metadata, and emits events.
+        /// </summary>
         private void HandleClientConnected(ulong clientId)
         {
             _disconnectedClients.Remove(clientId);
@@ -84,6 +93,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             ClientConnected?.Invoke(clientId);
         }
 
+        /// <summary>
+        /// Handles client disconnects, unregisters metadata, and raises notifications.
+        /// </summary>
         private void HandleClientDisconnected(ulong clientId)
         {
             _directory.Unregister(clientId);
@@ -101,6 +113,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             ClientDisconnected?.Invoke(clientId);
         }
 
+        /// <summary>
+        /// Emits the required players event when the threshold is first reached.
+        /// </summary>
         private void CheckRequiredPlayersReached()
         {
             if (_readyNotified || !HasRequiredPlayers)

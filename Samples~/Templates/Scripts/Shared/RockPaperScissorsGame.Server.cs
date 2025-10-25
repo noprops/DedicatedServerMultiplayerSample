@@ -129,11 +129,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             try
             {
-                if (_gameManager != null)
-                {
-                    await _gameManager.LockSessionForGameStartAsync();
-                }
-
                 ApplyPlayerIds(participantIds);
                 Phase.Value = GamePhase.Choosing;
 
@@ -196,11 +191,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             PlayerNames.Clear();
 
-            var snapshot = ServerSingleton.Instance?.GameManager?.GetAllConnectedPlayers();
-
             foreach (var id in PlayerIds)
             {
-                PlayerNames.Add(GetDisplayName(snapshot, id));
+                PlayerNames.Add(GetDisplayName(id));
             }
         }
 
@@ -226,16 +219,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Resolves a friendly display name for the specified participant.
         /// </summary>
-        private FixedString64Bytes GetDisplayName(Dictionary<ulong, Dictionary<string, object>> snapshot, ulong id)
+        private FixedString64Bytes GetDisplayName(ulong id)
         {
             if (IsCpuId(id))
             {
                 return "CPU";
-            }
-
-            if (snapshot != null && snapshot.TryGetValue(id, out var payload))
-            {
-                return ResolvePlayerName(payload, id);
             }
 
             return $"Player{id}";

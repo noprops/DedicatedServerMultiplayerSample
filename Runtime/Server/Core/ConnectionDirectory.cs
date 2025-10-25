@@ -1,6 +1,7 @@
 #if UNITY_SERVER || ENABLE_UCS_SERVER
 using System;
 using System.Collections.Generic;
+using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Server.Core
 {
@@ -22,7 +23,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 ? new Dictionary<string, object>(payload)
                 : new Dictionary<string, object>();
 
-            var authId = ExtractAuthId(payload) ?? "Unknown";
+            var authId = ResolveAuthId(payload);
 
             if (_authByClient.TryGetValue(clientId, out var previousAuth))
             {
@@ -65,15 +66,114 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             return _payloadByClient.TryGetValue(clientId, out var payload) ? payload : null;
         }
 
-        public Dictionary<ulong, Dictionary<string, object>> GetAllConnectionData()
+        public IReadOnlyCollection<ulong> GetClientIds()
         {
-            var snapshot = new Dictionary<ulong, Dictionary<string, object>>(_payloadByClient.Count);
-            foreach (var pair in _payloadByClient)
+            return new List<ulong>(_payloadByClient.Keys);
+        }
+
+        public bool TryParseAuthId(byte[] payloadBytes, out string authId)
+        {
+            authId = null;
+            if (payloadBytes == null || payloadBytes.Length == 0)
             {
-                snapshot[pair.Key] = new Dictionary<string, object>(pair.Value);
+                return false;
             }
 
-            return snapshot;
+            var payload = ConnectionPayloadSerializer.DeserializeFromBytes(payloadBytes);
+            return TryExtractAuthId(payload, out authId);
+        }
+
+        public bool TryGet(ulong clientId, string key, out object value)
+        {
+            value = null;
+            if (string.IsNullOrEmpty(key))
+            {
+                return false;
+            }
+
+            if (!_payloadByClient.TryGetValue(clientId, out var payload) || payload == null)
+            {
+                return false;
+            }
+
+            if (!payload.TryGetValue(key, out var raw) || raw == null)
+            {
+                return false;
+            }
+
+            value = raw;
+            return true;
+        }
+
+        public bool TryGet<T>(ulong clientId, string key, out T value)
+        {
+            value = default;
+            if (!TryGet(clientId, key, out var boxed))
+            {
+                return false;
+            }
+
+            if (boxed is T t)
+            {
+                value = t;
+                return true;
+            }
+
+            try
+            {
+                if (boxed is IConvertible)
+                {
+                    value = (T)Convert.ChangeType(boxed, typeof(T));
+                    return true;
+                }
+            }
+            catch
+            {
+                // ignored: conversion failure
+            }
+
+            return false;
+        }
+
+        public Dictionary<ulong, Dictionary<string, object>> GetValues(IEnumerable<ulong> clientIds, params string[] keys)
+        {
+            var result = new Dictionary<ulong, Dictionary<string, object>>();
+            if (clientIds == null || keys == null || keys.Length == 0)
+            {
+                return result;
+            }
+
+            foreach (var clientId in clientIds)
+            {
+                if (!_payloadByClient.TryGetValue(clientId, out var payload) || payload == null)
+                {
+                    continue;
+                }
+
+                Dictionary<string, object> row = null;
+                foreach (var key in keys)
+                {
+                    if (string.IsNullOrEmpty(key))
+                    {
+                        continue;
+                    }
+
+                    if (!payload.TryGetValue(key, out var value) || value == null)
+                    {
+                        continue;
+                    }
+
+                    row ??= new Dictionary<string, object>();
+                    row[key] = value;
+                }
+
+                if (row != null)
+                {
+                    result[clientId] = row;
+                }
+            }
+
+            return result;
         }
 
         public void Clear()
@@ -81,24 +181,6 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             _payloadByClient.Clear();
             _authByClient.Clear();
             _authRefCounts.Clear();
-        }
-
-        public static string ExtractAuthId(Dictionary<string, object> payload)
-        {
-            if (payload == null || !payload.TryGetValue("authId", out var value) || value == null)
-            {
-                return null;
-            }
-
-            return value switch
-            {
-                string s => s,
-                int i => i.ToString(),
-                long l => l.ToString(),
-                double d => d.ToString(),
-                bool b => b.ToString(),
-                _ => value.ToString(),
-            };
         }
 
         private void IncrementAuth(string authId)
@@ -128,6 +210,34 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             {
                 _authRefCounts[authId] = count - 1;
             }
+        }
+
+        private static string ResolveAuthId(Dictionary<string, object> payload)
+        {
+            return TryExtractAuthId(payload, out var authId) ? authId : "Unknown";
+        }
+
+        private static bool TryExtractAuthId(Dictionary<string, object> payload, out string authId)
+        {
+            authId = null;
+            if (payload == null)
+            {
+                return false;
+            }
+
+            if (!payload.TryGetValue("authId", out var value) || value == null)
+            {
+                return false;
+            }
+
+            var str = value as string ?? value.ToString();
+            if (string.IsNullOrWhiteSpace(str))
+            {
+                return false;
+            }
+
+            authId = str;
+            return true;
         }
     }
 }
