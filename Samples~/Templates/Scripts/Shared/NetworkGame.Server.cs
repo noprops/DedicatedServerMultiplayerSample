@@ -12,7 +12,7 @@ using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
-    public partial class RockPaperScissorsGame
+    public partial class RockPaperScissorsNetworkGame
     {
         private const float RoundTimeoutSeconds = 30f;
 
@@ -45,7 +45,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             _gameManager = ServerSingleton.Instance?.GameManager;
             if (_gameManager == null)
             {
-                Debug.LogError("[RockPaperScissorsGame] No ServerGameManager");
+                Debug.LogError("[RockPaperScissorsNetworkGame] No ServerGameManager");
                 return;
             }
 
@@ -115,7 +115,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                     }
                     break;
                 case ShutdownKind.AllPlayersDisconnected:
-                    Debug.LogWarning($"[RockPaperScissorsGame] Shutdown due to disconnects: {reason}");
+                    Debug.LogWarning($"[RockPaperScissorsNetworkGame] Shutdown due to disconnects: {reason}");
                     break;
                 case ShutdownKind.Normal:
                     break;
@@ -148,7 +148,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
             catch (Exception e)
             {
-                Debug.LogError($"[RockPaperScissorsGame] Fatal error: {e.Message}");
+                Debug.LogError($"[RockPaperScissorsNetworkGame] Fatal error: {e.Message}");
                 _gameManager?.RequestShutdown(ShutdownKind.Error, e.Message, 5f);
             }
             finally
@@ -242,7 +242,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
             if (round.Players.Count < RequiredGamePlayers)
             {
-                Debug.LogWarning("[RockPaperScissorsGame] Not enough players to start round");
+                Debug.LogWarning("[RockPaperScissorsNetworkGame] Not enough players to start round");
                 return;
             }
 
@@ -271,7 +271,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 }
                 catch (OperationCanceledException) when (!ct.IsCancellationRequested)
                 {
-                    Debug.LogWarning("[RockPaperScissorsGame] Timeout - assigning hands to non-responsive players");
+                    Debug.LogWarning("[RockPaperScissorsNetworkGame] Timeout - assigning hands to non-responsive players");
 
                     foreach (var playerId in round.Players)
                     {
@@ -302,7 +302,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             var randomHand = (Hand)UnityEngine.Random.Range(1, 4);
             round.Choices[playerId] = randomHand;
-            Debug.Log($"[RockPaperScissorsGame] Auto-assigned {randomHand} to {reason} player {playerId}");
+            Debug.Log($"[RockPaperScissorsNetworkGame] Auto-assigned {randomHand} to {reason} player {playerId}");
 
             if (round.Choices.Count >= round.Players.Count)
             {
@@ -330,7 +330,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
             if (round.Choices.ContainsKey(clientId))
             {
-                Debug.Log($"[RockPaperScissorsGame] Disconnected player {clientId} already chose {round.Choices[clientId]}");
+                Debug.Log($"[RockPaperScissorsNetworkGame] Disconnected player {clientId} already chose {round.Choices[clientId]}");
                 return;
             }
 
@@ -385,7 +385,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             if (round.Players.Count < 2)
             {
-                Debug.LogWarning("[RockPaperScissorsGame] Not enough participants to resolve round");
+                Debug.LogWarning("[RockPaperScissorsNetworkGame] Not enough participants to resolve round");
                 result = default;
                 return false;
             }

@@ -6,7 +6,7 @@ Contents:
 - `Scenes/bootStrap.unity` – creates `NetworkManager`, `ClientSingleton`, and (for server builds) `ServerSingleton` at runtime.
 - `Scenes/loading.unity` – demonstrates hooking into `LoadingScene` with `LoadingSceneSampleTask`.
 - `Scenes/menu.unity` – basic menu scene ready to hook up to your matchmaking UI.
-- `Scenes/game.unity` – contains the `RockPaperScissorsGame` network behaviour and session controller.
+- `Scenes/game.unity` – contains the `RockPaperScissorsNetworkGame` network behaviour and session controller.
 - `Scripts/Client` & `Scripts/Shared` – sample behaviours referenced by the scenes.
 - `Configurations/` – deployment templates for Matchmaker & Multiplay.
 

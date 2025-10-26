@@ -4,17 +4,16 @@ using System.Threading.Tasks;
 using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
+
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
-    public partial class RockPaperScissorsGame : NetworkBehaviour
+    public partial class RockPaperScissorsNetworkGame : NetworkBehaviour
     {
         public const int RequiredGamePlayers = 2;
         public const ulong CpuPlayerBaseId = 100;
 
-        // ========== Static Instance ==========
-        public static RockPaperScissorsGame Instance { get; private set; }
+        public static RockPaperScissorsNetworkGame Instance { get; private set; }
 
-        // ========== Shared Network State ==========
         public NetworkVariable<GamePhase> Phase { get; } = new(
             GamePhase.None,
             NetworkVariableReadPermission.Everyone,
@@ -33,8 +32,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             readPerm: NetworkVariableReadPermission.Everyone,
             writePerm: NetworkVariableWritePermission.Server);
 
-        // ========== Unity Lifecycle ==========
-
         private void Awake()
         {
             if (Instance != null && Instance != this)
@@ -42,19 +39,20 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 Destroy(gameObject);
                 return;
             }
+
             Instance = this;
-            Debug.Log("[RockPaperScissorsGame] Instance set in Awake");
+            Debug.Log("[RockPaperScissorsNetworkGame] Instance set in Awake");
         }
 
         public override void OnNetworkSpawn()
         {
-            Debug.Log($"[RockPaperScissorsGame] Spawned - IsServer: {IsServer}, IsClient: {IsClient}");
-            OnServerSpawn();  // Call partial method for server initialization
+            Debug.Log($"[RockPaperScissorsNetworkGame] Spawned - IsServer: {IsServer}, IsClient: {IsClient}");
+            OnServerSpawn();
         }
 
         public override void OnNetworkDespawn()
         {
-            OnServerDespawn();  // Call partial method for server cleanup
+            OnServerDespawn();
             base.OnNetworkDespawn();
         }
 
@@ -69,12 +67,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
         }
 
-        // ========== Partial Methods (Server hooks) ==========
         partial void OnServerSpawn();
         partial void OnServerDespawn();
         partial void HandleSubmitChoice(ulong clientId, Hand choice);
-
-        // ========== Server RPC (Client callable) ==========
 
         [ServerRpc(RequireOwnership = false)]
         public void SubmitChoiceServerRpc(Hand choice, ServerRpcParams rpcParams = default)

@@ -39,7 +39,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
 
         private bool _hasSubmitted;
         private bool _finishFlowStarted;
-        private RockPaperScissorsGame _game;
+        private RockPaperScissorsNetworkGame _game;
         private readonly List<ulong> _playerIds = new();
 
         private void OnEnable()
@@ -67,10 +67,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
 
         private void AttachToGame()
         {
-            _game = RockPaperScissorsGame.Instance ?? FindObjectOfType<RockPaperScissorsGame>();
+            _game = RockPaperScissorsNetworkGame.Instance ?? FindObjectOfType<RockPaperScissorsNetworkGame>();
             if (_game == null)
             {
-                Debug.LogWarning("[RockPaperScissorsUI] RockPaperScissorsGame not found");
+                Debug.LogWarning("[RockPaperScissorsUI] RockPaperScissorsNetworkGame not found");
                 SetStatus("Waiting for server...");
                 return;
             }
@@ -346,7 +346,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
                 }
             }
 
-            if (clientId >= RockPaperScissorsGame.CpuPlayerBaseId)
+            if (clientId >= RockPaperScissorsNetworkGame.CpuPlayerBaseId)
             {
                 return "CPU";
             }

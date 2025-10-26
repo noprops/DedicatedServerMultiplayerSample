@@ -132,7 +132,7 @@ GameObject:
   - component: {fileID: 1002}
   - component: {fileID: 1004}
   m_Layer: 0
-  m_Name: RockPaperScissorsGame
+  m_Name: RockPaperScissorsNetworkGame
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
