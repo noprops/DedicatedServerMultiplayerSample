@@ -7,12 +7,12 @@ using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
-    public partial class RockPaperScissorsNetworkGame : NetworkBehaviour
+    public partial class NetworkGame : NetworkBehaviour
     {
         public const int RequiredGamePlayers = 2;
         public const ulong CpuPlayerBaseId = 100;
 
-        public static RockPaperScissorsNetworkGame Instance { get; private set; }
+        public static NetworkGame Instance { get; private set; }
 
         public NetworkVariable<GamePhase> Phase { get; } = new(
             GamePhase.None,

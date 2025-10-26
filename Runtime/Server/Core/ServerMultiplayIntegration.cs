@@ -24,6 +24,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private readonly int _defaultMaxPlayers;
         private bool _disposed;
 
+        /// <summary>
+        /// Creates a new Multiplay integration helper bound to the provided runtime configuration data.
+        /// </summary>
         public ServerMultiplayIntegration(ServerRuntimeConfig runtimeConfig, int defaultMaxPlayers)
         {
             _runtimeConfig = runtimeConfig ?? throw new ArgumentNullException(nameof(runtimeConfig));
@@ -35,12 +38,15 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         public event Action<IMultiplayAllocation> OnAllocationComplete;
 
         // ========== Public Properties ==========
+        /// <summary>
+        /// True when the multiplay session manager has been started successfully.
+        /// </summary>
         public bool IsConnected => _sessionManager != null;
 
         // ========== Public Methods ==========
 
         /// <summary>
-        /// プレイヤー受け入れ準備状態を設定
+        /// Marks whether the game server is ready to accept players.
         /// </summary>
         public async Task SetPlayerReadinessAsync(bool ready)
         {
@@ -56,7 +62,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         }
 
         /// <summary>
-        /// セッションをロックして新規プレイヤーの参加を防ぐ
+        /// Locks the current session, preventing new players from joining.
         /// </summary>
         public async Task LockSessionAsync()
         {
@@ -94,7 +100,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         }
 
         /// <summary>
-        /// Multiplayサービスに接続して初期化
+        /// Connects to Unity Services and starts the multiplay session manager.
         /// </summary>
         public async Task<bool> ConnectAsync()
         {
@@ -167,7 +173,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         }
 
         /// <summary>
-        /// 現在のセッション情報を取得
+        /// Returns the active Multiplay session, if available.
         /// </summary>
         public ISession GetCurrentSession()
         {
@@ -175,7 +181,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         }
 
         /// <summary>
-        /// マッチメイキング結果を取得
+        /// Retrieves matchmaking results that were supplied with the allocation payload.
         /// </summary>
         public async Task<MatchmakingResults> GetMatchmakingResultsAsync()
         {
@@ -199,12 +205,18 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         // ========== Private Methods ==========
 
+        /// <summary>
+        /// Dispatches the allocation event when the server is assigned a match.
+        /// </summary>
         private void HandleServerAllocated(IMultiplayAllocation allocation)
         {
             Debug.Log("[ServerMultiplayIntegration] Server allocated");
             OnAllocationComplete?.Invoke(allocation);
         }
 
+        /// <summary>
+        /// Applies metadata derived from matchmaking results to the server options and raises the match-info event.
+        /// </summary>
         public void UpdateServerMetadata(MatchmakingResults results)
         {
             if (_serverOptions == null)
@@ -290,6 +302,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             OnMatchInfoReceived?.Invoke(results);
         }
 
+        /// <summary>
+        /// Attempts to read a named value from the matchmaker custom data payload.
+        /// </summary>
         private static bool TryGetCustomDataValue(IDeserializable customData, string key, out string value)
         {
             value = null;
@@ -319,6 +334,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             return false;
         }
 
+        /// <summary>
+        /// Releases owned resources and disposes the underlying session manager.
+        /// </summary>
         public void Dispose()
         {
             if (_disposed)
