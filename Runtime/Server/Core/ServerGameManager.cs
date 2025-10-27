@@ -122,6 +122,30 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         }
 
         /// <summary>
+        /// Attempts to resolve a display name for the specified client using registered payload information.
+        /// </summary>
+        public bool TryGetPlayerDisplayName(ulong clientId, out string playerName)
+        {
+            playerName = null;
+
+            if (_connectionDirectory.TryGet<string>(clientId, "playerName", out var payloadName) &&
+                !string.IsNullOrWhiteSpace(payloadName))
+            {
+                playerName = payloadName;
+                return true;
+            }
+
+            if (_connectionDirectory.TryGetAuthId(clientId, out var authId) &&
+                !string.IsNullOrWhiteSpace(authId))
+            {
+                playerName = authId;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
         /// Starts the dedicated server workflow, acquiring allocations, loading scenes, and opening the gate for clients.
         /// </summary>
         public async Task<bool> StartServerAsync(CancellationToken cancellationToken = default)

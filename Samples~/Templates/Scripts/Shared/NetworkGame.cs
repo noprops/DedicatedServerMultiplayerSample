@@ -7,13 +7,18 @@ using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
+    /// <summary>
+    /// Netcode-backed Rock-Paper-Scissors session coordinator.
+    /// </summary>
     public partial class NetworkGame : NetworkBehaviour
     {
         public const int RequiredGamePlayers = 2;
         public const ulong CpuPlayerBaseId = 100;
 
+        // ========== Static Instance ==========
         public static NetworkGame Instance { get; private set; }
 
+        // ========== Shared Network State ==========
         public NetworkVariable<GamePhase> Phase { get; } = new(
             GamePhase.None,
             NetworkVariableReadPermission.Everyone,
@@ -32,6 +37,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             readPerm: NetworkVariableReadPermission.Everyone,
             writePerm: NetworkVariableWritePermission.Server);
 
+        // ========== Unity Lifecycle ==========
+
         private void Awake()
         {
             if (Instance != null && Instance != this)
@@ -41,12 +48,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
 
             Instance = this;
-            Debug.Log("[RockPaperScissorsNetworkGame] Instance set in Awake");
+            Debug.Log("[NetworkGame] Instance set in Awake");
         }
 
         public override void OnNetworkSpawn()
         {
-            Debug.Log($"[RockPaperScissorsNetworkGame] Spawned - IsServer: {IsServer}, IsClient: {IsClient}");
+            Debug.Log($"[NetworkGame] Spawned - IsServer: {IsServer}, IsClient: {IsClient}");
             OnServerSpawn();
         }
 
@@ -67,9 +74,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
         }
 
+        // ========== Partial Methods (Server hooks) ==========
         partial void OnServerSpawn();
         partial void OnServerDespawn();
         partial void HandleSubmitChoice(ulong clientId, Hand choice);
+
+        // ========== Server RPC (Client callable) ==========
 
         [ServerRpc(RequireOwnership = false)]
         public void SubmitChoiceServerRpc(Hand choice, ServerRpcParams rpcParams = default)

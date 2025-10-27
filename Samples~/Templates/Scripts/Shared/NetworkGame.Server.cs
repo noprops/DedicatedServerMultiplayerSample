@@ -12,19 +12,14 @@ using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
-    public partial class RockPaperScissorsNetworkGame
+    public partial class NetworkGame
     {
         private const float RoundTimeoutSeconds = 30f;
 
-        private sealed class RoundState
-        {
-            public List<ulong> Players { get; } = new();
-            public Dictionary<ulong, Hand> Choices { get; } = new();
-            public TaskCompletionSource<bool> AllChosen { get; } =
-                new(TaskCreationOptions.RunContinuationsAsynchronously);
-        }
-
-        private RoundState _currentRound;
+        private readonly Dictionary<ulong, int> _playerSlots = new();
+        private RockPaperScissorsGameLogic _gameLogic;
+        private GameRoundRunner _roundRunner;
+        private readonly bool[] _slotSubmittedByClient = new bool[2];
         private ServerGameManager _gameManager;
         private CancellationTokenSource _roundCts;
         private bool _roundStarted;
@@ -45,7 +40,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             _gameManager = ServerSingleton.Instance?.GameManager;
             if (_gameManager == null)
             {
-                Debug.LogError("[RockPaperScissorsNetworkGame] No ServerGameManager");
+                Debug.LogError("[NetworkGame] No ServerGameManager");
                 return;
             }
 
@@ -60,10 +55,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             NetworkManager.Singleton.OnClientConnectedCallback -= OnClientConnected;
             NetworkManager.Singleton.OnClientDisconnectCallback -= OnClientDisconnected;
-            _currentRound = null;
-            _roundCts?.Cancel();
+            CancelActiveRound();
             _roundCts?.Dispose();
             _roundCts = null;
+            DisposeRoundResources();
 
             if (_gameManager != null)
             {
@@ -95,7 +90,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             if (kind != ShutdownKind.Normal)
             {
-                _roundCts?.Cancel();
+                CancelActiveRound();
             }
 
             switch (kind)
@@ -115,7 +110,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                     }
                     break;
                 case ShutdownKind.AllPlayersDisconnected:
-                    Debug.LogWarning($"[RockPaperScissorsNetworkGame] Shutdown due to disconnects: {reason}");
+                    Debug.LogWarning($"[NetworkGame] Shutdown due to disconnects: {reason}");
                     break;
                 case ShutdownKind.Normal:
                     break;
@@ -133,26 +128,25 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 Phase.Value = GamePhase.Choosing;
 
                 _roundCts = new CancellationTokenSource();
-                await ExecuteGameRoundAsync(_roundCts.Token);
+                await RunRoundAsync(_roundCts.Token);
 
-                _gameManager?.RequestShutdown(ShutdownKind.Normal, "Game completed");
+                if (!_roundCts.IsCancellationRequested)
+                {
+                    _gameManager?.RequestShutdown(ShutdownKind.Normal, "Game completed");
+                }
             }
             catch (OperationCanceledException)
             {
                 // cancellation requested (shutdown triggered)
             }
-            catch (TimeoutException)
-            {
-                Phase.Value = GamePhase.StartFailed;
-                _gameManager?.RequestShutdown(ShutdownKind.Error, "Round timeout", 5f);
-            }
             catch (Exception e)
             {
-                Debug.LogError($"[RockPaperScissorsNetworkGame] Fatal error: {e.Message}");
+                Debug.LogError($"[NetworkGame] Fatal error: {e.Message}");
                 _gameManager?.RequestShutdown(ShutdownKind.Error, e.Message, 5f);
             }
             finally
             {
+                DisposeRoundResources();
                 _roundCts?.Dispose();
                 _roundCts = null;
             }
@@ -163,22 +157,21 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         private void ApplyPlayerIds(IReadOnlyList<ulong> participantIds)
         {
-            var ids = participantIds != null ? new List<ulong>(participantIds) : new List<ulong>();
-            var seen = new HashSet<ulong>(ids);
-
-            while (ids.Count < RequiredGamePlayers)
-            {
-                var cpuId = NextCpuId(seen);
-                seen.Add(cpuId);
-                ids.Add(cpuId);
-            }
-
             PlayerIds.Clear();
             PlayerNames.Clear();
 
-            foreach (var id in ids)
+            if (participantIds != null)
             {
-                PlayerIds.Add(id);
+                foreach (var id in participantIds)
+                {
+                    PlayerIds.Add(id);
+                }
+            }
+
+            while (PlayerIds.Count < RequiredGamePlayers)
+            {
+                var cpuId = NextCpuId();
+                PlayerIds.Add(cpuId);
             }
 
             RebuildPlayerNames();
@@ -205,15 +198,29 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Picks the next unused CPU identifier.
         /// </summary>
-        private ulong NextCpuId(HashSet<ulong> existing)
+        private ulong NextCpuId()
         {
             var cpuId = CpuPlayerBaseId;
-            while (existing.Contains(cpuId))
+
+            while (true)
             {
+                var taken = false;
+                for (var i = 0; i < PlayerIds.Count; i++)
+                {
+                    if (PlayerIds[i] == cpuId)
+                    {
+                        taken = true;
+                        break;
+                    }
+                }
+
+                if (!taken)
+                {
+                    return cpuId;
+                }
+
                 cpuId++;
             }
-
-            return cpuId;
         }
 
         /// <summary>
@@ -226,88 +233,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 return "CPU";
             }
 
+            if (_gameManager != null && _gameManager.TryGetPlayerDisplayName(id, out var resolvedName))
+            {
+                return resolvedName;
+            }
+
             return $"Player{id}";
-        }
-
-        /// <summary>
-        /// Executes a full Rock-Paper-Scissors round, handling timeouts and disconnects.
-        /// </summary>
-        private async Task ExecuteGameRoundAsync(CancellationToken ct)
-        {
-            var round = new RoundState();
-            foreach (var id in PlayerIds)
-            {
-                round.Players.Add(id);
-            }
-
-            if (round.Players.Count < RequiredGamePlayers)
-            {
-                Debug.LogWarning("[RockPaperScissorsNetworkGame] Not enough players to start round");
-                return;
-            }
-
-            _currentRound = round;
-
-            foreach (var playerId in round.Players)
-            {
-                if (IsCpuId(playerId))
-                {
-                    AssignRandomHand(round, playerId, "cpu");
-                }
-            }
-
-            if (round.Choices.Count >= round.Players.Count)
-            {
-                round.AllChosen.TrySetResult(true);
-            }
-
-            using (var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(ct))
-            {
-                timeoutCts.CancelAfter(TimeSpan.FromSeconds(RoundTimeoutSeconds));
-
-                try
-                {
-                    await round.AllChosen.Task.WaitOrCancel(timeoutCts.Token).ConfigureAwait(false);
-                }
-                catch (OperationCanceledException) when (!ct.IsCancellationRequested)
-                {
-                    Debug.LogWarning("[RockPaperScissorsNetworkGame] Timeout - assigning hands to non-responsive players");
-
-                    foreach (var playerId in round.Players)
-                    {
-                        if (IsCpuId(playerId) || round.Choices.ContainsKey(playerId))
-                        {
-                            continue;
-                        }
-
-                        AssignRandomHand(round, playerId, "timeout");
-                        ServerSingleton.Instance?.GameManager?.DisconnectClient(playerId, "Selection timeout");
-                    }
-                }
-            }
-
-            var resolved = TryResolveRound(round, out var result);
-            _currentRound = null;
-
-            if (resolved)
-            {
-                await ReportGameCompletedAsync(result, ct);
-            }
-        }
-
-        /// <summary>
-        /// Assigns a random hand to the specified player and completes the round if everyone has chosen.
-        /// </summary>
-        private static void AssignRandomHand(RoundState round, ulong playerId, string reason)
-        {
-            var randomHand = (Hand)UnityEngine.Random.Range(1, 4);
-            round.Choices[playerId] = randomHand;
-            Debug.Log($"[RockPaperScissorsNetworkGame] Auto-assigned {randomHand} to {reason} player {playerId}");
-
-            if (round.Choices.Count >= round.Players.Count)
-            {
-                round.AllChosen.TrySetResult(true);
-            }
         }
 
         /// <summary>
@@ -317,24 +248,26 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             RebuildPlayerNames();
 
-            var round = _currentRound;
-            if (round == null)
+            if (_gameLogic == null || _roundRunner == null || !_playerSlots.TryGetValue(clientId, out var slot))
             {
                 return;
             }
 
-            if (!round.Players.Contains(clientId))
+            if (_gameLogic.HasChoice(slot))
             {
+                if (_gameLogic.TryGetChoice(slot, out var existing))
+                {
+                    Debug.Log($"[NetworkGame] Disconnected player {clientId} already chose {existing}");
+                }
                 return;
             }
 
-            if (round.Choices.ContainsKey(clientId))
+            var autoHand = GetRandomHand();
+            if (_roundRunner.Submit(slot, autoHand))
             {
-                Debug.Log($"[RockPaperScissorsNetworkGame] Disconnected player {clientId} already chose {round.Choices[clientId]}");
-                return;
+                _slotSubmittedByClient[slot] = true;
+                Debug.Log($"[NetworkGame] Auto-assigned {autoHand} to disconnected player {clientId}");
             }
-
-            AssignRandomHand(round, clientId, "disconnected");
         }
 
         /// <summary>
@@ -351,83 +284,56 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         partial void HandleSubmitChoice(ulong clientId, Hand choice)
         {
-            var round = _currentRound;
-            if (round == null)
+            if (_gameLogic == null || _roundRunner == null)
             {
                 return;
             }
 
-            if (!round.Players.Contains(clientId))
+            if (!_playerSlots.TryGetValue(clientId, out var slot))
             {
                 Debug.LogWarning($"[Server] Ignoring choice from non-participant {clientId}");
                 return;
             }
 
-            if (round.Choices.ContainsKey(clientId))
+            if (_gameLogic.HasChoice(slot))
             {
-                Debug.LogWarning($"[Server] Ignoring duplicate choice from {clientId} (already has {round.Choices[clientId]})");
+                if (_gameLogic.TryGetChoice(slot, out var existing))
+                {
+                    Debug.LogWarning($"[Server] Ignoring duplicate choice from {clientId} (already has {existing})");
+                }
                 return;
             }
 
-            round.Choices[clientId] = choice;
-            Debug.Log($"[Server] Choice received: {choice} from {clientId} ({round.Choices.Count}/{round.Players.Count})");
-
-            if (round.Choices.Count >= round.Players.Count)
+            if (!_roundRunner.Submit(slot, choice))
             {
-                round.AllChosen.TrySetResult(true);
+                Debug.LogWarning($"[Server] Ignoring invalid choice {choice} from {clientId}");
+                return;
             }
+
+            if (!IsCpuId(clientId))
+            {
+                _slotSubmittedByClient[slot] = true;
+            }
+
+            Debug.Log($"[Server] Choice received: {choice} from {clientId}");
         }
 
         /// <summary>
-        /// Determines the round outcome and updates network variables, returning the resolved result.
+        /// Updates the replicated phase/result variables to reflect the resolved outcome.
         /// </summary>
-        private bool TryResolveRound(RoundState round, out RpsResult result)
+        private void PublishGameResult(RpsResult result)
         {
-            if (round.Players.Count < 2)
-            {
-                Debug.LogWarning("[RockPaperScissorsNetworkGame] Not enough participants to resolve round");
-                result = default;
-                return false;
-            }
-
-            ulong p1 = round.Players[0];
-            ulong p2 = round.Players[1];
-
-            var h1 = round.Choices.TryGetValue(p1, out var choice1) ? choice1 : Hand.None;
-            var h2 = round.Choices.TryGetValue(p2, out var choice2) ? choice2 : Hand.None;
-
-            result = new RpsResult
-            {
-                P1 = p1,
-                P2 = p2,
-                H1 = h1,
-                H2 = h2,
-                P1Outcome = (byte)DetermineOutcome(h1, h2),
-                P2Outcome = (byte)DetermineOutcome(h2, h1)
-            };
-
             Phase.Value = GamePhase.Resolving;
             LastResult.Value = result;
             Phase.Value = GamePhase.Finished;
-
-            return true;
         }
 
         /// <summary>
-        /// Computes the outcome of a hand against an opponent.
+        /// Cancels any active round processing tasks.
         /// </summary>
-        private static RoundOutcome DetermineOutcome(Hand myHand, Hand opponentHand)
+        private void CancelActiveRound()
         {
-            if (myHand == opponentHand)
-            {
-                return RoundOutcome.Draw;
-            }
-
-            return ((myHand == Hand.Rock && opponentHand == Hand.Scissors) ||
-                    (myHand == Hand.Paper && opponentHand == Hand.Rock) ||
-                    (myHand == Hand.Scissors && opponentHand == Hand.Paper))
-                ? RoundOutcome.Win
-                : RoundOutcome.Lose;
+            _roundCts?.Cancel();
         }
 
         /// <summary>
@@ -452,9 +358,100 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         private static async Task ReportGameCompletedAsync(RpsResult result, CancellationToken ct)
         {
-            // Sample project: intentionally left blank.
-            // Production project: send <result> to the desired backend service here.
             await Task.Delay(TimeSpan.FromSeconds(0.5f), ct);
+        }
+
+        /// <summary>
+        /// Executes a single round from start to finish, including CPU seeding and timeout handling.
+        /// </summary>
+        private async Task RunRoundAsync(CancellationToken ct)
+        {
+            DisposeRoundResources();
+
+            if (PlayerIds.Count < RequiredGamePlayers)
+            {
+                Debug.LogWarning("[NetworkGame] Not enough players to start round");
+                return;
+            }
+
+            var player0 = PlayerIds[0];
+            var player1 = PlayerIds[1];
+
+            _playerSlots[player0] = 0;
+            _playerSlots[player1] = 1;
+            _slotSubmittedByClient[0] = false;
+            _slotSubmittedByClient[1] = false;
+
+            _gameLogic = new RockPaperScissorsGameLogic();
+            _roundRunner = new GameRoundRunner(_gameLogic);
+            _roundRunner.Start(player0, player1);
+
+            Phase.Value = GamePhase.Choosing;
+
+            AutoSubmitCpuHands();
+
+            var result = await _roundRunner
+                .RunAsync(TimeSpan.FromSeconds(RoundTimeoutSeconds), GetRandomHand, ct)
+                .ConfigureAwait(false);
+
+            HandleUnresponsivePlayers();
+            PublishGameResult(result);
+            await ReportGameCompletedAsync(result, ct).ConfigureAwait(false);
+        }
+
+        private void AutoSubmitCpuHands()
+        {
+            if (_roundRunner == null)
+            {
+                return;
+            }
+
+            foreach (var pair in _playerSlots)
+            {
+                if (IsCpuId(pair.Key))
+                {
+                    _roundRunner.Submit(pair.Value, GetRandomHand());
+                }
+            }
+        }
+
+        private void HandleUnresponsivePlayers()
+        {
+            if (_gameLogic == null)
+            {
+                return;
+            }
+
+            for (var slot = 0; slot < 2; slot++)
+            {
+                var playerId = _gameLogic.GetPlayerId(slot);
+                if (IsCpuId(playerId))
+                {
+                    continue;
+                }
+
+                if (_slotSubmittedByClient[slot])
+                {
+                    continue;
+                }
+
+                _gameManager?.DisconnectClient(playerId, "Selection timeout");
+            }
+        }
+
+        private static Hand GetRandomHand()
+        {
+            return (Hand)UnityEngine.Random.Range(1, 4);
+        }
+
+        private void DisposeRoundResources()
+        {
+            _roundRunner?.Dispose();
+            _roundRunner = null;
+            _gameLogic = null;
+            _playerSlots.Clear();
+            _slotSubmittedByClient[0] = false;
+            _slotSubmittedByClient[1] = false;
         }
     }
 }

@@ -1,93 +1,217 @@
 using System;
-using System.Collections.Generic;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
     /// <summary>
-    /// Encapsulates the rock-paper-scissors rules and round bookkeeping independent of transport concerns.
+    /// Pure rock-paper-scissors rules engine that tracks two participants and raises an event when both hands are known.
     /// </summary>
     public sealed class RockPaperScissorsGameLogic
     {
-        private readonly List<ulong> _players;
-        private readonly Dictionary<ulong, Hand> _choices;
+        private readonly ulong[] _players = new ulong[2];
+        private readonly Hand[] _choices = new Hand[2];
+        private readonly bool[] _hasChoice = new bool[2];
 
-        public RockPaperScissorsGameLogic(IEnumerable<ulong> playerIds)
+        private bool _roundActive;
+        private bool _resultReady;
+        private RpsResult _result;
+
+        /// <summary>
+        /// Raised once when both hands are available and the round has been resolved.
+        /// </summary>
+        public event Action<RpsResult> RoundResolved;
+
+        /// <summary>
+        /// Starts a new round for the supplied participants. Existing choices and results are cleared.
+        /// </summary>
+        public void InitializeRound(ulong player0, ulong player1)
         {
-            _players = playerIds != null ? new List<ulong>(playerIds) : new List<ulong>();
-            _choices = new Dictionary<ulong, Hand>();
+            _players[0] = player0;
+            _players[1] = player1;
+
+            _choices[0] = Hand.None;
+            _choices[1] = Hand.None;
+            _hasChoice[0] = false;
+            _hasChoice[1] = false;
+
+            _resultReady = false;
+            _roundActive = true;
         }
 
-        public IReadOnlyList<ulong> Players => _players;
-        public int PlayerCount => _players.Count;
-        public int ChoiceCount => _choices.Count;
-        public bool IsComplete => _players.Count > 0 && _choices.Count >= _players.Count;
-
-        public bool ContainsPlayer(ulong playerId) => _players.Contains(playerId);
-
-        public bool HasChoice(ulong playerId) => _choices.ContainsKey(playerId);
-
-        public bool TryGetChoice(ulong playerId, out Hand choice) => _choices.TryGetValue(playerId, out choice);
-
-        public bool SubmitChoice(ulong playerId, Hand choice)
+        /// <summary>
+        /// Attempts to record a hand for the given slot (0 or 1). Returns false when the slot already chose or the hand is invalid.
+        /// </summary>
+        public bool TrySubmit(int slot, Hand hand)
         {
-            if (choice == Hand.None || !ContainsPlayer(playerId) || HasChoice(playerId))
+            if (!_roundActive || slot < 0 || slot > 1 || hand is Hand.None || _hasChoice[slot])
             {
                 return false;
             }
 
-            _choices[playerId] = choice;
+            _choices[slot] = ValidateHand(hand);
+            _hasChoice[slot] = true;
+
+            if (_hasChoice[0] && _hasChoice[1])
+            {
+                Resolve();
+            }
+
             return true;
         }
 
-        public bool ForceChoice(ulong playerId, Hand choice)
+        /// <summary>
+        /// Returns true when the specified slot has already provided a hand.
+        /// </summary>
+        public bool HasChoice(int slot) => slot is 0 or 1 && _hasChoice[slot];
+
+        /// <summary>
+        /// Retrieves the hand recorded for the given slot when available.
+        /// </summary>
+        public bool TryGetChoice(int slot, out Hand choice)
         {
-            if (!ContainsPlayer(playerId))
+            if (slot is < 0 or > 1)
             {
+                choice = Hand.None;
                 return false;
             }
 
-            _choices[playerId] = choice;
-            return true;
+            choice = _choices[slot];
+            return _hasChoice[slot];
         }
 
-        public IEnumerable<ulong> PlayersWithoutChoice()
+        /// <summary>
+        /// Assigns random hands to any slots that have not yet chosen and resolves the round if possible.
+        /// </summary>
+        public void AssignIfMissing(Func<Hand> handProvider)
         {
-            foreach (var id in _players)
+            if (handProvider == null)
             {
-                if (!_choices.ContainsKey(id))
+                throw new ArgumentNullException(nameof(handProvider));
+            }
+
+            if (!_roundActive)
+            {
+                return;
+            }
+
+            for (var slot = 0; slot < 2; slot++)
+            {
+                if (_hasChoice[slot])
                 {
-                    yield return id;
+                    continue;
                 }
+
+                var generated = ValidateHand(handProvider());
+                _choices[slot] = generated;
+                _hasChoice[slot] = true;
+            }
+
+            if (_hasChoice[0] && _hasChoice[1])
+            {
+                Resolve();
             }
         }
 
-        public bool TryResolve(out RpsResult result)
+        /// <summary>
+        /// Attempts to retrieve the recorded hand for the provided player identifier.
+        /// </summary>
+        public bool TryGetChoice(ulong playerId, out Hand choice)
         {
-            if (_players.Count < 2)
+            if (TryGetSlot(playerId, out var slot))
             {
-                result = default;
-                return false;
+                return TryGetChoice(slot, out choice);
             }
 
-            var p1 = _players[0];
-            var p2 = _players[1];
+            choice = Hand.None;
+            return false;
+        }
 
-            var h1 = _choices.TryGetValue(p1, out var choice1) ? choice1 : Hand.None;
-            var h2 = _choices.TryGetValue(p2, out var choice2) ? choice2 : Hand.None;
-
-            result = new RpsResult
+        /// <summary>
+        /// Attempts to map the supplied player identifier to a slot index.
+        /// </summary>
+        public bool TryGetSlot(ulong playerId, out int slot)
+        {
+            if (_players[0] == playerId)
             {
-                P1 = p1,
-                P2 = p2,
-                H1 = h1,
-                H2 = h2,
-                P1Outcome = (byte)DetermineOutcome(h1, h2),
-                P2Outcome = (byte)DetermineOutcome(h2, h1)
+                slot = 0;
+                return true;
+            }
+
+            if (_players[1] == playerId)
+            {
+                slot = 1;
+                return true;
+            }
+
+            slot = -1;
+            return false;
+        }
+
+        /// <summary>
+        /// Returns true when the supplied player participates in the current round.
+        /// </summary>
+        public bool ContainsPlayer(ulong playerId) => TryGetSlot(playerId, out _);
+
+        /// <summary>
+        /// Returns the player identifier registered for the supplied slot.
+        /// </summary>
+        public ulong GetPlayerId(int slot)
+        {
+            return slot switch
+            {
+                0 => _players[0],
+                1 => _players[1],
+                _ => throw new ArgumentOutOfRangeException(nameof(slot))
+            };
+        }
+
+        /// <summary>
+        /// Retrieves the resolved result, if available.
+        /// </summary>
+        public bool TryGetResult(out RpsResult result)
+        {
+            result = _result;
+            return _resultReady;
+        }
+
+        /// <summary>
+        /// Indicates whether the round is still collecting hands.
+        /// </summary>
+        public bool IsRoundActive => _roundActive;
+
+        private void Resolve()
+        {
+            if (_resultReady)
+            {
+                return;
+            }
+
+            var hand0 = _choices[0] == Hand.None ? Hand.Rock : _choices[0];
+            var hand1 = _choices[1] == Hand.None ? Hand.Rock : _choices[1];
+
+            _result = new RpsResult
+            {
+                P1 = _players[0],
+                P2 = _players[1],
+                H1 = hand0,
+                H2 = hand1,
+                P1Outcome = (byte)DetermineOutcome(hand0, hand1),
+                P2Outcome = (byte)DetermineOutcome(hand1, hand0)
             };
 
-            return true;
+            _resultReady = true;
+            _roundActive = false;
+
+            RoundResolved?.Invoke(_result);
         }
 
+        private static Hand ValidateHand(Hand hand)
+        {
+            return hand is Hand.Rock or Hand.Paper or Hand.Scissors ? hand : Hand.Rock;
+        }
+
+        /// <summary>
+        /// Computes the outcome for the first hand against the opponent hand.
+        /// </summary>
         public static RoundOutcome DetermineOutcome(Hand myHand, Hand opponentHand)
         {
             if (myHand == opponentHand)
