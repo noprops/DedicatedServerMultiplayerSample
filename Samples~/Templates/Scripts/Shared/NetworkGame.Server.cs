@@ -18,7 +18,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
         private readonly Dictionary<ulong, int> _playerSlots = new();
         private RockPaperScissorsGameLogic _gameLogic;
-        private GameRoundRunner _roundRunner;
         private readonly bool[] _slotSubmittedByClient = new bool[2];
         private ServerGameManager _gameManager;
         private CancellationTokenSource _roundCts;
@@ -248,7 +247,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             RebuildPlayerNames();
 
-            if (_gameLogic == null || _roundRunner == null || !_playerSlots.TryGetValue(clientId, out var slot))
+            if (_gameLogic == null || !_playerSlots.TryGetValue(clientId, out var slot))
             {
                 return;
             }
@@ -263,7 +262,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
 
             var autoHand = GetRandomHand();
-            if (_roundRunner.Submit(slot, autoHand))
+            if (_gameLogic.Submit(slot, autoHand))
             {
                 _slotSubmittedByClient[slot] = true;
                 Debug.Log($"[NetworkGame] Auto-assigned {autoHand} to disconnected player {clientId}");
@@ -284,7 +283,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         partial void HandleSubmitChoice(ulong clientId, Hand choice)
         {
-            if (_gameLogic == null || _roundRunner == null)
+            if (_gameLogic == null)
             {
                 return;
             }
@@ -304,7 +303,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 return;
             }
 
-            if (!_roundRunner.Submit(slot, choice))
+            if (!_gameLogic.Submit(slot, choice))
             {
                 Debug.LogWarning($"[Server] Ignoring invalid choice {choice} from {clientId}");
                 return;
@@ -383,16 +382,18 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             _slotSubmittedByClient[1] = false;
 
             _gameLogic = new RockPaperScissorsGameLogic();
-            _roundRunner = new GameRoundRunner(_gameLogic);
-            _roundRunner.Start(player0, player1);
+            _gameLogic.StartRound(
+                player0,
+                player1,
+                TimeSpan.FromSeconds(RoundTimeoutSeconds),
+                GetRandomHand,
+                ct);
 
             Phase.Value = GamePhase.Choosing;
 
             AutoSubmitCpuHands();
 
-            var result = await _roundRunner
-                .RunAsync(TimeSpan.FromSeconds(RoundTimeoutSeconds), GetRandomHand, ct)
-                .ConfigureAwait(false);
+            var result = await _gameLogic.RoundTask.ConfigureAwait(false);
 
             HandleUnresponsivePlayers();
             PublishGameResult(result);
@@ -401,16 +402,21 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
         private void AutoSubmitCpuHands()
         {
-            if (_roundRunner == null)
+            if (_gameLogic == null)
             {
                 return;
             }
 
             foreach (var pair in _playerSlots)
             {
-                if (IsCpuId(pair.Key))
+                if (!IsCpuId(pair.Key))
                 {
-                    _roundRunner.Submit(pair.Value, GetRandomHand());
+                    continue;
+                }
+
+                if (_gameLogic.Submit(pair.Value, GetRandomHand()))
+                {
+                    _slotSubmittedByClient[pair.Value] = true;
                 }
             }
         }
@@ -446,8 +452,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
         private void DisposeRoundResources()
         {
-            _roundRunner?.Dispose();
-            _roundRunner = null;
+            _gameLogic?.Dispose();
             _gameLogic = null;
             _playerSlots.Clear();
             _slotSubmittedByClient[0] = false;
