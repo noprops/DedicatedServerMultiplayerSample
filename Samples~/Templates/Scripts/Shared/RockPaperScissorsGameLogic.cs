@@ -5,107 +5,88 @@ using System.Threading.Tasks;
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
     /// <summary>
-    /// Pure rock-paper-scissors rules engine that orchestrates round flow independent of transport or UI.
+    /// Pure rock-paper-scissors rules engine; call <see cref="RunRoundAsync"/> to execute a single round.
     /// </summary>
     public sealed class RockPaperScissorsGameLogic
     {
+        private static readonly Random Random = new();
+
         /// <summary>
-        /// Runs a full round by awaiting hand submissions provided by the caller and applying a timeout fallback.
-        /// The caller supplies asynchronous waiters for each participant, a random hand generator, and cancellation.
+        /// Runs a round from start to finish: waits for both player tasks, substitutes missing hands on timeout, and returns the result.
         /// </summary>
         public async Task<RpsResult> RunRoundAsync(
-            ulong player0,
-            ulong player1,
+            ulong player0Id,
+            ulong player1Id,
             TimeSpan timeout,
-            Func<CancellationToken, Task<Hand?>> waitPlayer0Async,
-            Func<CancellationToken, Task<Hand?>> waitPlayer1Async,
-            Func<Hand> handProvider,
-            CancellationToken cancellationToken = default)
+            Task<Hand?> player0HandTask,
+            Task<Hand?> player1HandTask,
+            CancellationToken cancellation = default)
         {
-            if (waitPlayer0Async == null)
-            {
-                throw new ArgumentNullException(nameof(waitPlayer0Async));
-            }
+            if (player0HandTask == null) throw new ArgumentNullException(nameof(player0HandTask));
+            if (player1HandTask == null) throw new ArgumentNullException(nameof(player1HandTask));
+            if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(timeout));
 
-            if (waitPlayer1Async == null)
-            {
-                throw new ArgumentNullException(nameof(waitPlayer1Async));
-            }
-
-            if (handProvider == null)
-            {
-                throw new ArgumentNullException(nameof(handProvider));
-            }
-
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
             timeoutCts.CancelAfter(timeout);
-
-            var task0 = waitPlayer0Async(timeoutCts.Token);
-            var task1 = waitPlayer1Async(timeoutCts.Token);
-
-            Hand hand0;
-            Hand hand1;
 
             try
             {
-                await Task.WhenAll(task0, task1).ConfigureAwait(false);
-                hand0 = ResolveHand(task0, handProvider);
-                hand1 = ResolveHand(task1, handProvider);
+                await Task.WhenAll(player0HandTask, player1HandTask).WaitAsync(timeoutCts.Token).ConfigureAwait(false);
             }
-            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellationToken.IsCancellationRequested)
+            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellation.IsCancellationRequested)
             {
-                // timeout path
-                hand0 = ResolveHand(task0, handProvider);
-                hand1 = ResolveHand(task1, handProvider);
+                // timeout -> fall through to substitution logic
             }
 
-            return Resolve(player0, player1, hand0, hand1);
+            var hand0 = ResolveHand(player0HandTask);
+            var hand1 = ResolveHand(player1HandTask);
+            return Resolve(player0Id, player1Id, hand0, hand1);
         }
 
         /// <summary>
-        /// Resolves the round outcome for the provided hands and participants.
+        /// Pure function that evaluates outcomes given both hands.
         /// </summary>
-        public static RpsResult Resolve(ulong player0, ulong player1, Hand hand0, Hand hand1)
+        public static RpsResult Resolve(ulong player0Id, ulong player1Id, Hand hand0, Hand hand1)
         {
-            var outcome0 = DetermineOutcome(hand0, hand1);
-            var outcome1 = DetermineOutcome(hand1, hand0);
-
             return new RpsResult
             {
-                P1 = player0,
-                P2 = player1,
+                P1 = player0Id,
+                P2 = player1Id,
                 H1 = hand0,
                 H2 = hand1,
-                P1Outcome = (byte)outcome0,
-                P2Outcome = (byte)outcome1
+                P1Outcome = (byte)DetermineOutcome(hand0, hand1),
+                P2Outcome = (byte)DetermineOutcome(hand1, hand0)
             };
         }
 
-        private static Hand ResolveHand(Task<Hand?> task, Func<Hand> handProvider)
+        private static Hand ResolveHand(Task<Hand?> task)
         {
-            if (task.IsCompletedSuccessfully && task.Result.HasValue && task.Result.Value is Hand.Rock or Hand.Paper or Hand.Scissors)
+            if (task != null && task.IsCompletedSuccessfully && task.Result is Hand value && value != Hand.None)
             {
-                return task.Result.Value;
+                return value;
             }
 
-            return handProvider();
+            return GetRandomHand();
         }
 
-        /// <summary>
-        /// Computes the outcome for the first hand against the opponent hand.
-        /// </summary>
-        public static RoundOutcome DetermineOutcome(Hand myHand, Hand opponentHand)
+        private static RoundOutcome DetermineOutcome(Hand me, Hand opponent)
         {
-            if (myHand == opponentHand)
+            if (me == opponent)
             {
                 return RoundOutcome.Draw;
             }
 
-            return ((myHand == Hand.Rock && opponentHand == Hand.Scissors) ||
-                    (myHand == Hand.Paper && opponentHand == Hand.Rock) ||
-                    (myHand == Hand.Scissors && opponentHand == Hand.Paper))
+            return ((me == Hand.Rock && opponent == Hand.Scissors) ||
+                    (me == Hand.Paper && opponent == Hand.Rock) ||
+                    (me == Hand.Scissors && opponent == Hand.Paper))
                 ? RoundOutcome.Win
                 : RoundOutcome.Lose;
+        }
+
+        private static Hand GetRandomHand()
+        {
+            var value = Random.Next(1, 4); // Rock/Paper/Scissors
+            return (Hand)value;
         }
     }
 }

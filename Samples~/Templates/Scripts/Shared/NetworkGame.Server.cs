@@ -259,7 +259,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
 
             var autoHand = GetRandomHand();
-            SubmitHandForSlot(slot, autoHand, false);
+            SubmitHandForSlot(slot, autoHand, true);
             Debug.Log($"[NetworkGame] Auto-assigned {autoHand} to disconnected player {clientId}");
         }
 
@@ -362,19 +362,20 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             _handWaiters[0] = CreateHandWaiter();
             _handWaiters[1] = CreateHandWaiter();
 
-            var logic = new RockPaperScissorsGameLogic();
-
             Phase.Value = GamePhase.Choosing;
 
             AutoSubmitCpuHands();
 
+            var player0HandTask = WaitForHandAsync(0, ct);
+            var player1HandTask = WaitForHandAsync(1, ct);
+
+            var logic = new RockPaperScissorsGameLogic();
             var result = await logic.RunRoundAsync(
                 player0,
                 player1,
                 TimeSpan.FromSeconds(RoundTimeoutSeconds),
-                token => WaitForHandAsync(0, token),
-                token => WaitForHandAsync(1, token),
-                GetRandomHand,
+                player0HandTask,
+                player1HandTask,
                 ct).ConfigureAwait(false);
 
             HandleUnresponsivePlayers();
