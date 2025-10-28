@@ -1,43 +1,17 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
-using Unity.Collections;
 using Unity.Netcode;
 using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
     /// <summary>
-    /// Netcode-backed Rock-Paper-Scissors session coordinator.
+    /// Minimal Netcode coordinator that bridges client RPC/UI calls with server-side round management.
     /// </summary>
     public partial class NetworkGame : NetworkBehaviour
     {
         public const int RequiredGamePlayers = 2;
         public const ulong CpuPlayerBaseId = 100;
 
-        // ========== Static Instance ==========
         public static NetworkGame Instance { get; private set; }
-
-        // ========== Shared Network State ==========
-        public NetworkVariable<GamePhase> Phase { get; } = new(
-            GamePhase.None,
-            NetworkVariableReadPermission.Everyone,
-            NetworkVariableWritePermission.Server);
-
-        public NetworkVariable<RpsResult> LastResult { get; } = new(
-            default,
-            NetworkVariableReadPermission.Everyone,
-            NetworkVariableWritePermission.Server);
-
-        public NetworkList<ulong> PlayerIds { get; } = new(
-            readPerm: NetworkVariableReadPermission.Everyone,
-            writePerm: NetworkVariableWritePermission.Server);
-
-        public NetworkList<FixedString64Bytes> PlayerNames { get; } = new(
-            readPerm: NetworkVariableReadPermission.Everyone,
-            writePerm: NetworkVariableWritePermission.Server);
-
-        // ========== Unity Lifecycle ==========
 
         private void Awake()
         {
@@ -48,43 +22,39 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
 
             Instance = this;
-            Debug.Log("[NetworkGame] Instance set in Awake");
         }
 
         public override void OnNetworkSpawn()
         {
-            Debug.Log($"[NetworkGame] Spawned - IsServer: {IsServer}, IsClient: {IsClient}");
-            OnServerSpawn();
+            if (IsServer)
+            {
+                OnServerSpawn();
+            }
         }
 
         public override void OnNetworkDespawn()
         {
-            OnServerDespawn();
-            base.OnNetworkDespawn();
-        }
-
-        public override void OnDestroy()
-        {
-            PlayerIds.Dispose();
-            PlayerNames.Dispose();
+            if (IsServer)
+            {
+                OnServerDespawn();
+            }
 
             if (Instance == this)
             {
                 Instance = null;
             }
+
+            base.OnNetworkDespawn();
         }
-
-        // ========== Partial Methods (Server hooks) ==========
-        partial void OnServerSpawn();
-        partial void OnServerDespawn();
-        partial void HandleSubmitChoice(ulong clientId, Hand choice);
-
-        // ========== Server RPC (Client callable) ==========
 
         [ServerRpc(RequireOwnership = false)]
         public void SubmitChoiceServerRpc(Hand choice, ServerRpcParams rpcParams = default)
         {
             HandleSubmitChoice(rpcParams.Receive.SenderClientId, choice);
         }
+
+        partial void OnServerSpawn();
+        partial void OnServerDespawn();
+        partial void HandleSubmitChoice(ulong clientId, Hand choice);
     }
 }

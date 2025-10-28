@@ -1,98 +1,126 @@
 using System;
-using System.Threading;
-using System.Threading.Tasks;
-using DedicatedServerMultiplayerSample.Shared;
-using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
+using TMPro;
+using DedicatedServerMultiplayerSample.Samples.Shared;
 
-namespace DedicatedServerMultiplayerSample.Samples.Client.UI
+/// <summary>
+/// Simple UI surface that drives the local rock-paper-scissors interaction.
+/// </summary>
+public sealed class RockPaperScissorsUI : MonoBehaviour
 {
+    [Header("Name and Status")]
+    [SerializeField] private TMP_Text myNameText;
+    [SerializeField] private TMP_Text yourNameText;
+    [SerializeField] private TMP_Text statusText;
+
+    [Header("Choice Panel")]
+    [SerializeField] private GameObject choicePanel;
+    [SerializeField] private Button rockButton;
+    [SerializeField] private Button paperButton;
+    [SerializeField] private Button scissorsButton;
+
+    [Header("Result Panel")]
+    [SerializeField] private GameObject resultPanel;
+    [SerializeField] private TMP_Text myHandText;
+    [SerializeField] private TMP_Text yourHandText;
+    [SerializeField] private TMP_Text resultText;
+    [SerializeField] private Button okButton;
+
     /// <summary>
-    /// Minimal UI helper that exposes clear entry points for waiting on player input and showing results.
+    /// Raised when the local player selects a hand.
     /// </summary>
-    public sealed class RockPaperScissorsUI : MonoBehaviour
+    public event Action<Hand> OnLocalChoice;
+
+    /// <summary>
+    /// Raised when the OK button is pressed after showing the round result.
+    /// </summary>
+    public event Action OnOk;
+
+    /// <summary>
+    /// Initializes button bindings and hides panels at startup.
+    /// </summary>
+    private void Awake()
     {
-        [Header("Buttons")]
-        [SerializeField] private Button rockButton;
-        [SerializeField] private Button paperButton;
-        [SerializeField] private Button scissorsButton;
+        choicePanel.SetActive(false);
+        resultPanel.SetActive(false);
+        statusText.text = string.Empty;
 
-        [Header("Status")]
-        [SerializeField] private TMP_Text statusText;
+        rockButton.onClick.AddListener(() => HandleChoice(Hand.Rock));
+        paperButton.onClick.AddListener(() => HandleChoice(Hand.Paper));
+        scissorsButton.onClick.AddListener(() => HandleChoice(Hand.Scissors));
+        okButton.onClick.AddListener(HandleOk);
+    }
 
-        [Header("Result")]
-        [SerializeField] private TMP_Text resultText;
+    /// <summary>
+    /// Invokes the choice event and disables further input after the local player picks a hand.
+    /// </summary>
+    private void HandleChoice(Hand hand)
+    {
+        SetChoiceButtonsInteractable(false);
+        OnLocalChoice?.Invoke(hand);
+    }
 
-        /// <summary>
-        /// Waits for the local player to choose a hand. Returns null if the operation is cancelled.
-        /// </summary>
-        public async Task<Hand?> WaitForPlayerHandAsync(CancellationToken ct = default)
+    /// <summary>
+    /// Invokes the OK event once and prevents repeated clicks.
+    /// </summary>
+    private void HandleOk()
+    {
+        okButton.interactable = false;
+        OnOk?.Invoke();
+    }
+
+    /// <summary>
+    /// Displays the choice panel with the provided participant names.
+    /// </summary>
+    public void ShowChoicePanel(string myName, string yourName)
+    {
+        myNameText.text = myName ?? "";
+        yourNameText.text = yourName ?? "";
+        statusText.text = "Choose your hand";
+
+        resultPanel.SetActive(false);
+        choicePanel.SetActive(true);
+        SetChoiceButtonsInteractable(true);
+    }
+
+    /// <summary>
+    /// Presents the round outcome and hides the choice panel.
+    /// </summary>
+    public void ShowResult(RoundOutcome myResult, Hand myHand, Hand yourHand)
+    {
+        choicePanel.SetActive(false);
+        resultPanel.SetActive(true);
+        SetChoiceButtonsInteractable(false);
+
+        myHandText.text = myHand.ToDisplayString();
+        yourHandText.text = yourHand.ToDisplayString();
+        resultText.text = myResult switch
         {
-            var tcs = new TaskCompletionSource<Hand?>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            void OnRock() => tcs.TrySetResult(Hand.Rock);
-            void OnPaper() => tcs.TrySetResult(Hand.Paper);
-            void OnScissors() => tcs.TrySetResult(Hand.Scissors);
-
-            rockButton.onClick.AddListener(OnRock);
-            paperButton.onClick.AddListener(OnPaper);
-            scissorsButton.onClick.AddListener(OnScissors);
-
-            try
-            {
-                using (ct.Register(() => tcs.TrySetResult(null)))
-                {
-                    SetStatus("手を選んでください");
-                    return await tcs.Task.ConfigureAwait(false);
-                }
-            }
-            finally
-            {
-                rockButton.onClick.RemoveListener(OnRock);
-                paperButton.onClick.RemoveListener(OnPaper);
-                scissorsButton.onClick.RemoveListener(OnScissors);
-            }
-        }
-
-        /// <summary>
-        /// Displays the round outcome using simple emoji and text so that the player understands what happened.
-        /// </summary>
-        public void ShowResult(RpsResult result)
-        {
-            if (resultText != null)
-            {
-                resultText.text = $"あなた: {ToEmoji(result.H1)} / 相手: {ToEmoji(result.H2)} → {ToOutcomeText((RoundOutcome)result.P1Outcome)}";
-            }
-
-            SetStatus(string.Empty);
-        }
-
-        /// <summary>
-        /// Updates the status label with a short message.
-        /// </summary>
-        public void SetStatus(string message)
-        {
-            if (statusText != null)
-            {
-                statusText.text = message ?? string.Empty;
-            }
-        }
-
-        private static string ToEmoji(Hand hand) => hand switch
-        {
-            Hand.Rock => "✊",
-            Hand.Paper => "🖐",
-            Hand.Scissors => "✌",
-            _ => "？"
+            RoundOutcome.Win => "Win",
+            RoundOutcome.Draw => "Draw",
+            _ => "Lose"
         };
 
-        private static string ToOutcomeText(RoundOutcome outcome) => outcome switch
-        {
-            RoundOutcome.Win => "勝ち",
-            RoundOutcome.Draw => "引き分け",
-            RoundOutcome.Lose => "負け",
-            _ => string.Empty
-        };
+        statusText.text = "Round finished";
+        okButton.interactable = true;
+    }
+
+    /// <summary>
+    /// Updates the informational status label.
+    /// </summary>
+    public void SetStatus(string message)
+    {
+        statusText.text = message ?? string.Empty;
+    }
+
+    /// <summary>
+    /// Enables or disables the choice buttons together.
+    /// </summary>
+    private void SetChoiceButtonsInteractable(bool enabled)
+    {
+        rockButton.interactable = enabled;
+        paperButton.interactable = enabled;
+        scissorsButton.interactable = enabled;
     }
 }

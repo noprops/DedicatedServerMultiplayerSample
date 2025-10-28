@@ -1,3 +1,4 @@
+using System;
 using Unity.Collections;
 using Unity.Netcode;
 
@@ -13,12 +14,37 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         StartFailed = 5
     }
 
-    public enum Hand
+    public enum Hand : byte
     {
         None = 0,
         Rock = 1,
         Paper = 2,
         Scissors = 3
+    }
+
+    public static class HandExtensions
+    {
+        private static readonly Random _random = new Random();
+
+        /// <summary>
+        /// Returns a random non-empty hand (Rock/Paper/Scissors).
+        /// </summary>
+        public static Hand RandomHand()
+        {
+            var value = _random.Next(1, 4);
+            return (Hand)value;
+        }
+
+        /// <summary>
+        /// Provides a human-readable label for the supplied hand.
+        /// </summary>
+        public static string ToDisplayString(this Hand hand) => hand switch
+        {
+            Hand.Rock => "Rock",
+            Hand.Paper => "Paper",
+            Hand.Scissors => "Scissors",
+            _ => "-"
+        };
     }
 
     public enum RoundOutcome : byte
@@ -30,21 +56,21 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
     public struct RpsResult : INetworkSerializable
     {
-        public ulong P1;
-        public ulong P2;
-        public Hand H1;
-        public Hand H2;
-        public byte P1Outcome;
-        public byte P2Outcome;
+        public ulong Player1Id;
+        public ulong Player2Id;
+        public Hand Player1Hand;
+        public Hand Player2Hand;
+        public RoundOutcome Player1Outcome;
+        public RoundOutcome Player2Outcome;
 
         public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
         {
-            serializer.SerializeValue(ref P1);
-            serializer.SerializeValue(ref P2);
-            serializer.SerializeValue(ref H1);
-            serializer.SerializeValue(ref H2);
-            serializer.SerializeValue(ref P1Outcome);
-            serializer.SerializeValue(ref P2Outcome);
+            serializer.SerializeValue(ref Player1Id);
+            serializer.SerializeValue(ref Player2Id);
+            serializer.SerializeValue(ref Player1Hand);
+            serializer.SerializeValue(ref Player2Hand);
+            serializer.SerializeValue(ref Player1Outcome);
+            serializer.SerializeValue(ref Player2Outcome);
         }
     }
 

@@ -9,7 +9,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
     /// </summary>
     public sealed class RockPaperScissorsGameLogic
     {
-        private static readonly Random Random = new();
 
         /// <summary>
         /// Runs a round from start to finish: waits for both player tasks, substitutes missing hands on timeout, and returns the result.
@@ -31,11 +30,19 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
             try
             {
-                await Task.WhenAll(player0HandTask, player1HandTask).WaitAsync(timeoutCts.Token).ConfigureAwait(false);
+                var combined = Task.WhenAll(player0HandTask, player1HandTask);
+                await combined.ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellation.IsCancellationRequested)
             {
                 // timeout -> fall through to substitution logic
+            }
+            catch
+            {
+                if (!timeoutCts.IsCancellationRequested)
+                {
+                    throw;
+                }
             }
 
             var hand0 = ResolveHand(player0HandTask);
@@ -44,21 +51,24 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         }
 
         /// <summary>
-        /// Pure function that evaluates outcomes given both hands.
+        /// Forms an <see cref="RpsResult"/> for the supplied identifiers and hands by running the deterministic outcome table.
         /// </summary>
         public static RpsResult Resolve(ulong player0Id, ulong player1Id, Hand hand0, Hand hand1)
         {
             return new RpsResult
             {
-                P1 = player0Id,
-                P2 = player1Id,
-                H1 = hand0,
-                H2 = hand1,
-                P1Outcome = (byte)DetermineOutcome(hand0, hand1),
-                P2Outcome = (byte)DetermineOutcome(hand1, hand0)
+                Player1Id = player0Id,
+                Player2Id = player1Id,
+                Player1Hand = hand0,
+                Player2Hand = hand1,
+                Player1Outcome = DetermineOutcome(hand0, hand1),
+                Player2Outcome = DetermineOutcome(hand1, hand0)
             };
         }
 
+        /// <summary>
+        /// Produces the effective hand for a player. If the task did not complete with a valid hand, a random hand is assigned instead of leaving it empty.
+        /// </summary>
         private static Hand ResolveHand(Task<Hand?> task)
         {
             if (task != null && task.IsCompletedSuccessfully && task.Result is Hand value && value != Hand.None)
@@ -66,9 +76,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 return value;
             }
 
-            return GetRandomHand();
+            return HandExtensions.RandomHand();
         }
 
+        /// <summary>
+        /// Computes the round outcome (win/draw/lose) for <paramref name="me"/> against <paramref name="opponent"/>.
+        /// </summary>
         private static RoundOutcome DetermineOutcome(Hand me, Hand opponent)
         {
             if (me == opponent)
@@ -81,12 +94,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                     (me == Hand.Scissors && opponent == Hand.Paper))
                 ? RoundOutcome.Win
                 : RoundOutcome.Lose;
-        }
-
-        private static Hand GetRandomHand()
-        {
-            var value = Random.Next(1, 4); // Rock/Paper/Scissors
-            return (Hand)value;
         }
     }
 }
