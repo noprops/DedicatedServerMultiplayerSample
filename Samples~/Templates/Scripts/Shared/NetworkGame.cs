@@ -1,3 +1,4 @@
+using DedicatedServerMultiplayerSample.Shared;
 using Unity.Netcode;
 using UnityEngine;
 
@@ -28,9 +29,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             Instance = this;
         }
 
-        /// <summary>
-        /// Establishes server hooks when this behaviour spawns on the server.
-        /// </summary>
         public override void OnNetworkSpawn()
         {
             if (IsServer)
@@ -39,9 +37,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
         }
 
-        /// <summary>
-        /// Tears down server hooks and clears the singleton when despawned.
-        /// </summary>
         public override void OnNetworkDespawn()
         {
             if (IsServer)
@@ -57,9 +52,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             base.OnNetworkDespawn();
         }
 
-        /// <summary>
-        /// Receives hand submissions from clients and forwards them to the server-only logic.
-        /// </summary>
         [ServerRpc(RequireOwnership = false)]
         public void SubmitChoiceServerRpc(Hand choice, ServerRpcParams rpcParams = default)
         {
@@ -70,22 +62,43 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// Tells each client that the round has started and provides the name pairing.
         /// </summary>
         [ClientRpc]
-        private void RoundStartedClientRpc(string myName, string yourName, ClientRpcParams rpcParams = default)
+        private void RoundStartedClientRpc(ulong player1Id, ulong player2Id, string player1Name, string player2Name, ClientRpcParams rpcParams = default)
         {
             if (ui == null)
             {
                 Debug.LogWarning("[NetworkGame] RockPaperScissorsUI is not assigned.");
                 return;
+            }
+
+            var localId = NetworkManager.Singleton != null ? NetworkManager.Singleton.LocalClientId : ulong.MaxValue;
+            string myName;
+            string yourName;
+
+            if (localId == player1Id)
+            {
+                myName = player1Name;
+                yourName = player2Name;
+            }
+            else if (localId == player2Id)
+            {
+                myName = player2Name;
+                yourName = player1Name;
+            }
+            else
+            {
+                // Spectator or desynced client; fallback to primary ordering.
+                myName = player1Name;
+                yourName = player2Name;
             }
 
             ui.ShowChoicePanel(myName, yourName);
         }
 
         /// <summary>
-        /// Tells each client that the round has ended and shares the outcome.
+        /// Informs clients that the round has ended, providing their personal hand, the opponent hand, and the outcome.
         /// </summary>
         [ClientRpc]
-        private void RoundEndedClientRpc(RoundOutcome myOutcome, Hand myHand, Hand yourHand, ClientRpcParams rpcParams = default)
+        private void RoundEndedClientRpc(RoundOutcome myOutcome, Hand myHand, Hand opponentHand, ClientRpcParams rpcParams = default)
         {
             if (ui == null)
             {
@@ -93,22 +106,28 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 return;
             }
 
-            ui.ShowResult(myOutcome, myHand, yourHand);
+            ui.ShowResult(myOutcome, myHand, opponentHand);
         }
 
         /// <summary>
-        /// Server-side setup hook implemented in the partial server class.
+        /// Requests clients to disconnect, showing a modal message first.
         /// </summary>
+        [ClientRpc]
+        private void RequestClientDisconnectClientRpc(string message, ClientRpcParams rpcParams = default)
+        {
+            if (ui == null)
+            {
+                Debug.LogWarning("[NetworkGame] RockPaperScissorsUI is not assigned.");
+                return;
+            }
+
+            ui.ShowDisconnectPrompt(message ?? "Disconnected", 2f);
+        }
+
         partial void OnServerSpawn();
 
-        /// <summary>
-        /// Server-side teardown hook implemented in the partial server class.
-        /// </summary>
         partial void OnServerDespawn();
 
-        /// <summary>
-        /// Handles a hand submission on the server for the specified client.
-        /// </summary>
         partial void HandleSubmitChoice(ulong clientId, Hand choice);
     }
 }

@@ -6,10 +6,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Client
 {
     /// <summary>
     /// サンプル用クライアントデータストア。
-    /// マッチメイキングに渡すデータを構築し、<see cref="IMatchmakingPayloadProvider"/> として提供します。
-    /// 実際のプロジェクトではこのクラスを参考にして独自の保存データ管理を実装してください。
+    /// マッチメイキングに渡す各種ペイロードをコードで組み立て、<see cref="MatchmakingPayloadProviderBase"/> として提供します。
+    /// 実際のプロジェクトではこのクラスをコピーして、保持したいプレイヤーデータ・ゲーム設定・セッション情報を自由に構成してください。
     /// </summary>
-    public class ClientData : MonoBehaviour, IMatchmakingPayloadProvider
+    public class ClientData : MatchmakingPayloadProviderBase
     {
         public static ClientData Instance { get; private set; }
 
@@ -52,49 +52,78 @@ namespace DedicatedServerMultiplayerSample.Samples.Client
             }
         }
 
-        public Dictionary<string, object> GetPlayerProperties()
+        /// <summary>
+        /// Matchmaker の Player Properties に格納される値。
+        /// 1 プレイヤーに紐付き、マッチング判定の際にルールセット（Rank 差など）から参照されます。
+        /// </summary>
+        public override Dictionary<string, object> GetPlayerProperties()
         {
             return new Dictionary<string, object>
             {
+                // サーバーとクライアント双方が使用するゲームバージョン。互換性チェックに利用。
                 ["gameVersion"] = GameVersion,
+                // プレイヤーが希望するゲームモード。Matchmaker のフィルタリング条件に合わせて値を揃えます。
                 ["gameMode"] = GameMode,
+                // 希望マップ。マップ毎にキューを分ける代わりに Player Properties で絞り込む例。
                 ["map"] = Map,
+                // ランク（例: ELO/レーティング）。RankDifferenceRule で差分マッチングを行う想定。
                 ["rank"] = Rank
             };
         }
 
-        public Dictionary<string, object> GetTicketAttributes()
+        /// <summary>
+        /// Matchmaker Ticket（プレイヤーが検索する際のリクエスト）に付与する属性。
+        /// キュー全体に渡す追加情報や、プレイヤー同士で揃えておきたいメタ情報をここに含めます。
+        /// </summary>
+        public override Dictionary<string, object> GetTicketAttributes()
         {
             var dict = new Dictionary<string, object>
             {
+                // チケットレベルでもバージョンを明示して、ビルド間のマッチングを防ぐ。
                 ["gameVersion"] = GameVersion,
+                // 同一ゲームモードの参加者だけをグルーピングするための属性。
                 ["gameMode"] = GameMode,
+                // 希望マップを記録して、サーバー側でセッション設定を切り替えやすくします。
                 ["map"] = Map
             };
 
             if (!string.IsNullOrEmpty(RoomCode))
             {
+                // 招待コード（例: 友達同士で同じチケットに入れる仕組み）がある場合の追加項目。
                 dict["roomCode"] = RoomCode;
             }
 
             return dict;
         }
 
-        public Dictionary<string, object> GetConnectionData()
+        /// <summary>
+        /// Matchmaking 成功後に Relay/ゲームサーバーへ渡す ConnectionPayload。
+        /// `NetworkConfig.ConnectionData` にシリアライズされ、サーバー側の `OnClientConnected` 等で参照できます。
+        /// </summary>
+        public override Dictionary<string, object> GetConnectionData()
         {
             return new Dictionary<string, object>
             {
+                // サーバー側 UI やログに表示したいプレイヤーの表示名。
                 ["playerName"] = PlayerName,
+                // クライアントが接続しているビルドバージョン。サーバー側でも検証できます。
                 ["gameVersion"] = GameVersion,
+                // クライアントのランク。マッチ成立後にサーバー側でマッチ品質を分析したい場合に利用。
                 ["rank"] = Rank
             };
         }
 
-        public Dictionary<string, object> GetSessionProperties()
+        /// <summary>
+        /// セッション作成時に Multiplay/Matchmaker へ渡す Session Properties。
+        /// サーバーが立ち上がる際に読み取り、ゲームルールの初期化に利用する想定です。
+        /// </summary>
+        public override Dictionary<string, object> GetSessionProperties()
         {
             return new Dictionary<string, object>
             {
+                // セッション全体で共有するゲームモード。
                 ["gameMode"] = GameMode,
+                // マップ名。サーバーのシーン遷移やアセットロードを条件分岐する際に使用。
                 ["map"] = Map
             };
         }

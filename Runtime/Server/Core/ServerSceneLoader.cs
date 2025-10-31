@@ -1,10 +1,10 @@
 #if UNITY_SERVER || ENABLE_UCS_SERVER
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using Unity.Netcode;
 using UnityEngine.SceneManagement;
+using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Server.Core
 {
@@ -23,39 +23,44 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         public async Task<bool> LoadAsync(string sceneName, int timeoutMilliseconds = 5000, Action onLoaded = null, CancellationToken ct = default)
         {
-            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            void Handler(string loadedSceneName, LoadSceneMode _, List<ulong> __, List<ulong> ___)
-            {
-                if (loadedSceneName != sceneName)
-                {
-                    return;
-                }
-
-                _networkManager.SceneManager.OnLoadEventCompleted -= Handler;
-                onLoaded?.Invoke();
-                tcs.TrySetResult(true);
-            }
-
-            _networkManager.SceneManager.OnLoadEventCompleted += Handler;
-            var status = _networkManager.SceneManager.LoadScene(sceneName, LoadSceneMode.Single);
-
+            var sceneMgr = _networkManager.SceneManager;
+            var status = sceneMgr.LoadScene(sceneName, LoadSceneMode.Single);
             if (status != SceneEventProgressStatus.Started)
             {
-                _networkManager.SceneManager.OnLoadEventCompleted -= Handler;
                 return false;
             }
 
-            var completedTask = await Task.WhenAny(tcs.Task, Task.Delay(timeoutMilliseconds, ct));
-            if (completedTask != tcs.Task)
+            var timeout = TimeSpan.FromMilliseconds(timeoutMilliseconds);
+            using var awaiter = new SimpleSignalAwaiter(timeout, ct);
+            NetworkSceneManager.OnEventCompletedDelegateHandler localHandler = null;
+
+            localHandler = (loadedSceneName, _, __, ___) =>
             {
-                _networkManager.SceneManager.OnLoadEventCompleted -= Handler;
-                return false;
+                if (loadedSceneName == sceneName)
+                {
+                    awaiter.OnSignal();
+                }
+            };
+
+            sceneMgr.OnLoadEventCompleted += localHandler;
+
+            try
+            {
+                var completed = await awaiter.WaitAsync(ct).ConfigureAwait(false);
+                if (!completed)
+                {
+                    return false;
+                }
+            }
+            finally
+            {
+                sceneMgr.OnLoadEventCompleted -= localHandler;
             }
 
-            await tcs.Task;
+            onLoaded?.Invoke();
             return true;
         }
+
     }
 }
 #endif

@@ -1,32 +1,32 @@
 {
-  "$schema": "https://ugs-config-schemas.unity3d.com/v1/matchmaker/matchmaker-queue.schema.json",
-  "name": "default-queue",
-  "enabled": true,
-  "maxPlayersPerTicket": 1,
-  "defaultPool": {
-    "variants": [],
-    "name": "default-pool",
+    "name": "default-queue",
     "enabled": true,
-    "timeoutSeconds": 300,
-    "matchLogic": {
-      "matchDefinition": {
-        "teams": [
-          {
-            "name": "Players",
-            "teamCount": {
-              "min": 2,
-              "max": 2,
-              "relaxations": []
-            },
-            "playerCount": {
-              "min": 1,
-              "max": 1,
-              "relaxations": []
-            },
-            "teamRules": []
-          }
-        ],
-        "matchRules": [
+    "maxPlayersPerTicket": 1,
+    "defaultPool": {
+        "name": "default-pool",
+        "enabled": true,
+        "timeoutSeconds": 300,
+        "variants": [],
+        "matchLogic": {
+            "name": "Rules",
+            "matchDefinition": {
+                "teams": [
+                    {
+                        "name": "Players",
+                        "teamCount": {
+                            "min": 2,
+                            "max": 2,
+                            "relaxations": []
+                        },
+                        "playerCount": {
+                            "min": 1,
+                            "max": 1,
+                            "relaxations": []
+                        },
+                        "teamRules": []
+                    }
+                ],
+                "matchRules": [
             {
               "name": "GameModeRule",
               "type": "Equality",
@@ -56,48 +56,42 @@
               "enableRule": true
             }
           ]
-      },
-      "name": "Rules"
+            }
+        },
+        "matchHosting": {
+            "type": "Multiplay",
+            "fleetName": "fleet",
+            "buildConfigurationName": "build-config",
+            "defaultQoSRegionName": "Asia"
+        },
+        "filters": []
     },
-    "matchHosting": {
-      "type": "Multiplay",
-      "fleetName": "fleet",
-      "buildConfigurationName": "build-config",
-      "defaultQoSRegionName": "Asia"
-    }
-  },
-  "filteredPools": [
-    {
-      "name": "high-version-pool",
-      "enabled": true,
-      "filters": [
+    "filteredPools": [
         {
-          "attribute": "gameVersion",
-          "operator": "GreaterThan",
-          "value": 200
-        }
-      ],
-      "variants": [],
-      "timeoutSeconds": 300,
-      "matchLogic": {
-        "matchDefinition": {
-          "teams": [
-            {
-              "name": "Players",
-              "teamCount": {
-                "min": 2,
-                "max": 2,
-                "relaxations": []
-              },
-              "playerCount": {
-                "min": 1,
-                "max": 1,
-                "relaxations": []
-              },
-              "teamRules": []
-            }
-          ],
-          "matchRules": [
+            "name": "high-version-pool",
+            "enabled": true,
+            "timeoutSeconds": 300,
+            "variants": [],
+            "matchLogic": {
+                "name": "Rules",
+                "matchDefinition": {
+                    "teams": [
+                        {
+                            "name": "Players",
+                            "teamCount": {
+                                "min": 2,
+                                "max": 2,
+                                "relaxations": []
+                            },
+                            "playerCount": {
+                                "min": 1,
+                                "max": 1,
+                                "relaxations": []
+                            },
+                            "teamRules": []
+                        }
+                    ],
+                    "matchRules": [
             {
               "name": "GameModeRule",
               "type": "Equality",
@@ -127,15 +121,21 @@
               "enableRule": true
             }
           ]
-      },
-        "name": "Rules"
-      },
-      "matchHosting": {
-        "type": "Multiplay",
-        "fleetName": "fleet",
-        "buildConfigurationName": "build-config",
-        "defaultQoSRegionName": "Asia"
-      }
-    }
-  ]
+                }
+            },
+            "matchHosting": {
+                "type": "Multiplay",
+                "fleetName": "fleet",
+                "buildConfigurationName": "build-config",
+                "defaultQoSRegionName": "Asia"
+            },
+            "filters": [
+                {
+                    "attribute": "gameVersion",
+                    "operator": "GreaterThan",
+                    "value": 200
+                }
+            ]
+        }
+    ]
 }

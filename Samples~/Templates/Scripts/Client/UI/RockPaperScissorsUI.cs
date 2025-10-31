@@ -3,6 +3,7 @@ using UnityEngine;
 using UnityEngine.UI;
 using TMPro;
 using DedicatedServerMultiplayerSample.Samples.Shared;
+using DedicatedServerMultiplayerSample.Client;
 
 /// <summary>
 /// Simple UI surface that drives the local rock-paper-scissors interaction.
@@ -26,6 +27,7 @@ public sealed class RockPaperScissorsUI : MonoBehaviour
     [SerializeField] private TMP_Text yourHandText;
     [SerializeField] private TMP_Text resultText;
     [SerializeField] private Button okButton;
+    [SerializeField] private ModalLayerUI modalLayer;
 
     /// <summary>
     /// Raised when the local player selects a hand.
@@ -122,5 +124,27 @@ public sealed class RockPaperScissorsUI : MonoBehaviour
         rockButton.interactable = enabled;
         paperButton.interactable = enabled;
         scissorsButton.interactable = enabled;
+    }
+
+    /// <summary>
+    /// Shows a modal prompt and disconnects the client when it is closed or times out.
+    /// </summary>
+    public void ShowDisconnectPrompt(string message, float timeoutSeconds = 2f)
+    {
+        void Disconnect()
+        {
+            var manager = ClientSingleton.Instance != null ? ClientSingleton.Instance.GameManager : null;
+            manager?.Disconnect();
+        }
+
+        if (modalLayer != null)
+        {
+            modalLayer.Show(message, Disconnect, true, timeoutSeconds);
+        }
+        else
+        {
+            SetStatus(message);
+            Disconnect();
+        }
     }
 }

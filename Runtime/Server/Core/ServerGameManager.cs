@@ -60,6 +60,14 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         /// </summary>
         public event Action<ulong[]> AllClientsConnected;
         /// <summary>
+        /// Indicates whether <see cref="AllClientsConnected"/> has already been raised for the current session.
+        /// </summary>
+        public bool AreAllClientsConnected => _allConnectedEmitted;
+        /// <summary>
+        /// Returns the cached client identifiers captured when <see cref="AllClientsConnected"/> fired.
+        /// </summary>
+        public IReadOnlyList<ulong> ConnectedClientSnapshot => _allConnectedIds;
+        /// <summary>
         /// Fired when a shutdown is requested. Replayed to late subscribers if requested.
         /// </summary>
         public event Action<ShutdownKind, string> ShutdownRequested;
@@ -73,29 +81,6 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             _defaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
             _shutdownScheduler = new DeferredActionScheduler(CloseServer);
             Debug.Log("[ServerGameManager] Created");
-        }
-
-        /// <summary>
-        /// Subscribes to the client-connected notification. When <paramref name="replay"/> is true and the event
-        /// already fired, the handler is invoked immediately with the cached client list.
-        /// </summary>
-        public void AddAllClientsConnected(Action<ulong[]> handler, bool replay = true)
-        {
-            if (handler == null) return;
-            AllClientsConnected += handler;
-            if (replay && _allConnectedEmitted)
-            {
-                handler((ulong[])_allConnectedIds.Clone());
-            }
-        }
-
-        /// <summary>
-        /// Removes a previously registered all-clients-connected handler.
-        /// </summary>
-        public void RemoveAllClientsConnected(Action<ulong[]> handler)
-        {
-            if (handler == null) return;
-            AllClientsConnected -= handler;
         }
 
         /// <summary>
@@ -373,21 +358,40 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 return false;
             }
 
+            if (_connectionTracker.HasRequiredPlayers)
+            {
+                // すでに全くライアントが揃っている場合
+                return true;
+            }
+
             try
             {
-                var ready = await AsyncExtensions.WaitSignalAsync(
-                    isAlreadyTrue: () => _connectionTracker.HasRequiredPlayers,
-                    subscribe: handler => _connectionTracker.RequiredPlayersReady += handler,
-                    unsubscribe: handler => _connectionTracker.RequiredPlayersReady -= handler,
-                    timeout: TimeSpan.FromSeconds(WaitingPlayersTimeoutSeconds),
-                    ct: token);
+                var timeout = TimeSpan.FromSeconds(WaitingPlayersTimeoutSeconds);
+                using var awaiter = new SimpleSignalAwaiter(timeout, token);
 
-                if (token.IsCancellationRequested)
+                void OnReady()
                 {
-                    return false;
+                    awaiter.OnSignal();
                 }
 
-                return ready;
+                _connectionTracker.RequiredPlayersReady += OnReady;
+
+                try
+                {
+                    var ready = await awaiter.WaitAsync(token).ConfigureAwait(false);
+
+                    if (token.IsCancellationRequested)
+                    {
+                        return false;
+                    }
+
+                    return ready;
+                }
+                finally
+                {
+                    _connectionTracker.RequiredPlayersReady -= OnReady;
+                }
+
             }
             catch (OperationCanceledException)
             {

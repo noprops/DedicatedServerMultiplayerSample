@@ -10,112 +10,65 @@ namespace DedicatedServerMultiplayerSample.Shared
     public static class AsyncExtensions
     {
         /// <summary>
-        /// Awaits the task while allowing cancellation. Returns the result if completed; throws if cancelled first.
-        /// </summary>
-        public static async Task<T> WaitOrCancel<T>(this Task<T> task, CancellationToken ct)
-        {
-            if (!ct.CanBeCanceled)
-            {
-                return await task.ConfigureAwait(false);
-            }
-
-            var completed = await Task.WhenAny(task, Task.Delay(Timeout.InfiniteTimeSpan, ct)).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
-            return await task.ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Awaits the task without a return value while allowing cancellation.
-        /// </summary>
-        public static async Task WaitOrCancel(this Task task, CancellationToken ct)
-        {
-            if (!ct.CanBeCanceled)
-            {
-                await task.ConfigureAwait(false);
-                return;
-            }
-
-            var completed = await Task.WhenAny(task, Task.Delay(Timeout.InfiniteTimeSpan, ct)).ConfigureAwait(false);
-            ct.ThrowIfCancellationRequested();
-            await task.ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Waits for a signal to be raised via subscription. Returns immediately if the condition is already met.
+        /// Waits for a one-shot signal raised via subscribe/unsubscribe with an optional timeout.
+        /// Returns true when the signal fires, false when the timeout elapses, and throws OperationCanceledException if the token is cancelled.
         /// </summary>
         public static async Task<bool> WaitSignalAsync(
-            Func<bool> isAlreadyTrue,
             Action<Action> subscribe,
             Action<Action> unsubscribe,
             TimeSpan timeout,
             CancellationToken ct = default)
         {
-            if (isAlreadyTrue())
-            {
-                return true;
-            }
-
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
             void Handler() => tcs.TrySetResult(true);
 
             subscribe(Handler);
-
             try
             {
-                Task timeoutTask = timeout <= TimeSpan.Zero
+                var timeoutTask = timeout <= TimeSpan.Zero
                     ? Task.Delay(Timeout.InfiniteTimeSpan, ct)
                     : Task.Delay(timeout, ct);
 
                 var completed = await Task.WhenAny(tcs.Task, timeoutTask).ConfigureAwait(false);
                 if (completed == tcs.Task)
                 {
+                    // Await again so any exception/cancellation raised inside the handler surfaces here.
                     await tcs.Task.ConfigureAwait(false);
                     return true;
                 }
 
+                // If the timeout finished first, honour cancellation (throws OperationCanceledException) or return false.
                 ct.ThrowIfCancellationRequested();
                 return false;
             }
             finally
             {
-                unsubscribe(Handler);
+                unsubscribe(Handler); // ensure handler removal
             }
         }
 
         /// <summary>
-        /// Waits for a signal without applying a timeout.
+        /// Waits for a one-shot signal without applying a timeout. Throws OperationCanceledException when cancelled.
         /// </summary>
         public static async Task<bool> WaitSignalAsync(
-            Func<bool> isAlreadyTrue,
             Action<Action> subscribe,
             Action<Action> unsubscribe,
             CancellationToken ct = default)
         {
-            if (isAlreadyTrue())
-            {
-                return true;
-            }
-
             var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
             void Handler() => tcs.TrySetResult(true);
-            subscribe(Handler);
 
-            CancellationTokenRegistration registration = default;
-            if (ct.CanBeCanceled)
-            {
-                registration = ct.Register(() => tcs.TrySetCanceled(ct));
-            }
+            subscribe(Handler);
+            var reg = ct.CanBeCanceled ? ct.Register(() => tcs.TrySetCanceled(ct)) : default;
 
             try
             {
-                await tcs.Task.ConfigureAwait(false);
+                await tcs.Task;
                 return true;
             }
             finally
             {
-                registration.Dispose();
+                reg.Dispose();
                 unsubscribe(Handler);
             }
         }

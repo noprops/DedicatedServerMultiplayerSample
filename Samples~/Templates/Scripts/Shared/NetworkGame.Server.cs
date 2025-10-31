@@ -8,6 +8,7 @@ using Unity.Netcode;
 using UnityEngine;
 using DedicatedServerMultiplayerSample.Server.Bootstrap;
 using DedicatedServerMultiplayerSample.Server.Core;
+using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
@@ -27,18 +28,18 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// Submitted (or fallback) hands tracked per client identifier for the current round.
         /// </summary>
         private readonly Dictionary<ulong, Hand?> _choices = new();
-        private TaskCompletionSource<bool> _allChoicesSubmitted;
-
         /// <summary>
-        /// Cancellation token that aborts the active round upon shutdown.
+        /// Emits whenever a client submits a choice (player input or CPU auto-pick).
         /// </summary>
+        private event Action<ulong, Hand> ChoiceSubmitted;
+
         /// <summary>
         /// Game manager used to query display names and trigger shutdown.
         /// </summary>
         private ServerGameManager _gameManager;
 
         /// <summary>
-        /// Attaches server-side callbacks and prepares for incoming participants.
+        /// Attaches server-side callbacks and prepares for incoming clients.
         /// </summary>
         partial void OnServerSpawn()
         {
@@ -49,9 +50,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 return;
             }
 
-            _gameManager.AddAllClientsConnected(HandleAllClientsConnected);
-            _gameManager.AddShutdownRequested(HandleShutdownRequested);
-
+            _ = RunGameRoutineAsync();
         }
 
         /// <summary>
@@ -59,45 +58,91 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         partial void OnServerDespawn()
         {
-            CleanupRound();
-
-
             if (_gameManager != null)
             {
-                _gameManager.RemoveAllClientsConnected(HandleAllClientsConnected);
-                _gameManager.RemoveShutdownRequested(HandleShutdownRequested);
                 _gameManager = null;
             }
         }
 
         /// <summary>
-        /// Entry point once the required clients have connected; begins the round if possible.
+        /// Orchestrates the entire server flow: wait for clients, run a round, and trigger shutdown.
         /// </summary>
-        private void HandleAllClientsConnected(ulong[] clientIds)
+        private async Task RunGameRoutineAsync()
         {
-            if (_allChoicesSubmitted != null)
+            try
             {
-                return;
-            }
+                var (connected, connectedIds) = await WaitForAllClientsConnectedAsync();
+                if (!connected || connectedIds == null || connectedIds.Length == 0)
+                {
+                    Debug.LogWarning("[NetworkGame] Failed to gather required clients.");
+                    RequestClientDisconnectClientRpc("Failed to start the game.");
+                    _gameManager?.RequestShutdown(ShutdownKind.StartTimeout, "Clients did not join in time", 0f);
+                    return;
+                }
 
-            if (clientIds == null || clientIds.Length == 0)
+                SetPlayerSlots(connectedIds);
+                BroadcastRoundStart();
+
+                var choicesReady = await WaitForChoicesAsync(TimeSpan.FromSeconds(RoundTimeoutSeconds));
+                if (!choicesReady)
+                {
+                    FillMissingChoices();
+                }
+
+                var player1Hand = ResolveChoice(_clientIds[0]);
+                var player2Hand = ResolveChoice(_clientIds[1]);
+                var result = RockPaperScissorsGameLogic.Resolve(_clientIds[0], _clientIds[1], player1Hand, player2Hand);
+
+                BroadcastRoundResult(result);
+                _gameManager?.RequestShutdown(ShutdownKind.Normal, "Game completed");
+            }
+            catch (OperationCanceledException)
             {
-                _gameManager?.RequestShutdown(ShutdownKind.StartTimeout, "No participants connected", 0f);
-                return;
+                // Shutdown requested elsewhere; nothing additional to do.
             }
-
-            SetPlayerSlots(clientIds);
-            RunRoundFlowAsync();
+            catch (Exception e)
+            {
+                Debug.LogError($"[NetworkGame] Unexpected error: {e.Message}");
+                _gameManager?.RequestShutdown(ShutdownKind.Error, e.Message, 5f);
+            }
         }
 
         /// <summary>
-        /// Reacts to shutdown requests issued by the game manager.
+        /// Waits until the required clients are connected.
         /// </summary>
-        private void HandleShutdownRequested(ShutdownKind kind, string reason)
+        private async Task<(bool ok, ulong[] ids)> WaitForAllClientsConnectedAsync(CancellationToken ct = default)
         {
-            if (kind != ShutdownKind.Normal)
+            if (_gameManager == null)
             {
-                _allChoicesSubmitted?.TrySetCanceled();
+                return (false, Array.Empty<ulong>());
+            }
+
+            if (_gameManager.AreAllClientsConnected)
+            {
+                return (true, _gameManager.ConnectedClientSnapshot.ToArray());
+            }
+
+            ulong[] payload = Array.Empty<ulong>();
+            using var awaiter = new SimpleSignalAwaiter(ct);
+
+            void Handler(ulong[] ids)
+            {
+                payload = ids;
+                awaiter.OnSignal();
+            }
+
+            _gameManager.AllClientsConnected += Handler;
+
+            try
+            {
+                var signalled = await awaiter.WaitAsync(ct).ConfigureAwait(false);
+                return signalled
+                    ? (true, payload ?? Array.Empty<ulong>())
+                    : (false, Array.Empty<ulong>());
+            }
+            finally
+            {
+                _gameManager.AllClientsConnected -= Handler;
             }
         }
 
@@ -120,6 +165,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 _choices[clientId] = null;
             }
 
+            // Fill remaining slots with CPU clients when not enough players joined.
             var cpuId = CpuPlayerBaseId;
             for (; assigned < RequiredGamePlayers; assigned++)
             {
@@ -130,116 +176,99 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
         }
 
-        private async void RunRoundFlowAsync()
-        {
-            CleanupRound();
-
-            _allChoicesSubmitted = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            BroadcastRoundStart();
-            SeedCpuChoices();
-
-            try
-            {
-                var readyTask = _allChoicesSubmitted.Task;
-                var timeoutTask = Task.Delay(TimeSpan.FromSeconds(RoundTimeoutSeconds));
-                var completedTask = await Task.WhenAny(readyTask, timeoutTask).ConfigureAwait(false);
-
-                if (completedTask == timeoutTask)
-                {
-                    FillMissingChoices();
-                    _allChoicesSubmitted.TrySetResult(true);
-                }
-
-                await readyTask.ConfigureAwait(false);
-
-                var hand0 = ResolveChoice(_clientIds[0]);
-                var hand1 = ResolveChoice(_clientIds[1]);
-                var result = RockPaperScissorsGameLogic.Resolve(_clientIds[0], _clientIds[1], hand0, hand1);
-
-                NotifyRoundResult(result);
-                _gameManager?.RequestShutdown(ShutdownKind.Normal, "Game completed");
-            }
-            catch (OperationCanceledException)
-            {
-                return;
-            }
-            catch (Exception e)
-            {
-                Debug.LogError($"[NetworkGame] Fatal error: {e.Message}");
-                _gameManager?.RequestShutdown(ShutdownKind.Error, e.Message, 5f);
-            }
-            finally
-            {
-                CleanupRound();
-            }
-        }
-
         /// <summary>
-        /// Releases round resources and cancels outstanding waiters.
-        /// </summary>
-        private void CleanupRound()
-        {
-            _allChoicesSubmitted?.TrySetCanceled();
-            _allChoicesSubmitted = null;
-
-            if (_choices.Count > 0)
-            {
-                _choices.Keys.ToList().ForEach(id => _choices[id] = null);
-            }
-        }
-
-        /// <summary>
-        /// Preemptively supplies hands for CPU players so the server does not wait on them.
-        /// </summary>
-        private void SeedCpuChoices()
-        {
-            foreach (var clientId in _clientIds)
-            {
-                if (IsCpuId(clientId))
-                {
-                    _choices[clientId] = HandExtensions.RandomHand();
-                }
-                else if (!_choices.ContainsKey(clientId))
-                {
-                    _choices[clientId] = null;
-                }
-            }
-            TrySetChoicesReady();
-        }
-
-        /// <summary>
-        /// Sends the round-start notification (names included) to every non-CPU participant.
+        /// Notifies all clients that the round has started, sending both client identifiers and names.
         /// </summary>
         private void BroadcastRoundStart()
         {
-            foreach (var clientId in _clientIds)
+            if (NetworkManager.Singleton == null || _clientIds.Length < RequiredGamePlayers)
             {
-                if (IsCpuId(clientId))
+                return;
+            }
+
+            var player1Id = _clientIds[0];
+            var player2Id = _clientIds[1];
+
+            if (!_playerNames.TryGetValue(player1Id, out var player1Name))
+            {
+                player1Name = ResolveDisplayName(player1Id);
+            }
+
+            if (!_playerNames.TryGetValue(player2Id, out var player2Name))
+            {
+                player2Name = ResolveDisplayName(player2Id);
+            }
+
+            // 全クライアントにラウンド開始を通知
+            RoundStartedClientRpc(player1Id, player2Id, player1Name, player2Name);
+        }
+
+        /// <summary>
+        /// Waits until every client has submitted a choice or the timeout expires.
+        /// </summary>
+        private async Task<bool> WaitForChoicesAsync(TimeSpan timeout, CancellationToken ct = default)
+        {
+            // Track the clients that still need to submit a hand.
+            var pending = new HashSet<ulong>(_clientIds);
+
+            // すでに手を提出しているクライアントidをpendingから除外
+            foreach (var id in _clientIds)
+            {
+                if (_choices.TryGetValue(id, out var existing) && existing.HasValue)
                 {
-                    continue;
+                    pending.Remove(id);
+                }
+            }
+
+            // cpuクライアントにランダム手を提出させ、pendingから除外
+            foreach (var id in _clientIds)
+            {
+                if (pending.Contains(id) && IsCpuId(id))
+                {
+                    _choices[id] = HandExtensions.RandomHand();
+                    pending.Remove(id);
+                }
+            }
+
+            // すべてのクライアントが手を提出しているならtrueを返す
+            if (pending.Count == 0)
+            {
+                return true;
+            }
+
+            using var awaiter = new SimpleSignalAwaiter(timeout, ct);
+
+            void OnChoiceSubmitted(ulong clientId, Hand hand)
+            {
+                if (!pending.Contains(clientId) || hand == Hand.None)
+                {
+                    return;
                 }
 
-                var opponentId = GetOpponentId(clientId);
-                if (!_playerNames.TryGetValue(clientId, out var myName) ||
-                    !_playerNames.TryGetValue(opponentId, out var opponentName))
+                if (_choices.TryGetValue(clientId, out var value) && value.HasValue)
                 {
-                    continue;
+                    return;
                 }
 
-                if (NetworkManager.Singleton == null || !NetworkManager.Singleton.ConnectedClients.ContainsKey(clientId))
+                _choices[clientId] = hand;
+                pending.Remove(clientId);
+
+                if (pending.Count == 0)
                 {
-                    continue;
+                    awaiter.OnSignal();
                 }
+            }
 
-                var targetParams = new ClientRpcParams
-                {
-                    Send = new ClientRpcSendParams
-                    {
-                        TargetClientIds = new[] { clientId }
-                    }
-                };
+            ChoiceSubmitted += OnChoiceSubmitted;
 
-                RoundStartedClientRpc(myName, opponentName, targetParams);
+            try
+            {
+                var completed = await awaiter.WaitAsync(ct).ConfigureAwait(false);
+                return completed && pending.Count == 0;
+            }
+            finally
+            {
+                ChoiceSubmitted -= OnChoiceSubmitted;
             }
         }
 
@@ -268,30 +297,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         }
 
         /// <summary>
-        /// Completes the round waiter when every slot has submitted a hand.
+        /// Sends each connected player their personal round outcome and hand information.
         /// </summary>
-        private void TrySetChoicesReady()
-        {
-            if (_allChoicesSubmitted == null)
-            {
-                return;
-            }
-
-            foreach (var clientId in _clientIds)
-            {
-                if (!_choices.TryGetValue(clientId, out var choice) || !choice.HasValue)
-                {
-                    return;
-                }
-            }
-
-            _allChoicesSubmitted.TrySetResult(true);
-        }
-
-        /// <summary>
-        /// Delivers the resolved result to each human player from their own perspective.
-        /// </summary>
-        private void NotifyRoundResult(RpsResult result)
+        private void BroadcastRoundResult(RpsResult result)
         {
             foreach (var clientId in _clientIds)
             {
@@ -300,10 +308,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                     continue;
                 }
 
-                var isFirst = clientId == _clientIds[0];
-                var myOutcome = isFirst ? result.Player1Outcome : result.Player2Outcome;
-                var myHand = isFirst ? result.Player1Hand : result.Player2Hand;
-                var opponentHand = isFirst ? result.Player2Hand : result.Player1Hand;
+                var isPlayerOne = clientId == result.Player1Id;
+                var myHand = isPlayerOne ? result.Player1Hand : result.Player2Hand;
+                var opponentHand = isPlayerOne ? result.Player2Hand : result.Player1Hand;
+                var myOutcome = isPlayerOne ? result.Player1Outcome : result.Player2Outcome;
 
                 if (NetworkManager.Singleton == null || !NetworkManager.Singleton.ConnectedClients.ContainsKey(clientId))
                 {
@@ -323,27 +331,22 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         }
 
         /// <summary>
-        /// Records the submitted hand for the matching participant, ignoring CPUs.
+        /// Records the submitted hand for the matching client, ignoring CPUs.
         /// </summary>
         partial void HandleSubmitChoice(ulong clientId, Hand choice)
         {
-            if (_allChoicesSubmitted == null)
-            {
-                return;
-            }
-
             if (IsCpuId(clientId) || Array.IndexOf(_clientIds, clientId) < 0)
             {
                 return;
             }
 
-            if (_choices.TryGetValue(clientId, out var existing) && existing.HasValue)
+            if (choice == Hand.None)
             {
                 return;
             }
 
             _choices[clientId] = choice;
-            TrySetChoicesReady();
+            ChoiceSubmitted?.Invoke(clientId, choice);
         }
 
         /// <summary>

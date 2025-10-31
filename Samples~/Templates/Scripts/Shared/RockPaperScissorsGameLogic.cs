@@ -14,15 +14,15 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// Runs a round from start to finish: waits for both player tasks, substitutes missing hands on timeout, and returns the result.
         /// </summary>
         public async Task<RpsResult> RunRoundAsync(
-            ulong player0Id,
             ulong player1Id,
+            ulong player2Id,
             TimeSpan timeout,
-            Task<Hand?> player0HandTask,
             Task<Hand?> player1HandTask,
+            Task<Hand?> player2HandTask,
             CancellationToken cancellation = default)
         {
-            if (player0HandTask == null) throw new ArgumentNullException(nameof(player0HandTask));
             if (player1HandTask == null) throw new ArgumentNullException(nameof(player1HandTask));
+            if (player2HandTask == null) throw new ArgumentNullException(nameof(player2HandTask));
             if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(timeout));
 
             using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
@@ -30,7 +30,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
             try
             {
-                var combined = Task.WhenAll(player0HandTask, player1HandTask);
+                var combined = Task.WhenAll(player1HandTask, player2HandTask);
                 await combined.ConfigureAwait(false);
             }
             catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellation.IsCancellationRequested)
@@ -45,24 +45,24 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 }
             }
 
-            var hand0 = ResolveHand(player0HandTask);
             var hand1 = ResolveHand(player1HandTask);
-            return Resolve(player0Id, player1Id, hand0, hand1);
+            var hand2 = ResolveHand(player2HandTask);
+            return Resolve(player1Id, player2Id, hand1, hand2);
         }
 
         /// <summary>
         /// Forms an <see cref="RpsResult"/> for the supplied identifiers and hands by running the deterministic outcome table.
         /// </summary>
-        public static RpsResult Resolve(ulong player0Id, ulong player1Id, Hand hand0, Hand hand1)
+        public static RpsResult Resolve(ulong player1Id, ulong player2Id, Hand player1Hand, Hand player2Hand)
         {
             return new RpsResult
             {
-                Player1Id = player0Id,
-                Player2Id = player1Id,
-                Player1Hand = hand0,
-                Player2Hand = hand1,
-                Player1Outcome = DetermineOutcome(hand0, hand1),
-                Player2Outcome = DetermineOutcome(hand1, hand0)
+                Player1Id = player1Id,
+                Player2Id = player2Id,
+                Player1Hand = player1Hand,
+                Player2Hand = player2Hand,
+                Player1Outcome = DetermineOutcome(player1Hand, player2Hand),
+                Player2Outcome = DetermineOutcome(player2Hand, player1Hand)
             };
         }
 

@@ -1,7 +1,4 @@
 using System;
-using Unity.Collections;
-using Unity.Netcode;
-
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
     public enum GamePhase : byte
@@ -54,7 +51,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         Win = 2
     }
 
-    public struct RpsResult : INetworkSerializable
+    public struct RpsResult
     {
         public ulong Player1Id;
         public ulong Player2Id;
@@ -62,16 +59,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         public Hand Player2Hand;
         public RoundOutcome Player1Outcome;
         public RoundOutcome Player2Outcome;
-
-        public void NetworkSerialize<T>(BufferSerializer<T> serializer) where T : IReaderWriter
-        {
-            serializer.SerializeValue(ref Player1Id);
-            serializer.SerializeValue(ref Player2Id);
-            serializer.SerializeValue(ref Player1Hand);
-            serializer.SerializeValue(ref Player2Hand);
-            serializer.SerializeValue(ref Player1Outcome);
-            serializer.SerializeValue(ref Player2Outcome);
-        }
     }
 
 }
