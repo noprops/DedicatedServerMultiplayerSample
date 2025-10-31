@@ -1,59 +1,134 @@
 using System;
+using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using DedicatedServerMultiplayerSample.Shared;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
     /// <summary>
-    /// Pure rock-paper-scissors rules engine; call <see cref="RunRoundAsync"/> to execute a single round.
+    /// Pure rock-paper-scissors rules engine; handles round orchestration and outcome calculation.
     /// </summary>
     public sealed class RockPaperScissorsGameLogic
     {
+        private readonly ulong[] _playerIds;
+        private readonly Dictionary<ulong, Hand?> _choices = new();
+        private readonly TimeSpan _timeout;
+        private SimpleSignalAwaiter _awaiter;
 
-        /// <summary>
-        /// Runs a round from start to finish: waits for both player tasks, substitutes missing hands on timeout, and returns the result.
-        /// </summary>
-        public async Task<RpsResult> RunRoundAsync(
-            ulong player1Id,
-            ulong player2Id,
-            TimeSpan timeout,
-            Task<Hand?> player1HandTask,
-            Task<Hand?> player2HandTask,
-            CancellationToken cancellation = default)
+        public RockPaperScissorsGameLogic(IReadOnlyList<ulong> playerIds, TimeSpan timeout)
         {
-            if (player1HandTask == null) throw new ArgumentNullException(nameof(player1HandTask));
-            if (player2HandTask == null) throw new ArgumentNullException(nameof(player2HandTask));
-            if (timeout <= TimeSpan.Zero) throw new ArgumentOutOfRangeException(nameof(timeout));
+            if (playerIds == null) throw new ArgumentNullException(nameof(playerIds));
+            if (playerIds.Count != 2) throw new ArgumentException("Exactly two players are required.", nameof(playerIds));
 
-            using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellation);
-            timeoutCts.CancelAfter(timeout);
-
-            try
+            _playerIds = new ulong[playerIds.Count];
+            for (var i = 0; i < playerIds.Count; i++)
             {
-                var combined = Task.WhenAll(player1HandTask, player2HandTask);
-                await combined.ConfigureAwait(false);
-            }
-            catch (OperationCanceledException) when (timeoutCts.IsCancellationRequested && !cancellation.IsCancellationRequested)
-            {
-                // timeout -> fall through to substitution logic
-            }
-            catch
-            {
-                if (!timeoutCts.IsCancellationRequested)
-                {
-                    throw;
-                }
+                var id = playerIds[i];
+                _playerIds[i] = id;
+                _choices[id] = null;
             }
 
-            var hand1 = ResolveHand(player1HandTask);
-            var hand2 = ResolveHand(player2HandTask);
-            return Resolve(player1Id, player2Id, hand1, hand2);
+            _timeout = timeout;
         }
 
         /// <summary>
-        /// Forms an <see cref="RpsResult"/> for the supplied identifiers and hands by running the deterministic outcome table.
+        /// Registers a hand for the provided player identifier.
         /// </summary>
-        public static RpsResult Resolve(ulong player1Id, ulong player2Id, Hand player1Hand, Hand player2Hand)
+        public bool SubmitHand(ulong playerId, Hand hand)
+        {
+            if (hand == Hand.None)
+            {
+                return false;
+            }
+
+            if (!_choices.ContainsKey(playerId))
+            {
+                return false;
+            }
+
+            if (_choices[playerId].HasValue)
+            {
+                return false;
+            }
+
+            _choices[playerId] = hand;
+
+            if (AllHandsSubmitted())
+            {
+                _awaiter?.OnSignal();
+            }
+
+            return true;
+        }
+
+        /// <summary>
+        /// Waits for all submissions (or the timeout) and returns the computed result.
+        /// </summary>
+        public async Task<RpsResult> RunAsync(CancellationToken ct = default)
+        {
+            if (AllHandsSubmitted())
+            {
+                return BuildResult();
+            }
+
+            var awaiter = new SimpleSignalAwaiter(_timeout, ct);
+            _awaiter = awaiter;
+            try
+            {
+                var completed = await awaiter.WaitAsync();
+                if (!completed)
+                {
+                    FillMissingHands();
+                }
+            }
+            catch (OperationCanceledException) when (!ct.IsCancellationRequested)
+            {
+                FillMissingHands();
+            }
+            finally
+            {
+                _awaiter = null;
+                awaiter.Dispose();
+            }
+
+            return BuildResult();
+        }
+
+        private bool AllHandsSubmitted()
+        {
+            foreach (var entry in _choices)
+            {
+                if (!entry.Value.HasValue)
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+
+        private void FillMissingHands()
+        {
+            foreach (var key in _playerIds)
+            {
+                if (!_choices[key].HasValue)
+                {
+                    _choices[key] = HandExtensions.RandomHand();
+                }
+            }
+        }
+
+        private RpsResult BuildResult()
+        {
+            var player1Id = _playerIds[0];
+            var player2Id = _playerIds[1];
+            var player1Hand = _choices[player1Id] ?? HandExtensions.RandomHand();
+            var player2Hand = _choices[player2Id] ?? HandExtensions.RandomHand();
+            return Resolve(player1Id, player2Id, player1Hand, player2Hand);
+        }
+
+        private RpsResult Resolve(ulong player1Id, ulong player2Id, Hand player1Hand, Hand player2Hand)
         {
             return new RpsResult
             {
@@ -66,23 +141,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             };
         }
 
-        /// <summary>
-        /// Produces the effective hand for a player. If the task did not complete with a valid hand, a random hand is assigned instead of leaving it empty.
-        /// </summary>
-        private static Hand ResolveHand(Task<Hand?> task)
-        {
-            if (task != null && task.IsCompletedSuccessfully && task.Result is Hand value && value != Hand.None)
-            {
-                return value;
-            }
-
-            return HandExtensions.RandomHand();
-        }
-
-        /// <summary>
-        /// Computes the round outcome (win/draw/lose) for <paramref name="me"/> against <paramref name="opponent"/>.
-        /// </summary>
-        private static RoundOutcome DetermineOutcome(Hand me, Hand opponent)
+        private RoundOutcome DetermineOutcome(Hand me, Hand opponent)
         {
             if (me == opponent)
             {

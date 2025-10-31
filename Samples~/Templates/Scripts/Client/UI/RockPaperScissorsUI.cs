@@ -47,6 +47,10 @@ public sealed class RockPaperScissorsUI : MonoBehaviour
         choicePanel.SetActive(false);
         resultPanel.SetActive(false);
         statusText.text = string.Empty;
+        if (modalLayer != null)
+        {
+            modalLayer.Hide();
+        }
 
         rockButton.onClick.AddListener(() => HandleChoice(Hand.Rock));
         paperButton.onClick.AddListener(() => HandleChoice(Hand.Paper));
@@ -95,14 +99,9 @@ public sealed class RockPaperScissorsUI : MonoBehaviour
         resultPanel.SetActive(true);
         SetChoiceButtonsInteractable(false);
 
-        myHandText.text = myHand.ToDisplayString();
-        yourHandText.text = yourHand.ToDisplayString();
-        resultText.text = myResult switch
-        {
-            RoundOutcome.Win => "Win",
-            RoundOutcome.Draw => "Draw",
-            _ => "Lose"
-        };
+        myHandText.text = HandExtensions.ToString(myHand);
+        yourHandText.text = HandExtensions.ToString(yourHand);
+        resultText.text = RoundOutcomeExtensions.ToString(myResult);
 
         statusText.text = "Round finished";
         okButton.interactable = true;

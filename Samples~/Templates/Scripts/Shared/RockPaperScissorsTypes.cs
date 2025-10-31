@@ -35,7 +35,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Provides a human-readable label for the supplied hand.
         /// </summary>
-        public static string ToDisplayString(this Hand hand) => hand switch
+        public static string ToString(this Hand hand) => hand switch
         {
             Hand.Rock => "Rock",
             Hand.Paper => "Paper",
@@ -49,6 +49,17 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         Lose = 0,
         Draw = 1,
         Win = 2
+    }
+
+    public static class RoundOutcomeExtensions
+    {
+        public static string ToString(RoundOutcome outcome) => outcome switch
+        {
+            RoundOutcome.Win => "Win",
+            RoundOutcome.Draw => "Draw",
+            RoundOutcome.Lose => "Lose",
+            _ => "-"
+        };
     }
 
     public struct RpsResult

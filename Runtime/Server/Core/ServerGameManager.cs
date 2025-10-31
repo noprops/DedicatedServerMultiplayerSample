@@ -360,7 +360,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             if (_connectionTracker.HasRequiredPlayers)
             {
-                // すでに全くライアントが揃っている場合
+                // Required players are already connected.
                 return true;
             }
 
@@ -378,7 +378,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
                 try
                 {
-                    var ready = await awaiter.WaitAsync(token).ConfigureAwait(false);
+                    var ready = await awaiter.WaitAsync(token);
 
                     if (token.IsCancellationRequested)
                     {

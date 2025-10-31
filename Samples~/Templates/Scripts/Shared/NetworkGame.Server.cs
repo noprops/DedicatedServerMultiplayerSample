@@ -25,13 +25,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         private readonly Dictionary<ulong, string> _playerNames = new();
         /// <summary>
-        /// Submitted (or fallback) hands tracked per client identifier for the current round.
+        /// Round logic that coordinates submissions and computes the result.
         /// </summary>
-        private readonly Dictionary<ulong, Hand?> _choices = new();
-        /// <summary>
-        /// Emits whenever a client submits a choice (player input or CPU auto-pick).
-        /// </summary>
-        private event Action<ulong, Hand> ChoiceSubmitted;
+        private RockPaperScissorsGameLogic _roundLogic;
 
         /// <summary>
         /// Game manager used to query display names and trigger shutdown.
@@ -50,7 +46,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 return;
             }
 
-            _ = RunGameRoutineAsync();
+            _ = RunRoundAsync();
         }
 
         /// <summary>
@@ -65,9 +61,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         }
 
         /// <summary>
-        /// Orchestrates the entire server flow: wait for clients, run a round, and trigger shutdown.
+        /// Orchestrates a single round: wait for clients, gather inputs, resolve, and trigger shutdown.
         /// </summary>
-        private async Task RunGameRoutineAsync()
+        private async Task RunRoundAsync()
         {
             try
             {
@@ -83,12 +79,19 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 SetPlayerSlots(connectedIds);
                 BroadcastRoundStart();
 
-                var choicesReady = await WaitForChoicesAsync(TimeSpan.FromSeconds(RoundTimeoutSeconds));
-                FillMissingChoices();
+                _roundLogic = new RockPaperScissorsGameLogic(
+                    _clientIds,
+                    TimeSpan.FromSeconds(RoundTimeoutSeconds));
 
-                var player1Hand = ResolveChoice(_clientIds[0]);
-                var player2Hand = ResolveChoice(_clientIds[1]);
-                var result = RockPaperScissorsGameLogic.Resolve(_clientIds[0], _clientIds[1], player1Hand, player2Hand);
+                foreach (var id in _clientIds)
+                {
+                    if (IsCpuId(id))
+                    {
+                        _roundLogic.SubmitHand(id, HandExtensions.RandomHand());
+                    }
+                }
+
+                var result = await _roundLogic.RunAsync();
 
                 BroadcastRoundResult(result);
                 _gameManager?.RequestShutdown(ShutdownKind.Normal, "Game completed");
@@ -101,6 +104,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             {
                 Debug.LogError($"[NetworkGame] Unexpected error: {e.Message}");
                 _gameManager?.RequestShutdown(ShutdownKind.Error, e.Message, 5f);
+            }
+            finally
+            {
+                _roundLogic = null;
             }
         }
 
@@ -151,7 +158,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             Array.Clear(_clientIds, 0, _clientIds.Length);
             _playerNames.Clear();
-            _choices.Clear();
 
             var assigned = 0;
 
@@ -160,7 +166,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 ulong clientId = connectedClientIds[assigned];
                 _clientIds[assigned] = clientId;
                 _playerNames[clientId] = ResolveDisplayName(clientId);
-                _choices[clientId] = null;
             }
 
             // Fill remaining slots with CPU clients when not enough players joined.
@@ -169,7 +174,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             {
                 _clientIds[assigned] = cpuId;
                 _playerNames[cpuId] = "CPU";
-                _choices[cpuId] = null;
                 cpuId++;
             }
         }
@@ -199,99 +203,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
             // Notify every connected client that the round has started.
             RoundStartedClientRpc(player1Id, player2Id, player1Name, player2Name);
-        }
-
-        /// <summary>
-        /// Waits until every client has submitted a choice or the timeout expires.
-        /// </summary>
-        private async Task<bool> WaitForChoicesAsync(TimeSpan timeout, CancellationToken ct = default)
-        {
-            // Track the clients that still need to submit a hand.
-            var pending = new HashSet<ulong>(_clientIds);
-
-            // Remove any client that already submitted a hand from the pending set.
-            foreach (var id in _clientIds)
-            {
-                if (_choices.TryGetValue(id, out var existing) && existing.HasValue)
-                {
-                    pending.Remove(id);
-                }
-            }
-
-            // Auto-submit random hands for CPU slots and drop them from pending.
-            foreach (var id in _clientIds)
-            {
-                if (pending.Contains(id) && IsCpuId(id))
-                {
-                    _choices[id] = HandExtensions.RandomHand();
-                    pending.Remove(id);
-                }
-            }
-
-            // Everyone is already done; no need to wait.
-            if (pending.Count == 0)
-            {
-                return true;
-            }
-
-            using var awaiter = new SimpleSignalAwaiter(timeout, ct);
-
-            void OnChoiceSubmitted(ulong clientId, Hand hand)
-            {
-                if (!pending.Contains(clientId) || hand == Hand.None)
-                {
-                    return;
-                }
-
-                if (_choices.TryGetValue(clientId, out var value) && value.HasValue)
-                {
-                    return;
-                }
-
-                _choices[clientId] = hand;
-                pending.Remove(clientId);
-
-                if (pending.Count == 0)
-                {
-                    awaiter.OnSignal();
-                }
-            }
-
-            ChoiceSubmitted += OnChoiceSubmitted;
-
-            try
-            {
-                var completed = await awaiter.WaitAsync(ct);
-                return completed && pending.Count == 0;
-            }
-            finally
-            {
-                ChoiceSubmitted -= OnChoiceSubmitted;
-            }
-        }
-
-        /// <summary>
-        /// Ensures any missing hands are filled (for timeouts) so the round can resolve.
-        /// </summary>
-        private void FillMissingChoices()
-        {
-            foreach (var clientId in _clientIds)
-            {
-                if (!_choices.TryGetValue(clientId, out var choice) || !choice.HasValue)
-                {
-                    _choices[clientId] = HandExtensions.RandomHand();
-                }
-            }
-        }
-
-        /// <summary>
-        /// Converts a nullable choice into a concrete hand, assigning a random fallback when needed.
-        /// </summary>
-        private Hand ResolveChoice(ulong clientId)
-        {
-            return _choices.TryGetValue(clientId, out var choice) && choice.HasValue
-                ? choice.Value
-                : HandExtensions.RandomHand();
         }
 
         /// <summary>
@@ -344,8 +255,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 return;
             }
 
-            _choices[clientId] = choice;
-            ChoiceSubmitted?.Invoke(clientId, choice);
+            _roundLogic?.SubmitHand(clientId, choice);
         }
 
         private string ResolveDisplayName(ulong clientId)
