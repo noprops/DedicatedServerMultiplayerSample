@@ -46,7 +46,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             try
             {
-                var completed = await awaiter.WaitAsync(ct).ConfigureAwait(false);
+                var completed = await awaiter.WaitAsync(ct);
                 if (!completed)
                 {
                     return false;

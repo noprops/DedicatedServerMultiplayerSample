@@ -84,10 +84,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 BroadcastRoundStart();
 
                 var choicesReady = await WaitForChoicesAsync(TimeSpan.FromSeconds(RoundTimeoutSeconds));
-                if (!choicesReady)
-                {
-                    FillMissingChoices();
-                }
+                FillMissingChoices();
 
                 var player1Hand = ResolveChoice(_clientIds[0]);
                 var player2Hand = ResolveChoice(_clientIds[1]);
@@ -117,6 +114,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 return (false, Array.Empty<ulong>());
             }
 
+            // All expected clients are already connected.
             if (_gameManager.AreAllClientsConnected)
             {
                 return (true, _gameManager.ConnectedClientSnapshot.ToArray());
@@ -135,7 +133,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
             try
             {
-                var signalled = await awaiter.WaitAsync(ct).ConfigureAwait(false);
+                var signalled = await awaiter.WaitAsync(ct);
                 return signalled
                     ? (true, payload ?? Array.Empty<ulong>())
                     : (false, Array.Empty<ulong>());
@@ -199,7 +197,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 player2Name = ResolveDisplayName(player2Id);
             }
 
-            // 全クライアントにラウンド開始を通知
+            // Notify every connected client that the round has started.
             RoundStartedClientRpc(player1Id, player2Id, player1Name, player2Name);
         }
 
@@ -211,7 +209,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             // Track the clients that still need to submit a hand.
             var pending = new HashSet<ulong>(_clientIds);
 
-            // すでに手を提出しているクライアントidをpendingから除外
+            // Remove any client that already submitted a hand from the pending set.
             foreach (var id in _clientIds)
             {
                 if (_choices.TryGetValue(id, out var existing) && existing.HasValue)
@@ -220,7 +218,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 }
             }
 
-            // cpuクライアントにランダム手を提出させ、pendingから除外
+            // Auto-submit random hands for CPU slots and drop them from pending.
             foreach (var id in _clientIds)
             {
                 if (pending.Contains(id) && IsCpuId(id))
@@ -230,7 +228,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 }
             }
 
-            // すべてのクライアントが手を提出しているならtrueを返す
+            // Everyone is already done; no need to wait.
             if (pending.Count == 0)
             {
                 return true;
@@ -263,7 +261,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
             try
             {
-                var completed = await awaiter.WaitAsync(ct).ConfigureAwait(false);
+                var completed = await awaiter.WaitAsync(ct);
                 return completed && pending.Count == 0;
             }
             finally
@@ -303,6 +301,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             foreach (var clientId in _clientIds)
             {
+                // Skip CPU slots; there is no client to notify.
                 if (IsCpuId(clientId))
                 {
                     continue;
@@ -347,22 +346,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
             _choices[clientId] = choice;
             ChoiceSubmitted?.Invoke(clientId, choice);
-        }
-
-        /// <summary>
-        /// Resolves a friendly display name for the supplied identifier.
-        /// </summary>
-        private ulong GetOpponentId(ulong clientId)
-        {
-            foreach (var otherId in _clientIds)
-            {
-                if (otherId != clientId)
-                {
-                    return otherId;
-                }
-            }
-
-            return clientId;
         }
 
         private string ResolveDisplayName(ulong clientId)
