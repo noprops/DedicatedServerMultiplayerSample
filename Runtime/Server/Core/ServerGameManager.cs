@@ -35,18 +35,14 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private ServerSceneLoader _sceneLoader;
         // auth ids supplied by the matchmaker for the players assigned to this session
         private readonly List<string> _expectedAuthIds = new();
-        private DeferredActionScheduler _shutdownScheduler;
         private CancellationTokenSource _sessionCts;
+        private readonly DelayedActionScheduler _shutdownDelayScheduler = new();
 
         private int _teamCount = 2;
         private bool _isSceneLoaded;
         private bool _isDisposed;
         private bool _allConnectedEmitted;
         private ulong[] _allConnectedIds = Array.Empty<ulong>();
-
-        private bool _shutdownEmitted;
-        private ShutdownKind _lastShutdownKind = ShutdownKind.Normal;
-        private string _lastShutdownReason = string.Empty;
 
         private const float WaitingPlayersTimeoutSeconds = 10f;
         private const float StartTimeoutShutdownDelaySeconds = 5f;
@@ -68,66 +64,13 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         /// </summary>
         public IReadOnlyList<ulong> ConnectedClientSnapshot => _allConnectedIds;
         /// <summary>
-        /// Fired when a shutdown is requested. Replayed to late subscribers if requested.
-        /// </summary>
-        public event Action<ShutdownKind, string> ShutdownRequested;
-
-        /// <summary>
         /// Constructs a new server game manager with the provided network manager and player capacity.
         /// </summary>
         public ServerGameManager(NetworkManager networkManager, int defaultMaxPlayers)
         {
             _networkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
             _defaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);
-            _shutdownScheduler = new DeferredActionScheduler(CloseServer);
             Debug.Log("[ServerGameManager] Created");
-        }
-
-        /// <summary>
-        /// Subscribes to shutdown notifications. When <paramref name="replay"/> is true and a shutdown was already
-        /// requested, the handler is invoked immediately with the cached kind and reason.
-        /// </summary>
-        public void AddShutdownRequested(Action<ShutdownKind, string> handler, bool replay = true)
-        {
-            if (handler == null) return;
-            ShutdownRequested += handler;
-            if (replay && _shutdownEmitted)
-            {
-                handler(_lastShutdownKind, _lastShutdownReason);
-            }
-        }
-
-        /// <summary>
-        /// Removes a previously registered shutdown handler.
-        /// </summary>
-        public void RemoveShutdownRequested(Action<ShutdownKind, string> handler)
-        {
-            if (handler == null) return;
-            ShutdownRequested -= handler;
-        }
-
-        /// <summary>
-        /// Attempts to resolve a display name for the specified client using registered payload information.
-        /// </summary>
-        public bool TryGetPlayerDisplayName(ulong clientId, out string playerName)
-        {
-            playerName = null;
-
-            if (_connectionDirectory.TryGet<string>(clientId, "playerName", out var payloadName) &&
-                !string.IsNullOrWhiteSpace(payloadName))
-            {
-                playerName = payloadName;
-                return true;
-            }
-
-            if (_connectionDirectory.TryGetAuthId(clientId, out var authId) &&
-                !string.IsNullOrWhiteSpace(authId))
-            {
-                playerName = authId;
-                return true;
-            }
-
-            return false;
         }
 
         /// <summary>
@@ -213,29 +156,123 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         /// <summary>
         /// Schedules a shutdown with the given reason, emitting a single notification the first time it is requested.
         /// </summary>
-        public bool RequestShutdown(ShutdownKind kind, string reason, float delaySeconds = NormalShutdownDelaySeconds)
+        public void RequestShutdown(ShutdownKind kind, string reason, float delaySeconds = NormalShutdownDelaySeconds)
         {
-            var firstRequest = !_shutdownEmitted;
-
-            if (firstRequest)
+            if (!_shutdownDelayScheduler.IsScheduled)
             {
-                _shutdownEmitted = true;
-                _lastShutdownKind = kind;
-                _lastShutdownReason = reason;
                 Debug.Log($"[ServerGameManager] Emitting shutdown request: {kind} - {reason}");
-                ShutdownRequested?.Invoke(kind, reason);
             }
             else
             {
-                Debug.Log($"[ServerGameManager] Shutdown already requested ({_lastShutdownKind}); rescheduling with {kind} - {reason}");
+                Debug.Log($"[ServerGameManager] Shutdown already requested; rescheduling with {kind} - {reason}");
             }
 
-            if (_shutdownScheduler != null)
+            ScheduleShutdownAction(reason, delaySeconds);
+        }
+
+        /// <summary>
+        /// Cancels any pending shutdown and schedules a new one with the provided delay and log context.
+        /// </summary>
+        private void ScheduleShutdownAction(string reason, float delaySeconds)
+        {
+            _shutdownDelayScheduler.Cancel();
+            Debug.Log($"[DeferredAction] scheduled in {delaySeconds}s : {reason}");
+            _shutdownDelayScheduler.Schedule(delaySeconds, () =>
             {
-                _ = _shutdownScheduler.ScheduleAsync(reason, delaySeconds);
+                Debug.Log($"[DeferredAction] executing: {reason}");
+                CloseServer();
+            });
+        }
+
+        /// <summary>
+        /// Initiates server shutdown and quits the application immediately.
+        /// </summary>
+        private void CloseServer()
+        {
+            Debug.Log("[ServerGameManager] CloseServer invoked - beginning shutdown");
+            Dispose();
+            Debug.Log("[ServerGameManager] CloseServer calling Application.Quit()");
+            Application.Quit();
+        }
+
+        /// <summary>
+        /// Attempts to resolve a display name for the specified client using registered payload information.
+        /// </summary>
+        public bool TryGetPlayerDisplayName(ulong clientId, out string playerName)
+        {
+            playerName = null;
+
+            if (_connectionDirectory.TryGet<string>(clientId, "playerName", out var payloadName) &&
+                !string.IsNullOrWhiteSpace(payloadName))
+            {
+                playerName = payloadName;
+                return true;
             }
 
-            return firstRequest;
+            if (_connectionDirectory.TryGetAuthId(clientId, out var authId) &&
+                !string.IsNullOrWhiteSpace(authId))
+            {
+                playerName = authId;
+                return true;
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Forces the specified client to disconnect with an optional reason.
+        /// </summary>
+        public void DisconnectClient(ulong clientId, string reason = "Forced disconnect")
+        {
+            if (_networkManager == null || !_networkManager.IsServer)
+            {
+                return;
+            }
+
+            _networkManager.DisconnectClient(clientId, reason);
+        }
+
+        /// <summary>
+        /// Releases all managed resources and stops the network server if it is running.
+        /// </summary>
+        public void Dispose()
+        {
+            if (_isDisposed)
+            {
+                Debug.Log("[ServerGameManager] Dispose called after it was already completed");
+                return;
+            }
+
+            _isDisposed = true;
+
+            _sessionCts?.Cancel();
+            _sessionCts?.Dispose();
+            _sessionCts = null;
+
+            if (_connectionTracker != null)
+            {
+                _connectionTracker.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
+            }
+
+            _connectionApprover?.Dispose();
+            _connectionApprover = null;
+            _connectionTracker?.Dispose();
+            _multiplayIntegration?.Dispose();
+            _shutdownDelayScheduler.Cancel();
+
+            if (_networkManager != null)
+            {
+                _networkManager.ConnectionApprovalCallback = null;
+
+                if (_networkManager.IsListening || _networkManager.IsServer)
+                {
+                    _networkManager.Shutdown();
+                }
+            }
+
+            _connectionDirectory.Clear();
+
+            Debug.Log("[ServerGameManager] Disposed");
         }
 
         /// <summary>
@@ -289,62 +326,6 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             }
 
             return true;
-        }
-
-        /// <summary>
-        /// Forces the specified client to disconnect with an optional reason.
-        /// </summary>
-        public void DisconnectClient(ulong clientId, string reason = "Forced disconnect")
-        {
-            if (_networkManager == null || !_networkManager.IsServer)
-            {
-                return;
-            }
-
-            _networkManager.DisconnectClient(clientId, reason);
-        }
-
-        /// <summary>
-        /// Releases all managed resources and stops the network server if it is running.
-        /// </summary>
-        public void Dispose()
-        {
-            if (_isDisposed)
-            {
-                return;
-            }
-
-            _isDisposed = true;
-
-            _sessionCts?.Cancel();
-            _sessionCts?.Dispose();
-            _sessionCts = null;
-
-            if (_connectionTracker != null)
-            {
-                _connectionTracker.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
-            }
-
-            _connectionApprover?.Dispose();
-            _connectionApprover = null;
-            _connectionTracker?.Dispose();
-            _multiplayIntegration?.Dispose();
-            _shutdownScheduler?.Dispose();
-            _shutdownScheduler = null;
-
-            if (_networkManager != null)
-            {
-                _networkManager.ConnectionApprovalCallback = null;
-
-                if (_networkManager.IsListening || _networkManager.IsServer)
-                {
-                    _networkManager.Shutdown();
-                }
-            }
-
-            _connectionDirectory.Clear();
-
-            Debug.Log("[ServerGameManager] Disposed");
         }
 
         /// <summary>
@@ -428,7 +409,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         /// </summary>
         private void EmitAllClientsConnected()
         {
-            if (_shutdownEmitted || _allConnectedEmitted)
+            if (_shutdownDelayScheduler.IsScheduled || _allConnectedEmitted)
             {
                 return;
             }
@@ -447,16 +428,6 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         {
             RequestShutdown(ShutdownKind.AllPlayersDisconnected, "All players disconnected", StartTimeoutShutdownDelaySeconds);
         }
-
-        /// <summary>
-        /// Initiates server shutdown and quits the application immediately.
-        /// </summary>
-        private void CloseServer()
-        {
-            Dispose();
-            Application.Quit();
-        }
-
     }
 }
 #endif
