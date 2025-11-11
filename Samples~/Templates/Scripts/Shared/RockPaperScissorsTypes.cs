@@ -53,7 +53,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
     public static class RoundOutcomeExtensions
     {
-        public static string ToString(RoundOutcome outcome) => outcome switch
+        public static string ToString(this RoundOutcome outcome) => outcome switch
         {
             RoundOutcome.Win => "Win",
             RoundOutcome.Draw => "Draw",

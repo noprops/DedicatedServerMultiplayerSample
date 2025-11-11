@@ -26,6 +26,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
             Complete(CountdownCompletionReason.Cancelled);
         }
 
+        public void Cancel()
+        {
+            Complete(CountdownCompletionReason.Cancelled);
+        }
+
         public Task<CountdownCompletionReason> RunAsync()
         {
             return RunAsync(defaultDurationSeconds);

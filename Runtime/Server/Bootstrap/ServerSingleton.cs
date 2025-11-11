@@ -2,8 +2,10 @@ using System.Threading.Tasks;
 using Unity.Netcode;
 using Unity.Services.Core;
 using UnityEngine;
+#if UNITY_SERVER || ENABLE_UCS_SERVER
 using DedicatedServerMultiplayerSample.Server.Core;
 using DedicatedServerMultiplayerSample.Server.Infrastructure;
+#endif
 
 namespace DedicatedServerMultiplayerSample.Server.Bootstrap
 {
