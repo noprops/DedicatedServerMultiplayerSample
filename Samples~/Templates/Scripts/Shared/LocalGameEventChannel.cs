@@ -4,9 +4,9 @@ using UnityEngine.SceneManagement;
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
     /// <summary>
-    /// Local-only dispatcher that bridges the UI and CPU game logic without Netcode.
+    /// Local-only game event channel that bridges the UI and CPU logic without Netcode.
     /// </summary>
-    public sealed class LocalGameEventDispatcher : RpsGameEventChannel
+    public sealed class LocalGameEventChannel : RpsGameEventChannel
     {
         private void Start()
         {
@@ -41,7 +41,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             InvokeGameAborted(message);
         }
 
-        public override void RaiseGameAbortAcknowledged()
+        public override void RaiseGameAbortConfirmed()
         {
             SceneManager.LoadScene("loading", LoadSceneMode.Single);
         }

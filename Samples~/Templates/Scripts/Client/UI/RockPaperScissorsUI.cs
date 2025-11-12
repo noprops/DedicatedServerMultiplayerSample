@@ -334,7 +334,7 @@ public sealed class RockPaperScissorsUI : MonoBehaviour
     {
         void CompleteAbort()
         {
-            eventChannel.RaiseGameAbortAcknowledged();
+            eventChannel.RaiseGameAbortConfirmed();
         }
 
         if (modalLayer != null)

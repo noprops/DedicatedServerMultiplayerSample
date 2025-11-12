@@ -1,5 +1,5 @@
 using System;
-using Unity.Netcode;
+using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
@@ -8,7 +8,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
     /// Derived classes decide how the notifications travel (e.g., Netcode RPC vs. local call), while the UI
     /// always binds to this common surface.
     /// </summary>
-    public abstract class RpsGameEventChannel : NetworkBehaviour
+    public abstract class RpsGameEventChannel : MonoBehaviour
     {
         /// <summary>
         /// Raised once the channel is ready for UI/gameplay components to subscribe.
@@ -37,7 +37,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Resets the ready flag (call when despawning or reinitialising the dispatcher).
         /// </summary>
-        protected void ResetChannelReadiness()
+        protected internal void ResetChannelReadiness()
         {
             IsChannelReady = false;
         }
@@ -58,7 +58,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Notifies subscribers that a player's hand has been captured.
         /// </summary>
-        protected void InvokeChoiceSelected(ulong playerId, Hand hand)
+        protected internal void InvokeChoiceSelected(ulong playerId, Hand hand)
         {
             ChoiceSelected?.Invoke(playerId, hand);
         }
@@ -76,7 +76,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Notifies subscribers that a player has acknowledged the round result.
         /// </summary>
-        protected void InvokeRoundResultConfirmed(ulong playerId)
+        protected internal void InvokeRoundResultConfirmed(ulong playerId)
         {
             RoundResultConfirmed?.Invoke(playerId);
         }
@@ -96,7 +96,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Notifies subscribers that a round has officially begun.
         /// </summary>
-        protected void InvokeRoundStarted(string myName, string opponentName)
+        protected internal void InvokeRoundStarted(string myName, string opponentName)
         {
             RoundStarted?.Invoke(myName, opponentName);
         }
@@ -114,7 +114,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Notifies subscribers that a round result has been computed.
         /// </summary>
-        protected void InvokeRoundResult(RoundOutcome myOutcome, Hand myHand, Hand opponentHand)
+        protected internal void InvokeRoundResult(RoundOutcome myOutcome, Hand myHand, Hand opponentHand)
         {
             RoundResultReady?.Invoke(myOutcome, myHand, opponentHand);
         }
@@ -126,10 +126,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         public abstract void RaiseGameAborted(ulong targetClientId, string message);
 
         /// <summary>
-        /// Called by the UI once the player has acknowledged the abort prompt.
+        /// Called by the UI once the player has confirmed the abort prompt.
         /// Implementations decide how to tear down the session (disconnect vs. scene reload).
         /// </summary>
-        public abstract void RaiseGameAbortAcknowledged();
+        public abstract void RaiseGameAbortConfirmed();
 
         /// <summary>
         /// Fired when the UI needs to inform the player that the match ended abnormally.
@@ -139,7 +139,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Notifies subscribers that the match cannot continue.
         /// </summary>
-        protected void InvokeGameAborted(string message)
+        protected internal void InvokeGameAborted(string message)
         {
             GameAborted?.Invoke(message);
         }

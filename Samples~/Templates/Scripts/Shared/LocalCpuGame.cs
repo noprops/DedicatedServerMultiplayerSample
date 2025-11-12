@@ -12,7 +12,7 @@ public sealed class LocalCpuGame : MonoBehaviour
     private const ulong HumanId = 1;
     private const ulong CpuId = 100;
 
-    [SerializeField] private LocalGameEventDispatcher eventChannel;
+    [SerializeField] private LocalGameEventChannel eventChannel;
     [SerializeField] private float roundTimeoutSeconds = 30f;
     [SerializeField] private float cpuDecisionDelaySeconds = 0.5f;
 
@@ -24,7 +24,7 @@ public sealed class LocalCpuGame : MonoBehaviour
     {
         if (eventChannel == null)
         {
-            throw new InvalidOperationException("Assign LocalGameEventDispatcher to LocalCpuGame.");
+            throw new InvalidOperationException("Assign LocalGameEventChannel to LocalCpuGame.");
         }
 
         _eventChannel = eventChannel;

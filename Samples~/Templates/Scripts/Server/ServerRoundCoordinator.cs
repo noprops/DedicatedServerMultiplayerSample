@@ -22,7 +22,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         private readonly ulong[] _clientIds = new ulong[RequiredGamePlayers];
         private readonly Dictionary<ulong, string> _playerNames = new();
         private ServerGameManager _gameManager;
-        [SerializeField] private RpsGameEventChannel dispatcher;
+        [SerializeField] private RpsGameEventChannel eventChannel;
 
         /// <summary>
         /// Kicks off the server-side orchestration once the scene loads.
@@ -54,7 +54,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             try
             {
-                if (!await WaitForDispatcherReadyAsync())
+                if (!await WaitForChannelReadyAsync())
                 {
                     return;
                 }
@@ -92,9 +92,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Awaits the dispatcher becoming ready so events can safely flow.
         /// </summary>
-        private async Task<bool> WaitForDispatcherReadyAsync()
+        private async Task<bool> WaitForChannelReadyAsync()
         {
-            if (dispatcher.IsChannelReady)
+            if (eventChannel.IsChannelReady)
             {
                 return true;
             }
@@ -103,11 +103,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
             void Handler()
             {
-                dispatcher.ChannelReady -= Handler;
+                eventChannel.ChannelReady -= Handler;
                 tcs.TrySetResult(true);
             }
 
-            dispatcher.ChannelReady += Handler;
+            eventChannel.ChannelReady += Handler;
             return await tcs.Task.ConfigureAwait(false);
         }
 
@@ -213,7 +213,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 Debug.LogFormat("[ServerRoundCoordinator] Submit from {0} hand={1} accepted={2}", playerId, hand, accepted);
             }
 
-            dispatcher.ChoiceSelected += ChoiceHandler;
+            eventChannel.ChoiceSelected += ChoiceHandler;
 
             try
             {
@@ -232,7 +232,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
             finally
             {
-                dispatcher.ChoiceSelected -= ChoiceHandler;
+                eventChannel.ChoiceSelected -= ChoiceHandler;
             }
         }
 
@@ -267,7 +267,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 string myName = clientId == player1Id ? player1Name : player2Name;
                 string opponentName = clientId == player1Id ? player2Name : player1Name;
 
-                dispatcher.RaiseRoundStarted(clientId, myName, opponentName);
+                eventChannel.RaiseRoundStarted(clientId, myName, opponentName);
             }
         }
         /// <summary>
@@ -287,7 +287,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 var opponentHand = isPlayerOne ? result.Player2Hand : result.Player1Hand;
                 var myOutcome = isPlayerOne ? result.Player1Outcome : result.Player2Outcome;
 
-                dispatcher.RaiseRoundResult(clientId, myOutcome, myHand, opponentHand);
+                eventChannel.RaiseRoundResult(clientId, myOutcome, myHand, opponentHand);
 
                 Debug.LogFormat("[ServerRoundCoordinator] Sent RoundEnded to {0}: myHand={1}, oppHand={2}, outcome={3}",
                     clientId, myHand, opponentHand, myOutcome);
@@ -306,7 +306,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                     continue;
                 }
 
-                dispatcher.RaiseGameAborted(clientId, message);
+                eventChannel.RaiseGameAborted(clientId, message);
             }
         }
 
@@ -355,7 +355,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 }
             }
 
-            dispatcher.RoundResultConfirmed += Handler;
+            eventChannel.RoundResultConfirmed += Handler;
 
             try
             {
@@ -372,7 +372,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
             finally
             {
-                dispatcher.RoundResultConfirmed -= Handler;
+                eventChannel.RoundResultConfirmed -= Handler;
             }
         }
 
