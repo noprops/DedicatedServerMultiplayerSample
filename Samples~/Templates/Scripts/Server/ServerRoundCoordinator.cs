@@ -21,7 +21,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
         private readonly ulong[] _clientIds = new ulong[RequiredGamePlayers];
         private readonly Dictionary<ulong, string> _playerNames = new();
-        private ServerGameManager _gameManager;
+        private ServerStartupRunner _startupRunner;
         [SerializeField] private RpsGameEventChannel eventChannel;
 
         /// <summary>
@@ -29,10 +29,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         private void Start()
         {
-            _gameManager = ServerSingleton.Instance?.GameManager;
-            if (_gameManager == null)
+            _startupRunner = ServerSingleton.Instance?.StartupRunner;
+            if (_startupRunner == null)
             {
-                Debug.LogError("[ServerRoundCoordinator] No ServerGameManager; shutting down");
+                Debug.LogError("[ServerRoundCoordinator] No ServerStartupRunner; shutting down");
                 return;
             }
 
@@ -44,7 +44,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         private void OnDestroy()
         {
-            _gameManager = null;
+            _startupRunner = null;
         }
 
         /// <summary>
@@ -54,20 +54,18 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             try
             {
-                if (!await WaitForChannelReadyAsync())
-                {
-                    return;
-                }
+                await eventChannel.WaitUntilReadyAsync().ConfigureAwait(false);
 
                 Debug.Log("[ServerRoundCoordinator] RunRoundAsync starting");
-                var (connected, connectedIds) = await WaitForAllClientsConnectedAsync();
-                if (!connected || connectedIds == null || connectedIds.Length == 0)
+                var connectedSnapshot = await _startupRunner.WaitForAllClientsAsync().ConfigureAwait(false);
+                var connectedIds = connectedSnapshot?.ToArray() ?? Array.Empty<ulong>();
+                if (connectedIds.Length == 0)
                 {
                     Debug.LogWarning("[ServerRoundCoordinator] Failed to gather required clients.");
                     BroadcastGameAbort("Failed to start the game.");
-                    _gameManager?.RequestShutdown(ShutdownKind.StartTimeout, "Clients did not join in time", 0f);
+                    ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.StartTimeout, "Clients did not join in time");
                     return;
-                }
+            }
 
                 SetPlayerSlots(connectedIds);
 
@@ -76,7 +74,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                     result.Player1Id, result.Player1Hand, result.Player2Id, result.Player2Hand);
                 await NotifyResultsAndAwaitExitAsync(result, TimeSpan.FromSeconds(20));
                 Debug.Log("[ServerRoundCoordinator] Round acknowledgements satisfied; requesting shutdown");
-                _gameManager?.RequestShutdown(ShutdownKind.Normal, "Game completed");
+                ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Normal, "Game completed");
             }
             catch (OperationCanceledException)
             {
@@ -85,71 +83,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             catch (Exception e)
             {
                 Debug.LogError($"[ServerRoundCoordinator] Unexpected error: {e.Message}");
-                _gameManager?.RequestShutdown(ShutdownKind.Error, e.Message, 5f);
-            }
-        }
-
-        /// <summary>
-        /// Awaits the dispatcher becoming ready so events can safely flow.
-        /// </summary>
-        private async Task<bool> WaitForChannelReadyAsync()
-        {
-            if (eventChannel.IsChannelReady)
-            {
-                return true;
-            }
-
-            var tcs = new TaskCompletionSource<bool>();
-
-            void Handler()
-            {
-                eventChannel.ChannelReady -= Handler;
-                tcs.TrySetResult(true);
-            }
-
-            eventChannel.ChannelReady += Handler;
-            return await tcs.Task.ConfigureAwait(false);
-        }
-
-        /// <summary>
-        /// Waits until all expected clients have connected to the server build.
-        /// </summary>
-        private async Task<(bool ok, ulong[] ids)> WaitForAllClientsConnectedAsync(CancellationToken ct = default)
-        {
-            if (_gameManager == null)
-            {
-                Debug.LogWarning("[ServerRoundCoordinator] WaitForAllClientsConnectedAsync called without game manager");
-                return (false, Array.Empty<ulong>());
-            }
-
-            if (_gameManager.AreAllClientsConnected)
-            {
-                Debug.Log("[ServerRoundCoordinator] All clients already connected");
-                return (true, _gameManager.ConnectedClientSnapshot.ToArray());
-            }
-
-            ulong[] payload = Array.Empty<ulong>();
-            using var awaiter = new SimpleSignalAwaiter(ct);
-
-            void Handler(ulong[] ids)
-            {
-                payload = ids;
-                awaiter.OnSignal();
-            }
-
-            _gameManager.AllClientsConnected += Handler;
-
-            try
-            {
-                var signalled = await awaiter.WaitAsync(ct);
-                Debug.LogFormat("[ServerRoundCoordinator] WaitForAllClientsConnectedAsync signalled={0}", signalled);
-                return signalled
-                    ? (true, payload ?? Array.Empty<ulong>())
-                    : (false, Array.Empty<ulong>());
-            }
-            finally
-            {
-                _gameManager.AllClientsConnected -= Handler;
+                ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, e.Message, TimeSpan.FromSeconds(5));
             }
         }
 
@@ -182,6 +116,21 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
 
             Debug.LogFormat("[ServerRoundCoordinator] Slot assignment complete. P1={0}, P2={1}", _clientIds[0], _clientIds[1]);
+
+            string ResolveDisplayName(ulong clientId)
+            {
+                if (IsCpuId(clientId))
+                {
+                    return "CPU";
+                }
+
+                if (_startupRunner != null && _startupRunner.TryGetPlayerDisplayName(clientId, out var name) && !string.IsNullOrWhiteSpace(name))
+                {
+                    return name;
+                }
+
+                return $"Player{clientId}";
+            }
         }
 
         /// <summary>
@@ -244,15 +193,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             var player1Id = _clientIds[0];
             var player2Id = _clientIds[1];
 
-            if (!_playerNames.TryGetValue(player1Id, out var player1Name))
-            {
-                player1Name = ResolveDisplayName(player1Id);
-            }
-
-            if (!_playerNames.TryGetValue(player2Id, out var player2Name))
-            {
-                player2Name = ResolveDisplayName(player2Id);
-            }
+            var player1Name = _playerNames[player1Id];
+            var player2Name = _playerNames[player2Id];
 
             Debug.LogFormat("[ServerRoundCoordinator] Broadcasting round start. P1={0}({1}), P2={2}({3})",
                 player1Id, player1Name, player2Id, player2Name);
@@ -308,24 +250,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
                 eventChannel.RaiseGameAborted(clientId, message);
             }
-        }
-
-        /// <summary>
-        /// Resolves a friendly display name for the provided client ID.
-        /// </summary>
-        private string ResolveDisplayName(ulong clientId)
-        {
-            if (IsCpuId(clientId))
-            {
-                return "CPU";
-            }
-
-            if (_gameManager != null && _gameManager.TryGetPlayerDisplayName(clientId, out var name) && !string.IsNullOrWhiteSpace(name))
-            {
-                return name;
-            }
-
-            return $"Player{clientId}";
         }
 
         /// <summary>

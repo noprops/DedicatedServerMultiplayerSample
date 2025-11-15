@@ -97,7 +97,7 @@ public sealed class RockPaperScissorsUI : MonoBehaviour
     {
         try
         {
-            await WaitForChannelReadyAsync(token);
+            await eventChannel.WaitUntilReadyAsync(token).ConfigureAwait(false);
             eventChannel.GameAborted += HandleGameAborted;
 
             var intro = await WaitForRoundStartedAsync(token);
@@ -132,40 +132,6 @@ public sealed class RockPaperScissorsUI : MonoBehaviour
     }
 
     // === Await helpers ======================================================
-
-    /// <summary>
-    /// Waits until the dispatcher reports that it is ready to send/receive events.
-    /// </summary>
-    private async Task WaitForChannelReadyAsync(CancellationToken token)
-    {
-        if (eventChannel.IsChannelReady)
-        {
-            return;
-        }
-
-        var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-        void Handler()
-        {
-            eventChannel.ChannelReady -= Handler;
-            tcs.TrySetResult(true);
-        }
-
-        eventChannel.ChannelReady += Handler;
-        if (eventChannel.IsChannelReady)
-        {
-            Handler();
-        }
-
-        using (token.Register(() =>
-               {
-                   eventChannel.ChannelReady -= Handler;
-                   tcs.TrySetCanceled(token);
-               }))
-        {
-            await tcs.Task;
-        }
-    }
 
     /// <summary>
     /// Awaits the next RoundStarted notification and returns the provided names.

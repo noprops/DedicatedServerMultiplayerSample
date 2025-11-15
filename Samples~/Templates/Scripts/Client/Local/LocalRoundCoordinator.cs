@@ -49,7 +49,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Local
         {
             try
             {
-                await WaitForChannelReadyAsync();
+                await eventChannel.WaitUntilReadyAsync().ConfigureAwait(false);
                 _logic = new RockPaperScissorsGameLogic(PlayerOrder);
 
                 var result = await CollectHandsAndResolveRoundAsync();
@@ -62,26 +62,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Local
                 Debug.LogError($"[LocalRoundCoordinator] Fatal error: {ex.Message}");
                 eventChannel.RaiseGameAborted(LocalPlayerId, "Local match failed.");
             }
-        }
-
-        private async Task WaitForChannelReadyAsync()
-        {
-            if (eventChannel.IsChannelReady)
-            {
-                return;
-            }
-
-            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            void Handler()
-            {
-                eventChannel.ChannelReady -= Handler;
-                tcs.TrySetResult(true);
-            }
-
-            eventChannel.ChannelReady += Handler;
-
-            await tcs.Task;
         }
 
         private void SubmitCpuHand()

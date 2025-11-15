@@ -31,9 +31,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             _networkManager.OnClientDisconnectCallback += HandleClientDisconnected;
         }
 
-        public event Action<ulong> ClientConnected;
-        public event Action<ulong> ClientDisconnected;
-        public event Action RequiredPlayersReady;
+        public event Action AllClientsConnected;
         public event Action AllPlayersDisconnected;
 
         /// <summary>
@@ -117,7 +115,6 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             }
 
             CheckRequiredPlayersReached();
-            ClientConnected?.Invoke(clientId);
         }
 
         private void HandleClientDisconnected(ulong clientId)
@@ -134,7 +131,6 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 AllPlayersDisconnected?.Invoke();
             }
 
-            ClientDisconnected?.Invoke(clientId);
         }
 
         private void CheckRequiredPlayersReached()
@@ -145,7 +141,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             }
 
             _readyNotified = true;
-            RequiredPlayersReady?.Invoke();
+            AllClientsConnected?.Invoke();
         }
     }
 }

@@ -1,4 +1,6 @@
 using System;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
@@ -15,10 +17,30 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         public event Action ChannelReady;
 
+        private TaskCompletionSource<bool> _readyTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
         /// <summary>
         /// Indicates that <see cref="NotifyChannelReady"/> has already run.
         /// </summary>
         public bool IsChannelReady { get; private set; }
+
+        /// <summary>
+        /// Provides an awaitable that completes once the channel reports readiness.
+        /// </summary>
+        public Task WaitUntilReadyAsync(CancellationToken token = default)
+        {
+            if (!token.CanBeCanceled)
+            {
+                return _readyTcs.Task;
+            }
+
+            if (token.IsCancellationRequested)
+            {
+                return Task.FromCanceled(token);
+            }
+
+            return WaitUntilReadyWithCancellationAsync(token);
+        }
 
         /// <summary>
         /// Marks the channel as ready and notifies listeners exactly once.
@@ -31,6 +53,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
 
             IsChannelReady = true;
+            _readyTcs.TrySetResult(true);
             ChannelReady?.Invoke();
         }
 
@@ -40,6 +63,20 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         protected internal void ResetChannelReadiness()
         {
             IsChannelReady = false;
+            if (_readyTcs.Task.IsCompleted)
+            {
+                _readyTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            }
+        }
+
+        private async Task WaitUntilReadyWithCancellationAsync(CancellationToken token)
+        {
+            var cancelTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using (token.Register(() => cancelTcs.TrySetCanceled(token)))
+            {
+                var completed = await Task.WhenAny(_readyTcs.Task, cancelTcs.Task).ConfigureAwait(false);
+                await completed.ConfigureAwait(false);
+            }
         }
 
         // ==== UI -> Game Logic ====

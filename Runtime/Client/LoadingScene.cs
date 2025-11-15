@@ -69,8 +69,12 @@ namespace DedicatedServerMultiplayerSample.Client
             // ================================================================
             Debug.Log("[LoadingScene] STEP 1: Cleaning up existing session if any...");
 
-            // GameManagerがある場合は既存セッションを離脱
-            await ClientSingleton.Instance.GameManager.LeaveCurrentSessionAsync();
+            // 既存セッションを離脱
+            var matchmaker = ClientSingleton.Instance?.Matchmaker;
+            if (matchmaker != null)
+            {
+                await matchmaker.LeaveCurrentSessionAsync();
+            }
             Debug.Log("[LoadingScene] ✓ Session cleanup complete");
 
             // ================================================================

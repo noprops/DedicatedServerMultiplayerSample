@@ -1,15 +1,14 @@
 using System.Collections.Generic;
 using UnityEngine;
-using DedicatedServerMultiplayerSample.Client;
 
 namespace DedicatedServerMultiplayerSample.Samples.Client
 {
     /// <summary>
     /// サンプル用クライアントデータストア。
-    /// マッチメイキングに渡す各種ペイロードをコードで組み立て、<see cref="MatchmakingPayloadProviderBase"/> として提供します。
+    /// マッチメイキングに渡す各種ペイロードをコードで組み立てます。
     /// 実際のプロジェクトではこのクラスをコピーして、保持したいプレイヤーデータ・ゲーム設定・セッション情報を自由に構成してください。
     /// </summary>
-    public class ClientData : MatchmakingPayloadProviderBase
+    public class ClientData : MonoBehaviour
     {
         public static ClientData Instance { get; private set; }
 
@@ -56,7 +55,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client
         /// Matchmaker の Player Properties に格納される値。
         /// 1 プレイヤーに紐付き、マッチング判定の際にルールセット（Rank 差など）から参照されます。
         /// </summary>
-        public override Dictionary<string, object> GetPlayerProperties()
+        public Dictionary<string, object> GetPlayerProperties()
         {
             return new Dictionary<string, object>
             {
@@ -75,7 +74,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client
         /// Matchmaker Ticket（プレイヤーが検索する際のリクエスト）に付与する属性。
         /// キュー全体に渡す追加情報や、プレイヤー同士で揃えておきたいメタ情報をここに含めます。
         /// </summary>
-        public override Dictionary<string, object> GetTicketAttributes()
+        public Dictionary<string, object> GetTicketAttributes()
         {
             var dict = new Dictionary<string, object>
             {
@@ -100,7 +99,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client
         /// Matchmaking 成功後に Relay/ゲームサーバーへ渡す ConnectionPayload。
         /// `NetworkConfig.ConnectionData` にシリアライズされ、サーバー側の `OnClientConnected` 等で参照できます。
         /// </summary>
-        public override Dictionary<string, object> GetConnectionData()
+        public Dictionary<string, object> GetConnectionData()
         {
             return new Dictionary<string, object>
             {
@@ -117,7 +116,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client
         /// セッション作成時に Multiplay/Matchmaker へ渡す Session Properties。
         /// サーバーが立ち上がる際に読み取り、ゲームルールの初期化に利用する想定です。
         /// </summary>
-        public override Dictionary<string, object> GetSessionProperties()
+        public Dictionary<string, object> GetSessionProperties()
         {
             return new Dictionary<string, object>
             {

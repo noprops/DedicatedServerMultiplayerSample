@@ -14,12 +14,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         partial void HandleClientRoundResultConfirmed()
         {
             rpcProxy.ConfirmRoundResult();
-            ClientSingleton.Instance?.GameManager?.Disconnect();
+            ClientSingleton.Instance?.DisconnectFromServer();
         }
 
         partial void HandleClientAbortConfirmed()
         {
-            ClientSingleton.Instance?.GameManager?.Disconnect();
+            ClientSingleton.Instance?.DisconnectFromServer();
         }
     }
 }

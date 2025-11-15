@@ -23,12 +23,21 @@ namespace DedicatedServerMultiplayerSample.Shared
         /// </summary>
         public void Schedule(float delaySeconds, Action action)
         {
+            Schedule(TimeSpan.FromSeconds(delaySeconds), action);
+        }
+
+        /// <summary>
+        /// Schedules <paramref name="action"/> to run after <paramref name="delay"/>. Cancels
+        /// any previous schedule before starting the new one.
+        /// </summary>
+        public void Schedule(TimeSpan delay, Action action)
+        {
             if (action == null)
             {
                 throw new ArgumentNullException(nameof(action));
             }
 
-            var clampedDelay = Math.Max(0f, delaySeconds);
+            var clampedDelay = delay < TimeSpan.Zero ? TimeSpan.Zero : delay;
             Cancel();
             _cts = new CancellationTokenSource();
             var token = _cts.Token;
@@ -37,7 +46,7 @@ namespace DedicatedServerMultiplayerSample.Shared
             {
                 try
                 {
-                    await Task.Delay(TimeSpan.FromSeconds(clampedDelay), token).ConfigureAwait(false);
+                    await Task.Delay(clampedDelay, token).ConfigureAwait(false);
                     if (!token.IsCancellationRequested)
                     {
                         action();

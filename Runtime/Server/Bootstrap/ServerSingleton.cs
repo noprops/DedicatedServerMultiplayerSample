@@ -1,3 +1,4 @@
+using System;
 using System.Threading.Tasks;
 using Unity.Netcode;
 using Unity.Services.Core;
@@ -16,8 +17,9 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
 
         [SerializeField] private int defaultMaxPlayers = 2;
 
-        private ServerGameManager gameManager;
-        public ServerGameManager GameManager => gameManager;
+        private ServerStartupRunner startupRunner;
+        private readonly ServerShutdownScheduler shutdownScheduler = new();
+        public ServerStartupRunner StartupRunner => startupRunner;
         
         private void Awake()
         {
@@ -57,8 +59,8 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
                     return;
                 }
 
-                gameManager = new ServerGameManager(NetworkManager.Singleton, Mathf.Max(1, defaultMaxPlayers));
-                await gameManager.StartServerAsync();
+                startupRunner = new ServerStartupRunner(NetworkManager.Singleton, Mathf.Max(1, defaultMaxPlayers));
+                await startupRunner.StartAsync();
 
                 Debug.Log("[ServerSingleton] Server created and started successfully");
             }
@@ -72,13 +74,20 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
         private void OnDestroy()
         {
             Debug.Log("[ServerSingleton] Destroying ServerSingleton");
-            gameManager?.Dispose();
+            startupRunner?.Dispose();
+            shutdownScheduler.Cancel();
         }
 
         private void OnApplicationQuit()
         {
             Debug.Log("[ServerSingleton] Application quitting, cleaning up server");
-            gameManager?.Dispose();
+            startupRunner?.Dispose();
+            shutdownScheduler.Cancel();
+        }
+
+        public void ScheduleShutdown(ShutdownKind kind, string reason, TimeSpan delay = default)
+        {
+            shutdownScheduler.Schedule(kind, reason, delay, () => startupRunner?.Dispose());
         }
 #else
         private void Awake()

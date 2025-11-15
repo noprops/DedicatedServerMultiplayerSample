@@ -4,7 +4,7 @@ using UnityEngine;
 namespace DedicatedServerMultiplayerSample.Server.Infrastructure
 {
     /// <summary>
-    /// サーバー専用のパフォーマンス最適化設定
+    /// Applies headless/dedicated-server friendly performance settings.
     /// </summary>
     public static class ServerPerformanceOptimizer
     {
@@ -12,17 +12,12 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
         {
             Debug.Log("[ServerPerformanceOptimizer] Initializing server performance optimizations");
 
-            // フレームレート制限
-            Application.targetFrameRate = 15;  // サーバーは15 FPSで十分
+            // Cap rendering.
+            Application.targetFrameRate = 15;  // Servers only need a low tick rate.
             Debug.Log($"  - Target FPS: {Application.targetFrameRate}");
 
-            // 物理演算の最小化
             DisablePhysics();
-
-            // グラフィック関連の無効化
             DisableGraphics();
-
-            // ガベージコレクションの最適化
             OptimizeGarbageCollection();
 
             Debug.Log("[ServerPerformanceOptimizer] All optimizations applied");
@@ -30,17 +25,15 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
 
         private static void DisablePhysics()
         {
-            // 物理演算の更新頻度を最小に（完全に無効化はできないが最小限に）
-            Time.fixedDeltaTime = 1.0f;  // 1秒に1回のみ更新（実質的に無効化）
-            Physics.simulationMode = SimulationMode.Script;  // スクリプト制御のみ
+            // Minimize physics work (cannot fully disable, but run rarely).
+            Time.fixedDeltaTime = 1.0f;
+            Physics.simulationMode = SimulationMode.Script;
 
-            // 2D物理演算も最小化
             Physics2D.simulationMode = SimulationMode2D.Script;
 
-            // 物理演算のスリープ閾値を最大に
-            Physics.defaultSolverIterations = 1;  // ソルバーイテレーションを最小に
+            Physics.defaultSolverIterations = 1;
             Physics.defaultSolverVelocityIterations = 1;
-            Physics.sleepThreshold = 10.0f;  // スリープしやすくする
+            Physics.sleepThreshold = 10.0f;
 
             Debug.Log("  - Physics: Disabled (Script mode only)");
             Debug.Log($"  - Fixed Delta Time: {Time.fixedDeltaTime}s");
@@ -50,20 +43,16 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
 
         private static void DisableGraphics()
         {
-            // VSync無効化
             QualitySettings.vSyncCount = 0;
-
-            // すべての品質設定を最低に
             QualitySettings.SetQualityLevel(0, true);
 
-            // 個別のグラフィック設定を無効化
             QualitySettings.shadows = ShadowQuality.Disable;
             QualitySettings.shadowResolution = ShadowResolution.Low;
             QualitySettings.shadowDistance = 0;
             QualitySettings.shadowCascades = 0;
 
             QualitySettings.pixelLightCount = 0;
-            QualitySettings.globalTextureMipmapLimit = 3;  // テクスチャ品質を最低に
+            QualitySettings.globalTextureMipmapLimit = 3;
             QualitySettings.anisotropicFiltering = AnisotropicFiltering.Disable;
             QualitySettings.antiAliasing = 0;
 
@@ -71,11 +60,9 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
             QualitySettings.realtimeReflectionProbes = false;
             QualitySettings.billboardsFaceCameraPosition = false;
 
-            // LODバイアスを最低品質に
             QualitySettings.lodBias = 0.3f;
             QualitySettings.maximumLODLevel = 0;
 
-            // パーティクルレイキャストバジェットを0に
             QualitySettings.particleRaycastBudget = 0;
 
             Debug.Log("  - Graphics: All features disabled");
@@ -85,11 +72,9 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
 
         private static void OptimizeGarbageCollection()
         {
-            // ガベージコレクションを増分モードに
             UnityEngine.Scripting.GarbageCollector.GCMode =
                 UnityEngine.Scripting.GarbageCollector.Mode.Enabled;
 
-            // メモリ使用量の最適化
             System.GC.Collect();
             System.GC.WaitForPendingFinalizers();
             System.GC.Collect();
@@ -98,7 +83,7 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
         }
 
         /// <summary>
-        /// 物理演算を手動で実行する必要がある場合のみ使用
+        /// Manual physics simulation helper for rare cases.
         /// </summary>
         public static void SimulatePhysicsOnce()
         {
@@ -109,7 +94,7 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
         }
 
         /// <summary>
-        /// 2D物理演算を手動で実行する必要がある場合のみ使用
+        /// Manual 2D physics simulation helper for rare cases.
         /// </summary>
         public static void SimulatePhysics2DOnce()
         {
