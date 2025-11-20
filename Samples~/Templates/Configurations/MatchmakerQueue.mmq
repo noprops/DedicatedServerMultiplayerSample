@@ -1,5 +1,5 @@
 {
-    "name": "default-queue",
+    "name": "competitive-queue",
     "enabled": true,
     "maxPlayersPerTicket": 1,
     "defaultPool": {

@@ -3,12 +3,12 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace DedicatedServerMultiplayerSample.Samples.Client.UI
+namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
 {
     /// <summary>
     /// Minimal UI surface that flips between start/cancel buttons while reporting a status string.
     /// </summary>
-    public sealed class StartCancelStatusView : MonoBehaviour
+    public sealed class StartCancelUI : MonoBehaviour
     {
         [SerializeField] private Button startButton;
         [SerializeField] private Button cancelButton;
@@ -16,20 +16,19 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
 
         public event Action StartPressed;
         public event Action CancelPressed;
-        public event Action StartViewDisplayed;
 
         private void Awake()
         {
             if (startButton == null || cancelButton == null || statusText == null)
             {
-                Debug.LogError("[StartCancelStatusView] Missing serialized references.", this);
+                Debug.LogError("[StartCancelUI] Missing serialized references.", this);
                 enabled = false;
                 return;
             }
 
             startButton.onClick.AddListener(HandleStartClicked);
             cancelButton.onClick.AddListener(HandleCancelClicked);
-            ShowStartState();
+            ShowStartButton();
         }
 
         private void OnDestroy()
@@ -45,43 +44,39 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
             }
         }
 
-        public void ShowStartState()
-        {
-            startButton.gameObject.SetActive(true);
-            startButton.interactable = true;
-
-            cancelButton.gameObject.SetActive(false);
-            cancelButton.interactable = false;
-
-            StartViewDisplayed?.Invoke();
-        }
-
-        public void ShowCancelState()
-        {
-            startButton.gameObject.SetActive(false);
-            cancelButton.gameObject.SetActive(true);
-            cancelButton.interactable = true;
-        }
-
         public void SetStatus(string message)
         {
             statusText.text = message;
         }
 
-        public void SetCancelInteractable(bool state)
+        private void ToggleButton(bool showStartButton)
         {
-            cancelButton.interactable = state;
+            startButton.gameObject.SetActive(showStartButton);
+            startButton.interactable = showStartButton;
+
+            cancelButton.gameObject.SetActive(!showStartButton);
+            cancelButton.interactable = !showStartButton;
+        }
+
+        public void ShowStartButton()
+        {
+            ToggleButton(true);
+        }
+
+        public void ShowCancelButton()
+        {
+            ToggleButton(false);
         }
 
         private void HandleStartClicked()
         {
-            ShowCancelState();
+            startButton.interactable = false;
             StartPressed?.Invoke();
         }
 
         private void HandleCancelClicked()
         {
-            ShowStartState();
+            cancelButton.interactable = false;
             CancelPressed?.Invoke();
         }
     }

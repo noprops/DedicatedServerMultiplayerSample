@@ -5,19 +5,19 @@ using System.Threading.Tasks;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace DedicatedServerMultiplayerSample.Samples.Client.UI
+namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Common
 {
     public static class UIHelper
     {
         /// <summary>
-        /// 汎用的なボタン待機
+        /// Asynchronously waits for a button click and returns the supplied value.
         /// </summary>
         public static async Task<T> WaitForButtonAsync<T>(
             Button button,
             T returnValue,
-            CancellationToken ct = default,
             Action onShow = null,
-            Action onHide = null)
+            Action onHide = null,
+            CancellationToken ct = default)
         {
             if (button == null) throw new ArgumentNullException(nameof(button));
 
@@ -50,9 +50,17 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI
         }
 
         /// <summary>
-        /// 複数ボタンからの選択
+        /// Waits for any of the supplied buttons to be clicked and returns its index.
         /// </summary>
-        public static async Task<int> WaitForChoiceAsync(CancellationToken ct = default, params Button[] buttons)
+        public static Task<int> WaitForChoiceAsync(params Button[] buttons)
+        {
+            return WaitForChoiceAsync(buttons, default);
+        }
+
+        /// <summary>
+        /// Waits for any of the supplied buttons to be clicked and returns its index.
+        /// </summary>
+        public static async Task<int> WaitForChoiceAsync(Button[] buttons, CancellationToken ct = default)
         {
             if (buttons == null || buttons.Length == 0)
                 throw new ArgumentException("buttons must not be empty.", nameof(buttons));

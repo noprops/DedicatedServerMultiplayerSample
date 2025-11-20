@@ -65,7 +65,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                     BroadcastGameAbort("Failed to start the game.");
                     ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.StartTimeout, "Clients did not join in time");
                     return;
-            }
+                }
 
                 SetPlayerSlots(connectedIds);
 
@@ -124,7 +124,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                     return "CPU";
                 }
 
-                if (_startupRunner != null && _startupRunner.TryGetPlayerDisplayName(clientId, out var name) && !string.IsNullOrWhiteSpace(name))
+                if (_startupRunner != null && _startupRunner.TryGetPlayerName(clientId, out var name) && !string.IsNullOrWhiteSpace(name))
                 {
                     return name;
                 }

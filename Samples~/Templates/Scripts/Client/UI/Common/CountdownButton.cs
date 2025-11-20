@@ -4,7 +4,7 @@ using TMPro;
 using UnityEngine;
 using UnityEngine.UI;
 
-namespace DedicatedServerMultiplayerSample.Samples.Client.UI
+namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Common
 {
     [RequireComponent(typeof(Button))]
     public class CountdownButton : MonoBehaviour
