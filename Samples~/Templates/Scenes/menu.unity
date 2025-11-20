@@ -2763,6 +2763,7 @@ GameObject:
   - component: {fileID: 1658254834}
   - component: {fileID: 1658254838}
   - component: {fileID: 1658254839}
+  - component: {fileID: 1658254840}
   m_Layer: 5
   m_Name: Canvas
   m_TagString: Untagged
@@ -2875,14 +2876,29 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: a343a58eaab6c4f1b826b559b82fae18, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  matchmakingUI: {fileID: 0}
-  friendButton: {fileID: 0}
+  rankedMatchButton: {fileID: 1843791440949434196}
+  friendButton: {fileID: 1843332361}
   cpuButton: {fileID: 2065215409}
-  buttonLockGroup: {fileID: 0}
-  menuViewModal: {fileID: 0}
-  mainMenuView: {fileID: 0}
-  friendFlowView: {fileID: 0}
-  friendMatchModal: {fileID: 0}
+  buttonLockGroup: {fileID: 569714303}
+  menuViewModal: {fileID: 1658254840}
+  mainMenuView: {fileID: 569714299}
+  friendFlowView: {fileID: 2039028516}
+  friendMatchModal: {fileID: 2039028520}
+--- !u!114 &1658254840
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1658254833}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f3c8806fb8f3a403ea5dd11842150d1d, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  views:
+  - {fileID: 569714299}
+  - {fileID: 2039028516}
 --- !u!1 &1745405314
 GameObject:
   m_ObjectHideFlags: 0
@@ -3364,11 +3380,11 @@ MonoBehaviour:
   joinView: {fileID: 1264294081}
   landingCreateButton: {fileID: 131221249}
   landingJoinButton: {fileID: 1340383614}
-  landingCancelButton: {fileID: 1745405316}
+  landingCloseButton: {fileID: 1745405316}
   roomCodeText: {fileID: 1063137984}
-  createBackButton: {fileID: 1276423114}
+  createCloseButton: {fileID: 1276423114}
   joinRoomCodeInput: {fileID: 1156750870}
-  joinBackButton: {fileID: 53577652}
+  joinCloseButton: {fileID: 53577652}
 --- !u!114 &2039028521
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3679,7 +3695,7 @@ PrefabInstance:
       objectReference: {fileID: 0}
     - target: {fileID: 6708320592095367859, guid: 79dd3fd700d8e4b028e5279f1cdc25a6, type: 3}
       propertyPath: m_Name
-      value: MatchmakingUI
+      value: RankedMatch
       objectReference: {fileID: 0}
     - target: {fileID: 7007697223264734425, guid: 79dd3fd700d8e4b028e5279f1cdc25a6, type: 3}
       propertyPath: m_Pivot.x
@@ -3768,7 +3784,10 @@ PrefabInstance:
     m_RemovedComponents: []
     m_RemovedGameObjects: []
     m_AddedGameObjects: []
-    m_AddedComponents: []
+    m_AddedComponents:
+    - targetCorrespondingSourceObject: {fileID: 6708320592095367859, guid: 79dd3fd700d8e4b028e5279f1cdc25a6, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1843791440949434196}
   m_SourcePrefab: {fileID: 100100000, guid: 79dd3fd700d8e4b028e5279f1cdc25a6, type: 3}
 --- !u!114 &1843791440949434194 stripped
 MonoBehaviour:
@@ -3779,6 +3798,36 @@ MonoBehaviour:
   m_Enabled: 1
   m_EditorHideFlags: 0
   m_Script: {fileID: 11500000, guid: 4e29b1a8efbd4b44bb3f3716e73f07ff, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!1 &1843791440949434195 stripped
+GameObject:
+  m_CorrespondingSourceObject: {fileID: 6708320592095367859, guid: 79dd3fd700d8e4b028e5279f1cdc25a6, type: 3}
+  m_PrefabInstance: {fileID: 1843791440949434193}
+  m_PrefabAsset: {fileID: 0}
+--- !u!114 &1843791440949434196
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1843791440949434195}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: bf131cd00b90c4f7f8efd82ab8540868, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  controls: {fileID: 1843791440949434197}
+  queueName: competitive-queue
+--- !u!114 &1843791440949434197 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 3532743714826503748, guid: 79dd3fd700d8e4b028e5279f1cdc25a6, type: 3}
+  m_PrefabInstance: {fileID: 1843791440949434193}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1843791440949434195}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 2162caf63ad254a4987a4a6f890e569d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
 --- !u!1660057539 &9223372036854775807

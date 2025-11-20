@@ -33,7 +33,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         {
             _matchmaker = matchmaker;
             _clientData = clientData;
-            _queueName = string.IsNullOrWhiteSpace(queueName) ? "casual-queue" : queueName;
+            _queueName = queueName;
         }
 
         public async Task<string> CreateRoomAsync()

@@ -1,6 +1,5 @@
 using System;
 using System.Threading.Tasks;
-using System.Collections.Generic;
 using DedicatedServerMultiplayerSample.Client;
 using DedicatedServerMultiplayerSample.Samples.Client.UI.Common;
 using UnityEngine;
@@ -8,25 +7,27 @@ using UnityEngine;
 namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
 {
     /// <summary>
-    /// Handles the Online Match button flow (start/cancel matchmaking plus status text updates).
+    /// Handles the ranked match UI flow by delegating start/cancel operations to RankedMatchService.
     /// </summary>
     public sealed class RankedMatchButtonUI : MonoBehaviour
     {
         private const string ReadyStatus = "Ready to start matchmaking";
-        private const string DefaultQueueName = "competitive-queue";
 
         [SerializeField] private StartCancelUI controls;
-        [SerializeField] private string queueName = DefaultQueueName;
+        [SerializeField] private string queueName = "competitive-queue";
 
-        private ClientMatchmaker _matchmaker;
+        private RankedMatchService _matchService;
 
         public event Action CancelCompleted;
 
         private void Start()
         {
-            _matchmaker = ClientSingleton.Instance?.Matchmaker;
+            _matchService = new RankedMatchService(
+                ClientSingleton.Instance?.Matchmaker,
+                ClientData.Instance,
+                queueName);
 
-            if (_matchmaker == null || controls == null)
+            if (!_matchService.CanOperate || controls == null)
             {
                 controls?.SetStatus("Client not initialized");
                 enabled = false;
@@ -37,42 +38,38 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             controls.ShowStartButton();
             controls.StartPressed += HandleStartPressed;
             controls.CancelPressed += HandleCancelPressed;
-            NotifyReady();
+            _matchService.StateChanged += HandleStateChanged;
         }
 
         private void OnDestroy()
         {
-            controls.StartPressed -= HandleStartPressed;
-            controls.CancelPressed -= HandleCancelPressed;
-        }
+            if (controls != null)
+            {
+                controls.StartPressed -= HandleStartPressed;
+                controls.CancelPressed -= HandleCancelPressed;
+            }
 
-        private MatchmakingPayload BuildPayload()
-        {
-            var source = ClientData.Instance;
-            return new MatchmakingPayload(
-                source?.GetPlayerProperties(),
-                source?.GetTicketAttributes(),
-                source?.GetConnectionData(),
-                source?.GetSessionProperties());
+            if (_matchService != null)
+            {
+                _matchService.StateChanged -= HandleStateChanged;
+            }
         }
-
-        private void NotifyReady() => CancelCompleted?.Invoke();
 
         private async void HandleStartPressed()
         {
             controls.ShowCancelButton();
             controls.SetStatus("Starting matchmaking...");
 
-            var payload = BuildPayload();
-
             try
             {
-                await ExecuteMatchmakingAsync(queueName, payload);
-                controls.SetStatus("Connected!");
-            }
-            catch (OperationCanceledException)
-            {
-                controls.SetStatus("Cancelled by user");
+                var result = await _matchService.StartMatchAsync();
+                controls.SetStatus(result switch
+                {
+                    MatchResult.Success => "Connected!",
+                    MatchResult.UserCancelled => "Cancelled by user",
+                    MatchResult.Timeout => "Timed out. Try again.",
+                    _ => "Failed. Try again."
+                });
             }
             catch (Exception ex)
             {
@@ -81,89 +78,31 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             finally
             {
                 controls.ShowStartButton();
-                NotifyReady();
             }
         }
 
         private async void HandleCancelPressed()
         {
             controls.SetStatus("Cancelling...");
-            try
-            {
-                await _matchmaker.CancelMatchmakingAsync();
-                controls.SetStatus("Cancelled by user");
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[RankedMatchButtonUI] Cancel failed: {ex.Message}");
-                controls.SetStatus($"Cancel failed: {ex.Message}");
-            }
-            finally
-            {
-                controls.ShowStartButton();
-                NotifyReady();
-            }
+            await _matchService.CancelMatchAsync();
+            controls.ShowStartButton();
+            controls.SetStatus("Cancelled by user");
+            CancelCompleted?.Invoke();
         }
 
-        private async Task ExecuteMatchmakingAsync(
-            string targetQueue,
-            MatchmakingPayload payload)
+        private void HandleStateChanged(ClientConnectionState state)
         {
-            controls.SetStatus("Searching for match...");
-
-            void HandleStateChanged(ClientConnectionState state)
+            controls.SetStatus(state switch
             {
-                controls.SetStatus(state switch
-                {
-                    ClientConnectionState.SearchingMatch => "Searching for match...",
-                    ClientConnectionState.MatchFound => "Match found! Preparing...",
-                    ClientConnectionState.ConnectingToServer => "Connecting to server...",
-                    ClientConnectionState.Connected => "Connected!",
-                    ClientConnectionState.Cancelling => "Cancelling...",
-                    ClientConnectionState.Cancelled => "Cancelled",
-                    ClientConnectionState.Failed => "Connection failed",
-                    _ => "Ready"
-                });
-            }
-
-            _matchmaker.StateChanged += HandleStateChanged;
-
-            try
-            {
-                await _matchmaker.MatchmakeAsync(
-                        targetQueue,
-                        payload.PlayerProperties,
-                        payload.TicketAttributes,
-                        payload.ConnectionPayload,
-                        payload.SessionProperties)
-                    ;
-            }
-            finally
-            {
-                _matchmaker.StateChanged -= HandleStateChanged;
-            }
-        }
-
-        public sealed class MatchmakingPayload
-        {
-            public static MatchmakingPayload Empty { get; } = new MatchmakingPayload();
-
-            public MatchmakingPayload(
-                Dictionary<string, object> playerProperties = null,
-                Dictionary<string, object> ticketAttributes = null,
-                Dictionary<string, object> connectionPayload = null,
-                Dictionary<string, object> sessionProperties = null)
-            {
-                PlayerProperties = playerProperties;
-                TicketAttributes = ticketAttributes;
-                ConnectionPayload = connectionPayload;
-                SessionProperties = sessionProperties;
-            }
-
-            public Dictionary<string, object> PlayerProperties { get; }
-            public Dictionary<string, object> TicketAttributes { get; }
-            public Dictionary<string, object> ConnectionPayload { get; }
-            public Dictionary<string, object> SessionProperties { get; }
+                ClientConnectionState.SearchingMatch => "Searching for match...",
+                ClientConnectionState.MatchFound => "Match found! Preparing...",
+                ClientConnectionState.ConnectingToServer => "Connecting to server...",
+                ClientConnectionState.Connected => "Connected!",
+                ClientConnectionState.Cancelling => "Cancelling...",
+                ClientConnectionState.Cancelled => "Cancelled",
+                ClientConnectionState.Failed => "Connection failed",
+                _ => ReadyStatus
+            });
         }
     }
 }

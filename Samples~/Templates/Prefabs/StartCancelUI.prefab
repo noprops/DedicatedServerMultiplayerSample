@@ -389,9 +389,9 @@ GameObject:
   - component: {fileID: 7007697223264734425}
   - component: {fileID: 2224658244986177089}
   - component: {fileID: 8400286909676442495}
-  - component: {fileID: 7785053334082730636}
+  - component: {fileID: 3532743714826503748}
   m_Layer: 5
-  m_Name: MatchmakingUI
+  m_Name: StartCancelUI
   m_TagString: Untagged
   m_Icon: {fileID: 0}
   m_NavMeshLayer: 0
@@ -457,7 +457,7 @@ MonoBehaviour:
   m_FillOrigin: 0
   m_UseSpriteMesh: 0
   m_PixelsPerUnitMultiplier: 1
---- !u!114 &7785053334082730636
+--- !u!114 &3532743714826503748
 MonoBehaviour:
   m_ObjectHideFlags: 0
   m_CorrespondingSourceObject: {fileID: 0}
@@ -466,13 +466,12 @@ MonoBehaviour:
   m_GameObject: {fileID: 6708320592095367859}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: f9785becaa58246c89044cf6fc232da4, type: 3}
+  m_Script: {fileID: 11500000, guid: 2162caf63ad254a4987a4a6f890e569d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
   startButton: {fileID: 8340890981630438494}
   cancelButton: {fileID: 6826899647422762373}
   statusText: {fileID: 3948222473241791765}
-  queueName: default-queue
 --- !u!1 &7933826165708257966
 GameObject:
   m_ObjectHideFlags: 0
