@@ -3,7 +3,7 @@
     "enabled": true,
     "maxPlayersPerTicket": 1,
     "defaultPool": {
-        "name": "default-pool",
+        "name": "competitive-pool",
         "enabled": true,
         "timeoutSeconds": 300,
         "variants": [],
@@ -65,7 +65,7 @@
     },
     "filteredPools": [
         {
-            "name": "server-build",
+            "name": "high-version-pool",
             "enabled": true,
             "timeoutSeconds": 300,
             "variants": [],
@@ -75,18 +75,18 @@
                     "teams": [
                         {
                             "name": "Players",
-                        "teamCount": {
-                            "min": 2,
-                            "max": 2,
-                            "relaxations": [
-                                {
-                                    "type": "RangeControl.ReplaceMin",
-                                    "ageType": "Oldest",
-                                    "atSeconds": 30,
-                                    "value": 1
-                                }
-                            ]
-                        },
+                            "teamCount": {
+                                "min": 2,
+                                "max": 2,
+                                "relaxations": [
+                                    {
+                                        "type": "RangeControl.ReplaceMin",
+                                        "ageType": "Oldest",
+                                        "atSeconds": 30,
+                                        "value": 1
+                                    }
+                                ]
+                            },
                             "playerCount": {
                                 "min": 1,
                                 "max": 1,
@@ -108,11 +108,11 @@
                             "enableRule": true
                         },
                         {
-                        "name": "RankDifferenceRule",
-                        "type": "Difference",
-                        "source": "Players.CustomData.rank",
-                        "reference": 5,
-                        "relaxations": [],
+                            "name": "RankDifferenceRule",
+                            "type": "Difference",
+                            "source": "Players.CustomData.rank",
+                            "reference": 5,
+                            "relaxations": [],
                             "enableRule": true
                         }
                     ]

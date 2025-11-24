@@ -24,6 +24,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Local
         private string _localPlayerName;
         private const string CpuDisplayName = "CPU";
 
+        private void Awake()
+        {
+            Debug.Log("[LocalRoundCoordinator] Awake");
+        }
+
         private void Start()
         {
             if (eventChannel == null)
@@ -34,6 +39,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Local
             }
 
             _localPlayerName = ClientData.Instance?.PlayerName;
+            Debug.Log("[LocalRoundCoordinator] Initialized and starting local round.");
             _ = RunRoundAsync();
         }
 

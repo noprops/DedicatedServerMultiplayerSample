@@ -8,8 +8,14 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
     /// </summary>
     public sealed class LocalGameEventChannel : RpsGameEventChannel
     {
+        private void Awake()
+        {
+            Debug.Log("[LocalGameEventChannel] Awake");
+        }
+
         private void Start()
         {
+            Debug.Log("[LocalGameEventChannel] Channel ready (local mode).");
             NotifyChannelReady();
         }
 

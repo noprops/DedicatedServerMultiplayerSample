@@ -99,19 +99,19 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
         {
             try
             {
-                await eventChannel.WaitUntilReadyAsync(token).ConfigureAwait(false);
+                await eventChannel.WaitUntilReadyAsync(token);
                 eventChannel.GameAborted += HandleGameAborted;
 
-                var intro = await WaitForRoundStartedAsync(token).ConfigureAwait(false);
+                var intro = await WaitForRoundStartedAsync(token);
                 ShowChoicePanel(intro.myName, intro.opponentName);
 
-                var selected = await WaitForLocalChoiceAsync(token).ConfigureAwait(false);
+                var selected = await WaitForLocalChoiceAsync(token);
                 eventChannel.RaiseChoiceSelected(selected);
 
-                var result = await WaitForRoundResultAsync(token).ConfigureAwait(false);
+                var result = await WaitForRoundResultAsync(token);
                 ShowResult(result.myOutcome, result.myHand, result.opponentHand);
 
-                await WaitForEndButtonAsync(token).ConfigureAwait(false);
+                await WaitForEndButtonAsync(token);
                 eventChannel.RaiseRoundResultConfirmed();
             }
             catch (OperationCanceledException)
@@ -178,7 +178,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                        tcs.TrySetCanceled(token);
                    }))
             {
-                return await tcs.Task.ConfigureAwait(false);
+                return await tcs.Task;
             }
         }
 
@@ -199,7 +199,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                        tcs.TrySetCanceled(token);
                    }))
             {
-                return await tcs.Task.ConfigureAwait(false);
+                return await tcs.Task;
             }
         }
 
@@ -234,7 +234,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                        tcs.TrySetCanceled(token);
                    }))
             {
-                return await tcs.Task.ConfigureAwait(false);
+                return await tcs.Task;
             }
         }
 
@@ -242,7 +242,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
         {
             using (token.Register(endButton.Cancel))
             {
-                await endButton.RunAsync(endButtonCountdownSeconds).ConfigureAwait(false);
+                await endButton.RunAsync(endButtonCountdownSeconds);
             }
         }
 

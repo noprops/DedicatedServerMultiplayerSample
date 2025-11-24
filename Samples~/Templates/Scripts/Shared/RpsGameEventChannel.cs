@@ -29,6 +29,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         public Task WaitUntilReadyAsync(CancellationToken token = default)
         {
+            if (IsChannelReady)
+            {
+                return Task.CompletedTask;
+            }
+
             if (!token.CanBeCanceled)
             {
                 return _readyTcs.Task;

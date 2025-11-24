@@ -53,17 +53,19 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             {
                 _matchService.StateChanged -= HandleStateChanged;
             }
+
+            controls = null;
         }
 
         private async void HandleStartPressed()
         {
-            controls.ShowCancelButton();
-            controls.SetStatus("Starting matchmaking...");
+            controls?.ShowCancelButton();
+            controls?.SetStatus("Starting matchmaking...");
 
             try
             {
                 var result = await _matchService.StartMatchAsync();
-                controls.SetStatus(result switch
+                controls?.SetStatus(result switch
                 {
                     MatchResult.Success => "Connected!",
                     MatchResult.UserCancelled => "Cancelled by user",
@@ -73,26 +75,26 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             }
             catch (Exception ex)
             {
-                controls.SetStatus($"Failed: {ex.Message}");
+                controls?.SetStatus($"Failed: {ex.Message}");
             }
             finally
             {
-                controls.ShowStartButton();
+                controls?.ShowStartButton();
             }
         }
 
         private async void HandleCancelPressed()
         {
-            controls.SetStatus("Cancelling...");
+            controls?.SetStatus("Cancelling...");
             await _matchService.CancelMatchAsync();
-            controls.ShowStartButton();
-            controls.SetStatus("Cancelled by user");
+            controls?.ShowStartButton();
+            controls?.SetStatus("Cancelled by user");
             CancelCompleted?.Invoke();
         }
 
         private void HandleStateChanged(ClientConnectionState state)
         {
-            controls.SetStatus(state switch
+            controls?.SetStatus(state switch
             {
                 ClientConnectionState.SearchingMatch => "Searching for match...",
                 ClientConnectionState.MatchFound => "Match found! Preparing...",
