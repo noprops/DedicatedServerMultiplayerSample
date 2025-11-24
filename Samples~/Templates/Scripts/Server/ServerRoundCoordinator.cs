@@ -54,10 +54,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             try
             {
-                await eventChannel.WaitUntilReadyAsync().ConfigureAwait(false);
+                await eventChannel.WaitUntilReadyAsync();
 
                 Debug.Log("[ServerRoundCoordinator] RunRoundAsync starting");
-                var connectedSnapshot = await _startupRunner.WaitForAllClientsAsync().ConfigureAwait(false);
+                var connectedSnapshot = await _startupRunner.WaitForAllClientsAsync();
                 var connectedIds = connectedSnapshot?.ToArray() ?? Array.Empty<ulong>();
                 if (connectedIds.Length == 0)
                 {
@@ -287,7 +287,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
                 try
                 {
-                    await awaiter.WaitAsync().ConfigureAwait(false);
+                    await awaiter.WaitAsync();
                 }
                 catch (OperationCanceledException)
                 {
