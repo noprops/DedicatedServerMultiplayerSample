@@ -34,18 +34,18 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         public async Task<MatchAllocationResult> AwaitAllocationAsync(CancellationToken ct)
         {
-            if (!await EnsureConnectedAsync().ConfigureAwait(false))
+            if (!await EnsureConnectedAsync())
             {
                 return MatchAllocationResult.Failed();
             }
 
-            var allocation = await WaitForAllocationEventAsync(ct).ConfigureAwait(false);
+            var allocation = await WaitForAllocationEventAsync(ct);
             if (allocation == null)
             {
                 return MatchAllocationResult.Failed();
             }
 
-            var results = await GetMatchmakingResultsAsync().ConfigureAwait(false);
+            var results = await GetMatchmakingResultsAsync();
             LogMatchSummary(results);
 
             if (results == null)
@@ -71,7 +71,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             try
             {
-                await ServerAuthenticationService.Instance.SignInFromServerAsync().ConfigureAwait(false);
+                await ServerAuthenticationService.Instance.SignInFromServerAsync();
 
                 _sessionCallbacks = new MultiplaySessionManagerEventCallbacks();
                 _sessionCallbacks.Allocated += HandleAllocatedNoop;
@@ -95,7 +95,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     Callbacks = _sessionCallbacks
                 };
 
-                _sessionManager = await MultiplayerServerService.Instance.StartMultiplaySessionManagerAsync(sessionManagerOptions).ConfigureAwait(false);
+                _sessionManager = await MultiplayerServerService.Instance.StartMultiplaySessionManagerAsync(sessionManagerOptions);
                 Debug.Log("[MultiplaySessionService] Multiplay session manager created.");
                 return true;
             }
@@ -114,7 +114,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 return;
             }
 
-            await _sessionManager.SetPlayerReadinessAsync(ready).ConfigureAwait(false);
+            await _sessionManager.SetPlayerReadinessAsync(ready);
             Debug.Log($"[MultiplaySessionService] Player readiness set to {ready}.");
         }
 
@@ -137,7 +137,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             try
             {
                 hostSession.IsLocked = true;
-                await hostSession.SavePropertiesAsync().ConfigureAwait(false);
+                await hostSession.SavePropertiesAsync();
                 Debug.Log("[MultiplaySessionService] Session locked.");
             }
             catch (Exception ex)
@@ -191,7 +191,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             {
                 using (ct.Register(() => tcs.TrySetCanceled(ct)))
                 {
-                    return await tcs.Task.ConfigureAwait(false);
+                    return await tcs.Task;
                 }
             }
             catch (Exception ex) when (ex is TaskCanceledException or OperationCanceledException)
@@ -214,7 +214,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             try
             {
-                return await _sessionManager.GetAllocationPayloadFromJsonAsAsync<MatchmakingResults>().ConfigureAwait(false);
+                return await _sessionManager.GetAllocationPayloadFromJsonAsAsync<MatchmakingResults>();
             }
             catch (Exception ex)
             {

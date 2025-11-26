@@ -79,8 +79,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             var cancelTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
             using (token.Register(() => cancelTcs.TrySetCanceled(token)))
             {
-                var completed = await Task.WhenAny(_readyTcs.Task, cancelTcs.Task).ConfigureAwait(false);
-                await completed.ConfigureAwait(false);
+                var completed = await Task.WhenAny(_readyTcs.Task, cancelTcs.Task);
+                await completed;
             }
         }
 
@@ -122,6 +122,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             RoundResultConfirmed?.Invoke(playerId);
         }
+
+        /// <summary>
+        /// Called by the UI once the player has confirmed the abort prompt.
+        /// Implementations decide how to tear down the session (disconnect vs. scene reload).
+        /// </summary>
+        public abstract void RaiseGameAbortConfirmed();
 
         // ==== Game Logic -> UI ====
 
@@ -166,12 +172,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// Implementations should surface the provided message and prompt the client to exit.
         /// </summary>
         public abstract void RaiseGameAborted(ulong targetClientId, string message);
-
-        /// <summary>
-        /// Called by the UI once the player has confirmed the abort prompt.
-        /// Implementations decide how to tear down the session (disconnect vs. scene reload).
-        /// </summary>
-        public abstract void RaiseGameAbortConfirmed();
 
         /// <summary>
         /// Fired when the UI needs to inform the player that the match ended abnormally.

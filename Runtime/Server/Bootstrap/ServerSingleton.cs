@@ -85,8 +85,9 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
             shutdownScheduler.Cancel();
         }
 
-        public void ScheduleShutdown(ShutdownKind kind, string reason, TimeSpan delay = default)
+        public void ScheduleShutdown(ShutdownKind kind, string reason, int timeoutSeconds)
         {
+            TimeSpan delay = TimeSpan.FromSeconds(timeoutSeconds);
             shutdownScheduler.Schedule(kind, reason, delay, () => startupRunner?.Dispose());
         }
 #else

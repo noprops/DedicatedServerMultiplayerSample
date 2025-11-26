@@ -55,7 +55,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Local
         {
             try
             {
-                await eventChannel.WaitUntilReadyAsync().ConfigureAwait(false);
+                await eventChannel.WaitUntilReadyAsync();
                 _logic = new RockPaperScissorsGameLogic(PlayerOrder);
 
                 var result = await CollectHandsAndResolveRoundAsync();
@@ -133,7 +133,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Local
             {
                 try
                 {
-                    await tcs.Task.ConfigureAwait(false);
+                    await tcs.Task;
                 }
                 catch (TaskCanceledException)
                 {

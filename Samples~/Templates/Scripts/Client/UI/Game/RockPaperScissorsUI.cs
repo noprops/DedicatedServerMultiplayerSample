@@ -33,13 +33,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
         [SerializeField] private CountdownButton endButton;
         [SerializeField] private float endButtonCountdownSeconds = 10f;
         [SerializeField] private ModalLayerUI modalLayer;
-        [SerializeField] private float abortPromptDurationSeconds = 2f;
+        [SerializeField] private float abortPromptDurationSeconds = 5f;
 
         [SerializeField] private RpsGameEventChannel eventChannel;
 
         // Cancels the ongoing async UI loop (used when abort notifications arrive or the object is destroyed).
         private CancellationTokenSource _lifecycleCts;
-        private string _abortReason;
 
         /// <summary>
         /// Initializes UI widgets so nothing is visible/interactable before the first round begins.
@@ -48,7 +47,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
         {
             choicePanel.SetActive(false);
             resultPanel.SetActive(false);
-            statusText.text = string.Empty;
+            statusText.text = "Waiting for players…";
             modalLayer?.Hide();
         }
 
@@ -85,7 +84,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
         /// </summary>
         private void OnDestroy()
         {
-            _abortReason = null;
             _lifecycleCts?.Cancel();
             _lifecycleCts?.Dispose();
             _lifecycleCts = null;
@@ -106,6 +104,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                 ShowChoicePanel(intro.myName, intro.opponentName);
 
                 var selected = await WaitForLocalChoiceAsync(token);
+                statusText.text = "Waiting for opponent to select...";
                 eventChannel.RaiseChoiceSelected(selected);
 
                 var result = await WaitForRoundResultAsync(token);
@@ -116,11 +115,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
             }
             catch (OperationCanceledException)
             {
-                if (!string.IsNullOrWhiteSpace(_abortReason))
-                {
-                    ShowAbortPrompt(_abortReason);
-                    _abortReason = null;
-                }
+                // Aborts handled separately in HandleGameAborted.
             }
             finally
             {
@@ -135,14 +130,15 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
 
         private void HandleGameAborted(string reason)
         {
-            _abortReason = reason;
             _lifecycleCts?.Cancel();
+            ShowAbortPrompt(string.IsNullOrWhiteSpace(reason) ? "Game aborted." : reason);
         }
 
         private void ShowChoicePanel(string myName, string opponentName)
         {
             choicePanel.SetActive(true);
             resultPanel.SetActive(false);
+            SetChoiceButtonsInteractable(true);
 
             myNameText.text = myName;
             yourNameText.text = opponentName;
@@ -188,6 +184,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
 
             void Handler(Hand hand)
             {
+                Debug.Log($"[RockPaperScissorsUI] Local selection: {hand}");
+                SetChoiceButtonsInteractable(false);
                 DetachButtonHandlers();
                 tcs.TrySetResult(hand);
             }
@@ -215,6 +213,13 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
             rockButton.onClick.RemoveAllListeners();
             paperButton.onClick.RemoveAllListeners();
             scissorsButton.onClick.RemoveAllListeners();
+        }
+
+        private void SetChoiceButtonsInteractable(bool value)
+        {
+            rockButton.interactable = value;
+            paperButton.interactable = value;
+            scissorsButton.interactable = value;
         }
 
         private async Task<(RoundOutcome myOutcome, Hand myHand, Hand opponentHand)> WaitForRoundResultAsync(CancellationToken token)
@@ -248,7 +253,15 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
 
         private void ShowAbortPrompt(string reason)
         {
-            modalLayer?.Show(reason, null, false, abortPromptDurationSeconds);
+            var callback = eventChannel != null
+                ? () => eventChannel.RaiseGameAbortConfirmed()
+                : (Action)null;
+
+            modalLayer?.Show(
+                string.IsNullOrWhiteSpace(reason) ? "Game aborted." : reason,
+                callback,
+                false,
+                abortPromptDurationSeconds);
         }
     }
 }

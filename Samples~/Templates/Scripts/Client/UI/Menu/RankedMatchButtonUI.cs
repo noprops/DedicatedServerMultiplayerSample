@@ -17,6 +17,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         [SerializeField] private string queueName = "competitive-queue";
 
         private RankedMatchService _matchService;
+        private bool _userCancelled;
 
         public event Action CancelCompleted;
 
@@ -59,19 +60,26 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
 
         private async void HandleStartPressed()
         {
+            _userCancelled = false;
             controls?.ShowCancelButton();
             controls?.SetStatus("Starting matchmaking...");
 
             try
             {
                 var result = await _matchService.StartMatchAsync();
-                controls?.SetStatus(result switch
+                if (_userCancelled || result == MatchResult.UserCancelled)
                 {
-                    MatchResult.Success => "Connected!",
-                    MatchResult.UserCancelled => "Cancelled by user",
-                    MatchResult.Timeout => "Timed out. Try again.",
-                    _ => "Failed. Try again."
-                });
+                    controls?.SetStatus("Cancelled by user");
+                }
+                else
+                {
+                    controls?.SetStatus(result switch
+                    {
+                        MatchResult.Success => "Connected!",
+                        MatchResult.Timeout => "Timed out. Try again.",
+                        _ => "Failed. Try again."
+                    });
+                }
             }
             catch (Exception ex)
             {
@@ -85,6 +93,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
 
         private async void HandleCancelPressed()
         {
+            _userCancelled = true;
             controls?.SetStatus("Cancelling...");
             await _matchService.CancelMatchAsync();
             controls?.ShowStartButton();

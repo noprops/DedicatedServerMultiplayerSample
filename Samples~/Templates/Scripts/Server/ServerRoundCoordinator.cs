@@ -24,6 +24,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         private ServerStartupRunner _startupRunner;
         [SerializeField] private RpsGameEventChannel eventChannel;
 
+        private static readonly int ShutdownDelay = 10;
+
         /// <summary>
         /// Kicks off the server-side orchestration once the scene loads.
         /// </summary>
@@ -63,7 +65,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 {
                     Debug.LogWarning("[ServerRoundCoordinator] Failed to gather required clients.");
                     BroadcastGameAbort("Failed to start the game.");
-                    ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.StartTimeout, "Clients did not join in time");
+                    ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.StartTimeout, "Clients did not join in time", ShutdownDelay);
                     return;
                 }
 
@@ -74,7 +76,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                     result.Player1Id, result.Player1Hand, result.Player2Id, result.Player2Hand);
                 await NotifyResultsAndAwaitExitAsync(result, TimeSpan.FromSeconds(20));
                 Debug.Log("[ServerRoundCoordinator] Round acknowledgements satisfied; requesting shutdown");
-                ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Normal, "Game completed");
+                ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Normal, "Game completed", ShutdownDelay);
             }
             catch (OperationCanceledException)
             {
@@ -83,7 +85,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             catch (Exception e)
             {
                 Debug.LogError($"[ServerRoundCoordinator] Unexpected error: {e.Message}");
-                ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, e.Message, TimeSpan.FromSeconds(5));
+                ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, e.Message, ShutdownDelay);
             }
         }
 

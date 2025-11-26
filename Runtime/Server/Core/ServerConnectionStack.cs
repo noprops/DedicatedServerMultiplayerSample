@@ -92,7 +92,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             try
             {
-                var signalled = await awaiter.WaitAsync(token).ConfigureAwait(false);
+                var signalled = await awaiter.WaitAsync(token);
 
                 if (!signalled || _tracker == null || !_tracker.HasRequiredPlayers)
                 {

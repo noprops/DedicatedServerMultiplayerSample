@@ -46,7 +46,7 @@ namespace DedicatedServerMultiplayerSample.Shared
             {
                 try
                 {
-                    await Task.Delay(clampedDelay, token).ConfigureAwait(false);
+                    await Task.Delay(clampedDelay, token);
                     if (!token.IsCancellationRequested)
                     {
                         action();

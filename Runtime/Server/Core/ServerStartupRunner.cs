@@ -25,8 +25,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         private static readonly TimeSpan WaitingPlayersTimeout = TimeSpan.FromMilliseconds(10_000);
         private static readonly TimeSpan SceneLoadTimeout = TimeSpan.FromMilliseconds(5_000);
-        private static readonly TimeSpan StartTimeoutShutdownDelay = TimeSpan.FromMilliseconds(5_000);
-        private static readonly TimeSpan ErrorShutdownDelay = TimeSpan.FromMilliseconds(5_000);
+        private static readonly int ShutdownDelay = 10;
 
         public ServerStartupRunner(NetworkManager networkManager, int defaultMaxPlayers)
         {
@@ -47,7 +46,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 var allocation = await _multiplaySessionService.AwaitAllocationAsync(CancellationToken.None);
                 if (!allocation.Success)
                 {
-                    ScheduleShutdown(ShutdownKind.Error, "Match allocation failed", ErrorShutdownDelay);
+                    ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, "Match allocation failed", ShutdownDelay);
                     return false;
                 }
 
@@ -56,7 +55,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
                 if (!await _connectionStack.LoadSceneAsync("game", (int)SceneLoadTimeout.TotalMilliseconds, CancellationToken.None))
                 {
-                    ScheduleShutdown(ShutdownKind.Error, "Failed to load game scene", ErrorShutdownDelay);
+                    ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, "Failed to load game scene", ShutdownDelay);
                     return false;
                 }
 
@@ -69,7 +68,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     WaitingPlayersTimeout, CancellationToken.None);
                 if (connectedSnapshot == null || connectedSnapshot.Count == 0)
                 {
-                    ScheduleShutdown(ShutdownKind.StartTimeout, "Not enough players", StartTimeoutShutdownDelay);
+                    ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.StartTimeout, "Not enough players", ShutdownDelay);
                     return true;
                 }
 
@@ -84,7 +83,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             catch (Exception ex)
             {
                 Debug.LogError($"[ServerStartupRunner] Startup failed: {ex.Message}");
-                ScheduleShutdown(ShutdownKind.Error, ex.Message, ErrorShutdownDelay);
+                ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, ex.Message, ShutdownDelay);
                 return false;
             }
         }
@@ -122,12 +121,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         private void HandleAllPlayersDisconnected()
         {
-            ScheduleShutdown(ShutdownKind.AllPlayersDisconnected, "All players disconnected", StartTimeoutShutdownDelay);
-        }
-
-        private void ScheduleShutdown(ShutdownKind kind, string reason, TimeSpan delay)
-        {
-            ServerSingleton.Instance?.ScheduleShutdown(kind, reason, delay);
+            ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.AllPlayersDisconnected, "All players disconnected", ShutdownDelay);
         }
     }
 }

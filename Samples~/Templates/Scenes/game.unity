@@ -1613,7 +1613,7 @@ MonoBehaviour:
   endButton: {fileID: 5063729344834461562}
   endButtonCountdownSeconds: 10
   modalLayer: {fileID: 1460046554}
-  abortPromptDurationSeconds: 2
+  abortPromptDurationSeconds: 5
   eventChannel: {fileID: 1004}
 --- !u!1 &1559592827
 GameObject:

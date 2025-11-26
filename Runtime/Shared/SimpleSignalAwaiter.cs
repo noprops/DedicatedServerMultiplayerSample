@@ -74,11 +74,11 @@ namespace DedicatedServerMultiplayerSample.Shared
                 ? Task.Delay(TimeoutDuration, cancellation)
                 : Task.Delay(System.Threading.Timeout.InfiniteTimeSpan, cancellation);
 
-            var completed = await Task.WhenAny(_completion.Task, timeoutTask).ConfigureAwait(false);
+            var completed = await Task.WhenAny(_completion.Task, timeoutTask);
 
             if (completed == _completion.Task)
             {
-                await _completion.Task.ConfigureAwait(false);
+                await _completion.Task;
                 return true;
             }
 
