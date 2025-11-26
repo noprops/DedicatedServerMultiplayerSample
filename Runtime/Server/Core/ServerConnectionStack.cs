@@ -25,6 +25,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private bool _sceneLoaded;
         private bool _allowNewConnections = true;
         private bool _disposed;
+        private bool _clientWaitCompleted;
+        private bool _clientWaitResult;
+        private IReadOnlyList<ulong> _readyClientsSnapshot = Array.Empty<ulong>();
 
         public event Action AllPlayersDisconnected;
 
@@ -45,6 +48,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             _allowNewConnections = true;
             _sceneLoaded = false;
             _directory.Clear();
+            _clientWaitCompleted = false;
+            _clientWaitResult = false;
+            _readyClientsSnapshot = Array.Empty<ulong>();
         }
 
         public async Task<bool> LoadSceneAsync(string sceneName, int timeoutMs, CancellationToken token)
@@ -66,27 +72,34 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             return loaded;
         }
 
-        public async Task<IReadOnlyList<ulong>> WaitForAllClientsAsync(TimeSpan timeout = default, CancellationToken token = default)
+        public async Task<bool> WaitForAllClientsAsync(TimeSpan timeout = default, CancellationToken token = default)
         {
+            if (_clientWaitCompleted)
+            {
+                return _clientWaitResult;
+            }
+
             if (_tracker == null)
             {
-                return Array.Empty<ulong>();
+                _clientWaitCompleted = true;
+                _clientWaitResult = false;
+                return false;
             }
 
             if (_tracker.HasRequiredPlayers)
             {
                 _allowNewConnections = false;
-                return _tracker.GetKnownClientIds()?.ToArray() ?? Array.Empty<ulong>();
+                _readyClientsSnapshot = _tracker.GetKnownClientIds()?.ToArray() ?? Array.Empty<ulong>();
+                _clientWaitCompleted = true;
+                _clientWaitResult = true;
+                return true;
             }
 
-            SimpleSignalAwaiter awaiter = timeout > TimeSpan.Zero
+            var awaiter = timeout > TimeSpan.Zero
                 ? new SimpleSignalAwaiter(timeout, token)
                 : new SimpleSignalAwaiter(token);
 
-            void Handler()
-            {
-                awaiter.OnSignal();
-            }
+            void Handler() => awaiter.OnSignal();
 
             _tracker.AllClientsConnected += Handler;
 
@@ -96,11 +109,16 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
                 if (!signalled || _tracker == null || !_tracker.HasRequiredPlayers)
                 {
-                    return Array.Empty<ulong>();
+                    _clientWaitCompleted = true;
+                    _clientWaitResult = false;
+                    return false;
                 }
 
                 _allowNewConnections = false;
-                return _tracker.GetKnownClientIds()?.ToArray() ?? Array.Empty<ulong>();
+                _readyClientsSnapshot = _tracker.GetKnownClientIds()?.ToArray() ?? Array.Empty<ulong>();
+                _clientWaitCompleted = true;
+                _clientWaitResult = true;
+                return true;
             }
             finally
             {
@@ -111,6 +129,11 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
                 awaiter.Dispose();
             }
+        }
+
+        public IReadOnlyList<ulong> GetReadyClientsSnapshot()
+        {
+            return _readyClientsSnapshot ?? Array.Empty<ulong>();
         }
 
         public bool TryGetPlayerPayloadValue<T>(ulong clientId, string key, out T value)

@@ -23,9 +23,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         private bool _disposed;
 
-        private static readonly TimeSpan WaitingPlayersTimeout = TimeSpan.FromMilliseconds(10_000);
-        private static readonly TimeSpan SceneLoadTimeout = TimeSpan.FromMilliseconds(5_000);
-        private static readonly int ShutdownDelay = 10;
+        private const int WaitingPlayersTimeoutSeconds = 10;
+        private const int SceneLoadTimeoutSeconds = 5;
+        private const int ShutdownDelaySeconds = 10;
 
         public ServerStartupRunner(NetworkManager networkManager, int defaultMaxPlayers)
         {
@@ -46,16 +46,17 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 var allocation = await _multiplaySessionService.AwaitAllocationAsync(CancellationToken.None);
                 if (!allocation.Success)
                 {
-                    ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, "Match allocation failed", ShutdownDelay);
+                    ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, "Match allocation failed", ShutdownDelaySeconds);
                     return false;
                 }
 
                 ServerTransportConfigurator.Configure(_networkManager, runtimeConfig);
                 _connectionStack.Configure(allocation.ExpectedAuthIds ?? Array.Empty<string>(), allocation.TeamCount);
 
-                if (!await _connectionStack.LoadSceneAsync("game", (int)SceneLoadTimeout.TotalMilliseconds, CancellationToken.None))
+                var sceneLoadTimeoutMs = (int)TimeSpan.FromSeconds(SceneLoadTimeoutSeconds).TotalMilliseconds;
+                if (!await _connectionStack.LoadSceneAsync("game", sceneLoadTimeoutMs, CancellationToken.None))
                 {
-                    ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, "Failed to load game scene", ShutdownDelay);
+                    ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, "Failed to load game scene", ShutdownDelaySeconds);
                     return false;
                 }
 
@@ -64,11 +65,11 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     await _multiplaySessionService.SetPlayerReadinessAsync(true);
                 }
 
-                var connectedSnapshot = await _connectionStack.WaitForAllClientsAsync(
-                    WaitingPlayersTimeout, CancellationToken.None);
-                if (connectedSnapshot == null || connectedSnapshot.Count == 0)
+                var waitingTimeout = TimeSpan.FromSeconds(WaitingPlayersTimeoutSeconds);
+                var ready = await _connectionStack.WaitForAllClientsAsync(waitingTimeout, CancellationToken.None);
+                if (!ready)
                 {
-                    ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.StartTimeout, "Not enough players", ShutdownDelay);
+                    ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.StartTimeout, "Not enough players", ShutdownDelaySeconds);
                     return true;
                 }
 
@@ -83,7 +84,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             catch (Exception ex)
             {
                 Debug.LogError($"[ServerStartupRunner] Startup failed: {ex.Message}");
-                ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, ex.Message, ShutdownDelay);
+                ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, ex.Message, ShutdownDelaySeconds);
                 return false;
             }
         }
@@ -114,14 +115,19 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             return _connectionStack.TryGetPlayerPayloadValue(clientId, key, out value);
         }
 
-        public Task<IReadOnlyList<ulong>> WaitForAllClientsAsync(TimeSpan timeout = default, CancellationToken token = default)
+        public Task<bool> WaitForAllClientsAsync(TimeSpan timeout = default, CancellationToken token = default)
         {
             return _connectionStack.WaitForAllClientsAsync(timeout, token);
         }
 
+        public IReadOnlyList<ulong> GetReadyClientsSnapshot()
+        {
+            return _connectionStack.GetReadyClientsSnapshot();
+        }
+
         private void HandleAllPlayersDisconnected()
         {
-            ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.AllPlayersDisconnected, "All players disconnected", ShutdownDelay);
+            ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.AllPlayersDisconnected, "All players disconnected", ShutdownDelaySeconds);
         }
     }
 }

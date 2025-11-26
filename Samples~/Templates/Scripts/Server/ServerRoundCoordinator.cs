@@ -59,9 +59,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 await eventChannel.WaitUntilReadyAsync();
 
                 Debug.Log("[ServerRoundCoordinator] RunRoundAsync starting");
-                var connectedSnapshot = await _startupRunner.WaitForAllClientsAsync();
-                var connectedIds = connectedSnapshot?.ToArray() ?? Array.Empty<ulong>();
-                if (connectedIds.Length == 0)
+                var ready = await _startupRunner.WaitForAllClientsAsync();
+                var connectedIds = _startupRunner.GetReadyClientsSnapshot() ?? Array.Empty<ulong>();
+                if (!ready || connectedIds.Count == 0)
                 {
                     Debug.LogWarning("[ServerRoundCoordinator] Failed to gather required clients.");
                     BroadcastGameAbort("Failed to start the game.");
