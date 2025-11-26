@@ -22,6 +22,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private MultiplaySessionService _multiplaySessionService;
 
         private bool _disposed;
+        private readonly TaskCompletionSource<bool> _clientWaitCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         private const int WaitingPlayersTimeoutSeconds = 10;
         private const int SceneLoadTimeoutSeconds = 5;
@@ -65,8 +66,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     await _multiplaySessionService.SetPlayerReadinessAsync(true);
                 }
 
-                var waitingTimeout = TimeSpan.FromSeconds(WaitingPlayersTimeoutSeconds);
-                var ready = await _connectionStack.WaitForAllClientsAsync(waitingTimeout, CancellationToken.None);
+                var ready = await WaitForClientsWithTimeoutAsync(TimeSpan.FromSeconds(WaitingPlayersTimeoutSeconds));
                 if (!ready)
                 {
                     ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.StartTimeout, "Not enough players", ShutdownDelaySeconds);
@@ -115,14 +115,47 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             return _connectionStack.TryGetPlayerPayloadValue(clientId, key, out value);
         }
 
-        public Task<bool> WaitForAllClientsAsync(TimeSpan timeout = default, CancellationToken token = default)
+        public Task<bool> WaitForAllClientsAsync()
         {
-            return _connectionStack.WaitForAllClientsAsync(timeout, token);
+            return _clientWaitCompletion.Task;
         }
 
         public IReadOnlyList<ulong> GetReadyClientsSnapshot()
         {
             return _connectionStack.GetReadyClientsSnapshot();
+        }
+
+        private async Task<bool> WaitForClientsWithTimeoutAsync(TimeSpan timeout)
+        {
+            if (_clientWaitCompletion.Task.IsCompleted)
+            {
+                return await _clientWaitCompletion.Task;
+            }
+
+            var waitTask = _connectionStack.WaitForAllClientsAsync();
+            bool success;
+
+            if (timeout <= TimeSpan.Zero)
+            {
+                var snapshotImmediate = await waitTask;
+                success = snapshotImmediate != null && snapshotImmediate.Count > 0;
+            }
+            else
+            {
+                var completed = await Task.WhenAny(waitTask, Task.Delay(timeout));
+                if (completed == waitTask)
+                {
+                    var snapshot = await waitTask;
+                    success = snapshot != null && snapshot.Count > 0;
+                }
+                else
+                {
+                    success = false;
+                }
+            }
+
+            _clientWaitCompletion.TrySetResult(success);
+            return success;
         }
 
         private void HandleAllPlayersDisconnected()

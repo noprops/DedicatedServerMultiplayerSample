@@ -39,7 +39,7 @@ namespace DedicatedServerMultiplayerSample.Shared
 
         public TimeSpan TimeoutDuration { get; }
 
-        public SimpleSignalAwaiter(CancellationToken cancellation)
+        public SimpleSignalAwaiter(CancellationToken cancellation = default)
             : this(TimeSpan.Zero, cancellation)
         {
         }
