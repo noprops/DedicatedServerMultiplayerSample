@@ -48,19 +48,20 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         }
 
         // ==== Game Logic → UI ====
-        public override void RaiseRoundStarted(ulong targetClientId, string myName, string opponentName)
+        public override void RaiseRoundStarted(ulong player1Id, string player1Name, ulong player2Id, string player2Name)
         {
-            rpcProxy.SendRoundStarted(targetClientId, myName, opponentName);
+            rpcProxy.SendRoundStarted(player1Id, player1Name, player2Id, player2Name);
         }
 
-        public override void RaiseRoundResult(ulong targetClientId, RoundOutcome myOutcome, Hand myHand, Hand opponentHand)
+        public override void RaiseRoundResult(ulong player1Id, RoundOutcome player1Outcome, Hand player1Hand,
+            ulong player2Id, RoundOutcome player2Outcome, Hand player2Hand)
         {
-            rpcProxy.SendRoundResult(targetClientId, myOutcome, myHand, opponentHand);
+            rpcProxy.SendRoundResult(player1Id, player1Outcome, player1Hand, player2Id, player2Outcome, player2Hand);
         }
 
-        public override void RaiseGameAborted(ulong targetClientId, string message)
+        public override void RaiseGameAborted(string message)
         {
-            rpcProxy.SendGameAborted(targetClientId, message);
+            rpcProxy.SendGameAborted(message);
         }
 
         // Partial hooks for client-specific behavior

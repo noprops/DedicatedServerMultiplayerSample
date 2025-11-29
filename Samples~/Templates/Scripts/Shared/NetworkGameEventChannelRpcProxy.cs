@@ -57,42 +57,68 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         }
 
         // === Server → Client ===
-        public void SendRoundStarted(ulong targetClientId, string myName, string opponentName)
+        public void SendRoundStarted(ulong player1Id, string player1Name, ulong player2Id, string player2Name)
         {
-            RoundStartedClientRpc(myName, opponentName, BuildClientParams(targetClientId));
+            RoundStartedClientRpc(player1Id, player1Name, player2Id, player2Name);
         }
 
-        public void SendRoundResult(ulong targetClientId, RoundOutcome outcome, Hand myHand, Hand opponentHand)
+        public void SendRoundResult(ulong player1Id, RoundOutcome player1Outcome, Hand player1Hand,
+            ulong player2Id, RoundOutcome player2Outcome, Hand player2Hand)
         {
-            RoundEndedClientRpc(outcome, myHand, opponentHand, BuildClientParams(targetClientId));
+            RoundEndedClientRpc(player1Id, player1Outcome, player1Hand, player2Id, player2Outcome, player2Hand);
         }
 
-        public void SendGameAborted(ulong targetClientId, string message)
+        public void SendGameAborted(string message)
         {
-            NotifyClientOfAbortClientRpc(string.IsNullOrWhiteSpace(message) ? "Match aborted" : message, BuildClientParams(targetClientId));
+            NotifyClientOfAbortClientRpc(string.IsNullOrWhiteSpace(message) ? "Match aborted" : message);
         }
 
-        private ClientRpcParams BuildClientParams(ulong targetClientId)
+        [ClientRpc]
+        private void RoundStartedClientRpc(ulong player1Id, string player1Name, ulong player2Id, string player2Name,
+            ClientRpcParams rpcParams = default)
         {
-            return new ClientRpcParams
+            if (channel == null)
             {
-                Send = new ClientRpcSendParams
-                {
-                    TargetClientIds = new[] { targetClientId }
-                }
-            };
+                return;
+            }
+
+            var localId = NetworkManager.Singleton != null ? NetworkManager.Singleton.LocalClientId : player1Id;
+            if (localId == player1Id)
+            {
+                channel.InvokeRoundStarted(player1Name, player2Name);
+            }
+            else if (localId == player2Id)
+            {
+                channel.InvokeRoundStarted(player2Name, player1Name);
+            }
+            else
+            {
+                channel.InvokeRoundStarted(player1Name, player2Name);
+            }
         }
 
         [ClientRpc]
-        private void RoundStartedClientRpc(string myName, string opponentName, ClientRpcParams rpcParams = default)
+        private void RoundEndedClientRpc(ulong player1Id, RoundOutcome player1Outcome, Hand player1Hand,
+            ulong player2Id, RoundOutcome player2Outcome, Hand player2Hand, ClientRpcParams rpcParams = default)
         {
-            channel?.InvokeRoundStarted(myName, opponentName);
-        }
+            if (channel == null)
+            {
+                return;
+            }
 
-        [ClientRpc]
-        private void RoundEndedClientRpc(RoundOutcome outcome, Hand myHand, Hand opponentHand, ClientRpcParams rpcParams = default)
-        {
-            channel?.InvokeRoundResult(outcome, myHand, opponentHand);
+            var localId = NetworkManager.Singleton != null ? NetworkManager.Singleton.LocalClientId : player1Id;
+            if (localId == player1Id)
+            {
+                channel.InvokeRoundResult(player1Outcome, player1Hand, player2Hand);
+            }
+            else if (localId == player2Id)
+            {
+                channel.InvokeRoundResult(player2Outcome, player2Hand, player1Hand);
+            }
+            else
+            {
+                channel.InvokeRoundResult(player1Outcome, player1Hand, player2Hand);
+            }
         }
 
         [ClientRpc]

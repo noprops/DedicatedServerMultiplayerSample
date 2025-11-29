@@ -139,6 +139,7 @@ namespace DedicatedServerMultiplayerSample.Client
 
                 Debug.Log($"[ClientMatchmaker] ✓ Match found: {currentSession.Code}");
                 Debug.Log($"[ClientMatchmaker] Session details - Code: {currentSession.Code}, Id: {currentSession.Id}");
+                Debug.Log($"[ClientMatchmaker] Proceeding to connect with Session Code={currentSession.Code}, Id={currentSession.Id}");
                 NotifyState(ClientConnectionState.MatchFound);
 
                 Debug.Log("[ClientMatchmaker] STEP 3: Preparing connection...");

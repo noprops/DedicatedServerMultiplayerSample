@@ -65,7 +65,7 @@ public sealed class LocalCpuGame : MonoBehaviour
             new[] { HumanId, CpuId },
             TimeSpan.FromSeconds(roundTimeoutSeconds));
 
-        _eventChannel.RaiseRoundStarted(HumanId, "You", "CPU");
+        _eventChannel.RaiseRoundStarted(HumanId, "You", CpuId, "CPU");
 
         _roundActive = true;
         _ = RunRoundAsync();
@@ -92,12 +92,13 @@ public sealed class LocalCpuGame : MonoBehaviour
             var myHand = result.Player1Hand;
             var opponentHand = result.Player2Hand;
             var myOutcome = result.Player1Outcome;
-            _eventChannel.RaiseRoundResult(HumanId, myOutcome, myHand, opponentHand);
+            _eventChannel.RaiseRoundResult(result.Player1Id, result.Player1Outcome, result.Player1Hand,
+                result.Player2Id, result.Player2Outcome, result.Player2Hand);
         }
         catch (Exception ex)
         {
             Debug.LogError($"[LocalCpuGame] Unexpected error: {ex.Message}");
-            _eventChannel.RaiseGameAborted(HumanId, "An error occurred");
+            _eventChannel.RaiseGameAborted("An error occurred");
         }
     }
 

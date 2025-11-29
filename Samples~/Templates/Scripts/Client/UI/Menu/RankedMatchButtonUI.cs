@@ -15,6 +15,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
 
         [SerializeField] private StartCancelUI controls;
         [SerializeField] private string queueName = "competitive-queue";
+        [SerializeField] private ElapsedTimeTextUI matchmakingTimer;
 
         private RankedMatchService _matchService;
         private bool _userCancelled;
@@ -33,6 +34,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
                 controls?.SetStatus("Client not initialized");
                 enabled = false;
                 return;
+            }
+
+            if (matchmakingTimer != null)
+            {
+                matchmakingTimer.Format = "Matchmaking... {0}:{1:00}";
             }
 
             controls.SetStatus(ReadyStatus);
@@ -62,7 +68,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         {
             _userCancelled = false;
             controls?.ShowCancelButton();
-            controls?.SetStatus("Starting matchmaking...");
+            matchmakingTimer?.StartTimer();
 
             try
             {
@@ -87,6 +93,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             }
             finally
             {
+                matchmakingTimer?.StopTimer();
                 controls?.ShowStartButton();
             }
         }
@@ -94,6 +101,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         private async void HandleCancelPressed()
         {
             _userCancelled = true;
+            matchmakingTimer?.StopTimer();
             controls?.SetStatus("Cancelling...");
             await _matchService.CancelMatchAsync();
             controls?.ShowStartButton();
@@ -103,6 +111,14 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
 
         private void HandleStateChanged(ClientConnectionState state)
         {
+            if (state == ClientConnectionState.SearchingMatch)
+            {
+                matchmakingTimer?.StartTimer();
+                return;
+            }
+
+            matchmakingTimer?.StopTimer();
+
             controls?.SetStatus(state switch
             {
                 ClientConnectionState.SearchingMatch => "Searching for match...",

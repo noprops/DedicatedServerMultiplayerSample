@@ -256,7 +256,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 return;
             }
 
-            Debug.Log($"[MultiplaySessionService] Match found in region {results.MatchProperties?.Region}, queue {results.QueueName}");
+            Debug.Log($"[MultiplaySessionService] Match found. Queue={results.QueueName}, Region={results.MatchProperties?.Region}");
         }
 
         private void HandleAllocatedNoop(IMultiplayAllocation allocation)

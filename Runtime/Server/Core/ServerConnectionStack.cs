@@ -92,7 +92,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 return _readyClientsSnapshot;
             }
 
-            var awaiter = new SimpleSignalAwaiter();
+            var awaiter = new SimpleSignalAwaiter(CancellationToken.None);
 
             void Handler() => awaiter.OnSignal();
 

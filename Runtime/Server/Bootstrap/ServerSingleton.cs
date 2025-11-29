@@ -88,7 +88,8 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
         public void ScheduleShutdown(ShutdownKind kind, string reason, int timeoutSeconds)
         {
             TimeSpan delay = TimeSpan.FromSeconds(timeoutSeconds);
-            shutdownScheduler.Schedule(kind, reason, delay, () => startupRunner?.Dispose());
+            _ = startupRunner?.LockSessionAsync();
+            shutdownScheduler.Schedule(kind, reason, delay);
         }
 #else
         private void Awake()

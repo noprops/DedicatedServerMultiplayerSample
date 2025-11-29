@@ -73,11 +73,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     return true;
                 }
 
-                if (_multiplaySessionService != null && _multiplaySessionService.IsConnected)
-                {
-                    await _multiplaySessionService.LockSessionAsync();
-                    await _multiplaySessionService.SetPlayerReadinessAsync(false);
-                }
+                await LockSessionAsync();
 
                 return true;
             }
@@ -113,6 +109,15 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         public bool TryGetPlayerPayloadValue<T>(ulong clientId, string key, out T value)
         {
             return _connectionStack.TryGetPlayerPayloadValue(clientId, key, out value);
+        }
+
+        public async Task LockSessionAsync()
+        {
+            if (_multiplaySessionService != null && _multiplaySessionService.IsConnected)
+            {
+                await _multiplaySessionService.LockSessionAsync();
+                await _multiplaySessionService.SetPlayerReadinessAsync(false);
+            }
         }
 
         public Task<bool> WaitForAllClientsAsync()

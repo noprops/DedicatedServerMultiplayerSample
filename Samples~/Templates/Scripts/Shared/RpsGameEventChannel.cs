@@ -132,9 +132,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         // ==== Game Logic -> UI ====
 
         /// <summary>
-        /// Called by gameplay logic to instruct a specific client to show the choice UI with the supplied names.
+        /// Called by gameplay logic to instruct clients to show the choice UI with player identities.
         /// </summary>
-        public abstract void RaiseRoundStarted(ulong targetClientId, string myName, string opponentName);
+        public abstract void RaiseRoundStarted(ulong player1Id, string player1Name, ulong player2Id, string player2Name);
 
         /// <summary>
         /// Fired when the UI should display the round-start panel.
@@ -150,9 +150,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         }
 
         /// <summary>
-        /// Called by gameplay logic to deliver the final outcome to a specific client.
+        /// Called by gameplay logic to deliver the final outcome to all clients.
         /// </summary>
-        public abstract void RaiseRoundResult(ulong targetClientId, RoundOutcome myOutcome, Hand myHand, Hand opponentHand);
+        public abstract void RaiseRoundResult(ulong player1Id, RoundOutcome player1Outcome, Hand player1Hand,
+            ulong player2Id, RoundOutcome player2Outcome, Hand player2Hand);
 
         /// <summary>
         /// Fired when the UI should switch to the result view with the supplied data.
@@ -171,7 +172,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// Called by gameplay logic when the match must abort abnormally (including pre-start failures).
         /// Implementations should surface the provided message and prompt the client to exit.
         /// </summary>
-        public abstract void RaiseGameAborted(ulong targetClientId, string message);
+        public abstract void RaiseGameAborted(string message);
 
         /// <summary>
         /// Fired when the UI needs to inform the player that the match ended abnormally.

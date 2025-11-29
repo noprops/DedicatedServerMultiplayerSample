@@ -3788,6 +3788,9 @@ PrefabInstance:
     - targetCorrespondingSourceObject: {fileID: 6708320592095367859, guid: 79dd3fd700d8e4b028e5279f1cdc25a6, type: 3}
       insertIndex: -1
       addedObject: {fileID: 1843791440949434196}
+    - targetCorrespondingSourceObject: {fileID: 6708320592095367859, guid: 79dd3fd700d8e4b028e5279f1cdc25a6, type: 3}
+      insertIndex: -1
+      addedObject: {fileID: 1843791440949434199}
   m_SourcePrefab: {fileID: 100100000, guid: 79dd3fd700d8e4b028e5279f1cdc25a6, type: 3}
 --- !u!114 &1843791440949434194 stripped
 MonoBehaviour:
@@ -3819,6 +3822,7 @@ MonoBehaviour:
   m_EditorClassIdentifier: 
   controls: {fileID: 1843791440949434197}
   queueName: competitive-queue
+  matchmakingTimer: {fileID: 1843791440949434199}
 --- !u!114 &1843791440949434197 stripped
 MonoBehaviour:
   m_CorrespondingSourceObject: {fileID: 3532743714826503748, guid: 79dd3fd700d8e4b028e5279f1cdc25a6, type: 3}
@@ -3830,6 +3834,32 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: 2162caf63ad254a4987a4a6f890e569d, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
+--- !u!114 &1843791440949434198 stripped
+MonoBehaviour:
+  m_CorrespondingSourceObject: {fileID: 3948222473241791765, guid: 79dd3fd700d8e4b028e5279f1cdc25a6, type: 3}
+  m_PrefabInstance: {fileID: 1843791440949434193}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: f4688fdb7df04437aeb418b961361dc5, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+--- !u!114 &1843791440949434199
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 1843791440949434195}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 74f62d2f3295846bda18a770941b3233, type: 3}
+  m_Name: 
+  m_EditorClassIdentifier: 
+  statusText: {fileID: 1843791440949434198}
+  format: '{0}:{1:00}'
+  updateIntervalSeconds: 1
 --- !u!1660057539 &9223372036854775807
 SceneRoots:
   m_ObjectHideFlags: 0

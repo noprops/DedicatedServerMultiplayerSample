@@ -201,41 +201,20 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             Debug.LogFormat("[ServerRoundCoordinator] Broadcasting round start. P1={0}({1}), P2={2}({3})",
                 player1Id, player1Name, player2Id, player2Name);
 
-            foreach (var clientId in _clientIds)
-            {
-                if (IsCpuId(clientId))
-                {
-                    continue;
-                }
-
-                string myName = clientId == player1Id ? player1Name : player2Name;
-                string opponentName = clientId == player1Id ? player2Name : player1Name;
-
-                eventChannel.RaiseRoundStarted(clientId, myName, opponentName);
-            }
+            eventChannel.RaiseRoundStarted(player1Id, player1Name, player2Id, player2Name);
         }
         /// <summary>
         /// Informs each human client of their personal round results.
         /// </summary>
         private void BroadcastRoundResult(RpsResult result)
         {
-            foreach (var clientId in _clientIds)
-            {
-                if (IsCpuId(clientId))
-                {
-                    continue;
-                }
+            eventChannel.RaiseRoundResult(
+                result.Player1Id, result.Player1Outcome, result.Player1Hand,
+                result.Player2Id, result.Player2Outcome, result.Player2Hand);
 
-                var isPlayerOne = clientId == result.Player1Id;
-                var myHand = isPlayerOne ? result.Player1Hand : result.Player2Hand;
-                var opponentHand = isPlayerOne ? result.Player2Hand : result.Player1Hand;
-                var myOutcome = isPlayerOne ? result.Player1Outcome : result.Player2Outcome;
-
-                eventChannel.RaiseRoundResult(clientId, myOutcome, myHand, opponentHand);
-
-                Debug.LogFormat("[ServerRoundCoordinator] Sent RoundEnded to {0}: myHand={1}, oppHand={2}, outcome={3}",
-                    clientId, myHand, opponentHand, myOutcome);
-            }
+            Debug.LogFormat("[ServerRoundCoordinator] Sent RoundEnded: P1({0}) hand={1} outcome={2}; P2({3}) hand={4} outcome={5}",
+                result.Player1Id, result.Player1Hand, result.Player1Outcome,
+                result.Player2Id, result.Player2Hand, result.Player2Outcome);
         }
 
         /// <summary>
@@ -243,15 +222,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         private void BroadcastGameAbort(string message)
         {
-            foreach (var clientId in _clientIds)
-            {
-                if (IsCpuId(clientId))
-                {
-                    continue;
-                }
-
-                eventChannel.RaiseGameAborted(clientId, message);
-            }
+            eventChannel.RaiseGameAborted(message);
         }
 
         /// <summary>

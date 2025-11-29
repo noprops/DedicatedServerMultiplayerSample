@@ -260,7 +260,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
             modalLayer?.Show(
                 string.IsNullOrWhiteSpace(reason) ? "Game aborted." : reason,
                 callback,
-                false,
+                true,
                 abortPromptDurationSeconds);
         }
     }

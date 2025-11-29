@@ -59,14 +59,14 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Local
                 _logic = new RockPaperScissorsGameLogic(PlayerOrder);
 
                 var result = await CollectHandsAndResolveRoundAsync();
-                var (outcome, myHand, opponentHand) = BuildLocalResult(result);
-                eventChannel.RaiseRoundResult(LocalPlayerId, outcome, myHand, opponentHand);
+                eventChannel.RaiseRoundResult(result.Player1Id, result.Player1Outcome, result.Player1Hand,
+                    result.Player2Id, result.Player2Outcome, result.Player2Hand);
                 await WaitForResultConfirmationAsync(TimeSpan.FromSeconds(10));
             }
             catch (Exception ex)
             {
                 Debug.LogError($"[LocalRoundCoordinator] Fatal error: {ex.Message}");
-                eventChannel.RaiseGameAborted(LocalPlayerId, "Local match failed.");
+                eventChannel.RaiseGameAborted("Local match failed.");
             }
         }
 
@@ -91,7 +91,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Local
 
             try
             {
-                eventChannel.RaiseRoundStarted(LocalPlayerId, _localPlayerName, CpuDisplayName);
+                eventChannel.RaiseRoundStarted(LocalPlayerId, _localPlayerName, CpuPlayerId, CpuDisplayName);
                 SubmitCpuHand();
                 return await _logic.RunAsync();
             }
@@ -99,16 +99,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Local
             {
                 eventChannel.ChoiceSelected -= OnChoiceSelected;
             }
-        }
-
-        private static (RoundOutcome outcome, Hand myHand, Hand opponentHand) BuildLocalResult(RpsResult result)
-        {
-            if (result.Player1Id == LocalPlayerId)
-            {
-                return (result.Player1Outcome, result.Player1Hand, result.Player2Hand);
-            }
-
-            return (result.Player2Outcome, result.Player2Hand, result.Player1Hand);
         }
 
         private async Task WaitForResultConfirmationAsync(TimeSpan timeout)

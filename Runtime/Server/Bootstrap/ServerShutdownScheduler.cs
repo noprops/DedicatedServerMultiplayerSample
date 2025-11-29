@@ -10,14 +10,13 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
     {
         private readonly DelayedActionScheduler _scheduler = new();
 
-        public void Schedule(ShutdownKind kind, string reason, TimeSpan delay, Action onBeforeQuit)
+        public void Schedule(ShutdownKind kind, string reason, TimeSpan delay)
         {
             _scheduler.Cancel();
             Debug.Log($"[ServerShutdownScheduler] Shutdown ({kind}) in {delay.TotalSeconds}s : {reason}");
             _scheduler.Schedule(delay, () =>
             {
                 Debug.Log($"[ServerShutdownScheduler] Executing shutdown ({kind}) : {reason}");
-                onBeforeQuit?.Invoke();
                 Application.Quit();
             });
         }

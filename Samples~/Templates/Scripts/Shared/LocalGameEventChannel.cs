@@ -8,6 +8,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
     /// </summary>
     public sealed class LocalGameEventChannel : RpsGameEventChannel
     {
+        [SerializeField] private ulong localPlayerId = 1;
+
         private void Awake()
         {
             Debug.Log("[LocalGameEventChannel] Awake");
@@ -18,8 +20,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             Debug.Log("[LocalGameEventChannel] Channel ready (local mode).");
             NotifyChannelReady();
         }
-
-        [SerializeField] private ulong localPlayerId = 1;
 
         public override void RaiseChoiceSelected(Hand choice)
         {
@@ -32,17 +32,25 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             SceneManager.LoadScene("loading", LoadSceneMode.Single);
         }
 
-        public override void RaiseRoundStarted(ulong targetClientId, string myName, string opponentName)
+        public override void RaiseRoundStarted(ulong player1Id, string player1Name, ulong player2Id, string player2Name)
         {
+            var isPlayerOne = localPlayerId == player1Id;
+            var myName = isPlayerOne ? player1Name : player2Name;
+            var opponentName = isPlayerOne ? player2Name : player1Name;
             InvokeRoundStarted(myName, opponentName);
         }
 
-        public override void RaiseRoundResult(ulong targetClientId, RoundOutcome myOutcome, Hand myHand, Hand opponentHand)
+        public override void RaiseRoundResult(ulong player1Id, RoundOutcome player1Outcome, Hand player1Hand,
+            ulong player2Id, RoundOutcome player2Outcome, Hand player2Hand)
         {
+            var isPlayerOne = localPlayerId == player1Id;
+            var myOutcome = isPlayerOne ? player1Outcome : player2Outcome;
+            var myHand = isPlayerOne ? player1Hand : player2Hand;
+            var opponentHand = isPlayerOne ? player2Hand : player1Hand;
             InvokeRoundResult(myOutcome, myHand, opponentHand);
         }
 
-        public override void RaiseGameAborted(ulong targetClientId, string message)
+        public override void RaiseGameAborted(string message)
         {
             InvokeGameAborted(message);
         }
@@ -51,6 +59,5 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             SceneManager.LoadScene("loading", LoadSceneMode.Single);
         }
-
     }
 }
