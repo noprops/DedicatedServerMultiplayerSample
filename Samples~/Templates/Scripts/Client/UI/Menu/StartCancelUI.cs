@@ -68,6 +68,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             ToggleButton(false);
         }
 
+        public void SetCancelInteractable(bool value)
+        {
+            cancelButton.interactable = value;
+        }
+
         private void HandleStartClicked()
         {
             startButton.interactable = false;

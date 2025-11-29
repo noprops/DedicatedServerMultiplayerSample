@@ -29,7 +29,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             cpuButton.onClick.AddListener(StartCpuGame);
             friendButton.onClick.AddListener(OpenFriendFlow);
 
-            rankedMatchButton.CancelCompleted += HandleOnlineCancelCompleted;
+            rankedMatchButton.MatchmakingAborted += HandleOnlineCancelCompleted;
             friendMatchModal.CloseButtonPressed += HandleFriendModalCloseButton;
         }
 
@@ -37,7 +37,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         {
             cpuButton.onClick.RemoveListener(StartCpuGame);
             friendButton.onClick.RemoveListener(OpenFriendFlow);
-            rankedMatchButton.CancelCompleted -= HandleOnlineCancelCompleted;
+            rankedMatchButton.MatchmakingAborted -= HandleOnlineCancelCompleted;
             friendMatchModal.CloseButtonPressed -= HandleFriendModalCloseButton;
         }
         // Opens the friend flow view when the Friend button is pressed.

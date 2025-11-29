@@ -1,4 +1,5 @@
 using System;
+using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using DedicatedServerMultiplayerSample.Client;
 using DedicatedServerMultiplayerSample.Samples.Client.UI.Common;
@@ -12,6 +13,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
     public sealed class RankedMatchButtonUI : MonoBehaviour
     {
         private const string ReadyStatus = "Ready to start matchmaking";
+        private const int CancelCooldownSeconds = 3;
 
         [SerializeField] private StartCancelUI controls;
         [SerializeField] private string queueName = "competitive-queue";
@@ -20,7 +22,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         private RankedMatchService _matchService;
         private bool _userCancelled;
 
-        public event Action CancelCompleted;
+        /// <summary>
+        /// Fired when matchmaking ends without success (cancelled/failed/timeout) and UI cooldown is complete.
+        /// </summary>
+        public event Action MatchmakingAborted;
 
         private void Start()
         {
@@ -70,9 +75,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             controls?.ShowCancelButton();
             matchmakingTimer?.StartTimer();
 
+            MatchResult result = MatchResult.Failed;
             try
             {
-                var result = await _matchService.StartMatchAsync();
+                result = await _matchService.StartMatchAsync();
                 if (_userCancelled || result == MatchResult.UserCancelled)
                 {
                     controls?.SetStatus("Cancelled by user");
@@ -94,7 +100,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             finally
             {
                 matchmakingTimer?.StopTimer();
-                controls?.ShowStartButton();
+                controls?.SetCancelInteractable(false);
+                if (result != MatchResult.Success)
+                {
+                    await ShowStartButtonWithDelayAsync(CancelCooldownSeconds);
+                    MatchmakingAborted?.Invoke();
+                }
             }
         }
 
@@ -104,9 +115,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             matchmakingTimer?.StopTimer();
             controls?.SetStatus("Cancelling...");
             await _matchService.CancelMatchAsync();
-            controls?.ShowStartButton();
-            controls?.SetStatus("Cancelled by user");
-            CancelCompleted?.Invoke();
         }
 
         private void HandleStateChanged(ClientConnectionState state)
@@ -130,6 +138,15 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
                 ClientConnectionState.Failed => "Connection failed",
                 _ => ReadyStatus
             });
+        }
+
+        private async Task ShowStartButtonWithDelayAsync(int delaySeconds)
+        {
+            if (delaySeconds > 0)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+            }
+            controls?.ShowStartButton();
         }
     }
 }
