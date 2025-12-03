@@ -19,7 +19,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         [SerializeField] private ViewModal menuViewModal;
         [SerializeField] private GameObject mainMenuView;
         [SerializeField] private GameObject friendFlowView;
-        [SerializeField] private FriendMatchModal friendMatchModal;
+        [SerializeField] private FriendMatchUI friendMatchUI;
 
         private const string CpuSceneName = "game_cpu";
 
@@ -30,7 +30,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             friendButton.onClick.AddListener(OpenFriendFlow);
 
             rankedMatchButton.MatchmakingAborted += HandleOnlineCancelCompleted;
-            friendMatchModal.CloseButtonPressed += HandleFriendModalCloseButton;
+            friendMatchUI.CloseButtonPressed += HandleFriendModalCloseButton;
         }
 
         private void OnDestroy()
@@ -38,13 +38,13 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             cpuButton.onClick.RemoveListener(StartCpuGame);
             friendButton.onClick.RemoveListener(OpenFriendFlow);
             rankedMatchButton.MatchmakingAborted -= HandleOnlineCancelCompleted;
-            friendMatchModal.CloseButtonPressed -= HandleFriendModalCloseButton;
+            friendMatchUI.CloseButtonPressed -= HandleFriendModalCloseButton;
         }
         // Opens the friend flow view when the Friend button is pressed.
         private void OpenFriendFlow()
         {
             menuViewModal.ShowView(friendFlowView);
-            friendMatchModal.Show();
+            friendMatchUI.Show();
         }
         // Loads the CPU-only scene when the CPU button is pressed.
         public void StartCpuGame()

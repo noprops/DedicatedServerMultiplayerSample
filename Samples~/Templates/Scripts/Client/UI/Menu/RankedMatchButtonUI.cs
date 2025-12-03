@@ -69,6 +69,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             controls = null;
         }
 
+
         private async void HandleStartPressed()
         {
             _userCancelled = false;
@@ -76,36 +77,46 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             matchmakingTimer?.StartTimer();
 
             MatchResult result = MatchResult.Failed;
+            string waitStatus = "Cleaning up...";
+            string finalStatus = "Failed. Try again.";
             try
             {
                 result = await _matchService.StartMatchAsync();
-                if (_userCancelled || result == MatchResult.UserCancelled)
+                if (result == MatchResult.Success)
                 {
-                    controls?.SetStatus("Cancelled by user");
+                    controls?.SetStatus("Connected!");
                 }
                 else
                 {
-                    controls?.SetStatus(result switch
-                    {
-                        MatchResult.Success => "Connected!",
-                        MatchResult.Timeout => "Timed out. Try again.",
-                        _ => "Failed. Try again."
-                    });
+                    waitStatus = _userCancelled || result == MatchResult.UserCancelled
+                        ? "Cancelling..."
+                        : "Cleaning up...";
+                    controls?.SetStatus(waitStatus);
+
+                    finalStatus = _userCancelled || result == MatchResult.UserCancelled
+                        ? "Cancelled by user"
+                        : result == MatchResult.Timeout
+                            ? "Timed out. Try again."
+                            : "Failed. Try again.";
                 }
             }
             catch (Exception ex)
             {
-                controls?.SetStatus($"Failed: {ex.Message}");
+                waitStatus = "Cleaning up...";
+                finalStatus = $"Failed: {ex.Message}";
+                controls?.SetStatus(waitStatus);
             }
             finally
             {
                 matchmakingTimer?.StopTimer();
                 controls?.SetCancelInteractable(false);
-                if (result != MatchResult.Success)
-                {
-                    await ShowStartButtonWithDelayAsync(CancelCooldownSeconds);
-                    MatchmakingAborted?.Invoke();
-                }
+            }
+
+            if (result != MatchResult.Success)
+            {
+                await ShowStartButtonWithDelayAsync(CancelCooldownSeconds);
+                controls?.SetStatus(finalStatus);
+                MatchmakingAborted?.Invoke();
             }
         }
 
