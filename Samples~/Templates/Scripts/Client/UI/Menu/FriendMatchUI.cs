@@ -35,7 +35,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         {
             landingCreateButton.onClick.AddListener(ShowCreateView);
             landingJoinButton.onClick.AddListener(ShowJoinView);
-            landingCloseButton.onClick.AddListener(HandleCloseButtonClickedAsync);
+            landingCloseButton.onClick.AddListener(HandleLandingCloseClicked);
 
             createUi.OnCloseRequested += HandleCloseButtonClickedAsync;
             joinUi.OnCloseRequested += HandleCloseButtonClickedAsync;
@@ -52,8 +52,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         {
             landingCreateButton.onClick.RemoveListener(ShowCreateView);
             landingJoinButton.onClick.RemoveListener(ShowJoinView);
-            landingCloseButton.onClick.RemoveListener(HandleCloseButtonClickedAsync);
-
+            landingCloseButton.onClick.RemoveListener(HandleLandingCloseClicked);
             createUi.OnCloseRequested -= HandleCloseButtonClickedAsync;
             joinUi.OnCloseRequested -= HandleCloseButtonClickedAsync;
         }
@@ -64,32 +63,28 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             modal.Show(landingView);
         }
 
-        private async void HandleCloseButtonClickedAsync()
+        private void HandleLandingCloseClicked()
         {
-            SetAllCloseButtonsInteractable(false);
+            HandleCloseButtonClickedAsync(landingCloseButton);
+        }
+
+        private async void HandleCloseButtonClickedAsync(Button pressedButton)
+        {
+            pressedButton.interactable = false;
             await _service.CancelMatchmakingAsync();
             modal.Hide();
             CloseButtonPressed?.Invoke();
         }
 
-        private void SetAllCloseButtonsInteractable(bool b)
-        {
-            landingCloseButton.interactable = b;
-            createUi.SetCloseInteractable(b);
-            joinUi.SetCloseInteractable(b);
-        }
-
         private void ShowCreateView()
         {
-            createUi.ResetUI();
-            createUi.SetCloseInteractable(true);
+            createUi.OnShow();
             modal.ShowView(createView);
         }
 
         private void ShowJoinView()
         {
-            joinUi.ResetUI();
-            joinUi.SetCloseInteractable(true);
+            joinUi.OnShow();
             modal.ShowView(joinView);
         }
     }

@@ -15,9 +15,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         [SerializeField] private TMP_Text roomCodeText;
         [SerializeField] private TMP_Text statusText;
         [SerializeField] private Button closeButton;
-        [SerializeField] private Button createButton;
-
-        public UnityEngine.Events.UnityAction OnCloseRequested = () => { };
+        
+        public event Action<Button> OnCloseRequested;
 
         private FriendMatchService _service;
         private bool _isWorking;
@@ -26,9 +25,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
 
         private void Awake()
         {
-            closeButton.onClick.AddListener(OnCloseRequested);
-            createButton.onClick.AddListener(() => _ = CreateAndMatchAsync());
-
+            closeButton.onClick.AddListener(() => OnCloseRequested?.Invoke(closeButton));
             _defaultRoomCode = roomCodeText.text;
             _defaultStatus = statusText.text;
         }
@@ -41,10 +38,15 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         public void ResetUI(string overrideStatus = null)
         {
             _isWorking = false;
-            createButton.interactable = true;
             closeButton.interactable = true;
             SetRoomCode(string.Empty);
-            SetStatus(overrideStatus ?? (string.IsNullOrEmpty(_defaultStatus) ? "Press Create to start." : _defaultStatus));
+            SetStatus(overrideStatus ?? (string.IsNullOrEmpty(_defaultStatus) ? "Creating room..." : _defaultStatus));
+        }
+
+        public void OnShow()
+        {
+            ResetUI();
+            _ = CreateAndMatchAsync();
         }
 
         public async Task<bool> CreateAndMatchAsync()
@@ -61,7 +63,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             }
 
             _isWorking = true;
-            createButton.interactable = false;
 
             try
             {
@@ -88,15 +89,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             finally
             {
                 _isWorking = false;
-                createButton.interactable = true;
             }
-
-            return false;
-        }
-
-        public void SetCloseInteractable(bool value)
-        {
-            closeButton.interactable = value;
         }
 
         private void SetRoomCode(string roomCode)

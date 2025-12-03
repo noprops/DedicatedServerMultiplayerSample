@@ -16,7 +16,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         [SerializeField] private TMP_Text statusText;
         [SerializeField] private Button closeButton;
 
-        public event Action OnCloseRequested;
+        public event Action<Button> OnCloseRequested;
 
         private FriendMatchService _service;
         private bool _isWorking;
@@ -24,7 +24,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
 
         private void Awake()
         {
-            closeButton.onClick.AddListener(() => OnCloseRequested?.Invoke());
+            closeButton.onClick.AddListener(() => OnCloseRequested?.Invoke(closeButton));
             codeInput.onEndEdit.AddListener(HandleCodeSubmitted);
             codeInput.onValidateInput += UppercaseInput;
 
@@ -41,7 +41,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             _isWorking = false;
             codeInput.text = string.Empty;
             codeInput.interactable = true;
-            SetCloseInteractable(true);
+            closeButton.interactable = true;
 
             SetStatus(string.IsNullOrEmpty(status)
                 ? (string.IsNullOrEmpty(_defaultStatus) ? "Enter room code to join." : _defaultStatus)
@@ -106,9 +106,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             statusText.text = message;
         }
 
-        public void SetCloseInteractable(bool value)
+        public void OnShow()
         {
-            closeButton.interactable = value;
+            ResetUI();
         }
 
         private string FormatStatus(MatchResult result)
