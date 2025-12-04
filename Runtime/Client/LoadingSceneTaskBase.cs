@@ -5,8 +5,8 @@ using UnityEngine;
 namespace DedicatedServerMultiplayerSample.Client
 {
     /// <summary>
-    /// LoadingScene に実行させたいタスクの共通処理をまとめた基底クラス。
-    /// 派生クラスは <see cref="RunAsync"/> を実装するだけで登録・解除のロジックは共通化されます。
+    /// Base class for tasks executed by LoadingScene.
+    /// Derive and implement <see cref="RunAsync"/>; registration logic is handled here.
     /// </summary>
     public abstract class LoadingSceneTaskBase : MonoBehaviour
     {
@@ -48,7 +48,7 @@ namespace DedicatedServerMultiplayerSample.Client
         }
 
         /// <summary>
-        /// 派生クラスが実装するローディングタスク。
+        /// Loading task implemented by derived classes.
         /// </summary>
         protected abstract Task RunAsync();
     }

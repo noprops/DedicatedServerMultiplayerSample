@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using Unity.Netcode;
@@ -89,20 +90,9 @@ namespace DedicatedServerMultiplayerSample.Client
 
                 var authId = AuthenticationWrapper.PlayerId;
 
-                if (playerProperties == null)
-                {
-                    playerProperties = new Dictionary<string, object>();
-                }
-
-                if (ticketAttributes == null)
-                {
-                    ticketAttributes = new Dictionary<string, object>();
-                }
-
-                if (sessionMetadata == null)
-                {
-                    sessionMetadata = new Dictionary<string, object>();
-                }
+                playerProperties ??= new Dictionary<string, object>();
+                ticketAttributes ??= new Dictionary<string, object>();
+                sessionMetadata ??= new Dictionary<string, object>();
 
                 var matchmakerOptions = new MatchmakerOptions
                 {
@@ -133,7 +123,6 @@ namespace DedicatedServerMultiplayerSample.Client
                 {
                     Debug.LogError("[ClientMatchmaker] Failed to find match");
                     NotifyState(ClientConnectionState.Failed);
-                    IsMatchmaking = false;
                     return MatchResult.Failed;
                 }
 
@@ -148,7 +137,6 @@ namespace DedicatedServerMultiplayerSample.Client
                 {
                     Debug.LogError("[ClientMatchmaker] UnityTransport component not found!");
                     NotifyState(ClientConnectionState.Failed);
-                    IsMatchmaking = false;
                     return MatchResult.Failed;
                 }
 
@@ -162,7 +150,6 @@ namespace DedicatedServerMultiplayerSample.Client
                 {
                     Debug.LogError("[ClientMatchmaker] Connection timeout");
                     NotifyState(ClientConnectionState.Failed);
-                    IsMatchmaking = false;
                     return MatchResult.Timeout;
                 }
 
@@ -173,23 +160,29 @@ namespace DedicatedServerMultiplayerSample.Client
                 Debug.Log("[ClientMatchmaker] ✓ Ready for game");
 
                 Debug.Log("[ClientMatchmaker] ========== MATCHMAKING COMPLETE ==========");
-                IsMatchmaking = false;
                 return MatchResult.Success;
+            }
+            catch (OperationCanceledException)
+            {
+                Debug.Log("[ClientMatchmaker] Matchmaking cancelled by user");
+                NotifyState(ClientConnectionState.Cancelled);
+                return MatchResult.UserCancelled;
+            }
+            catch (AggregateException ae) when (ae.InnerExceptions.Any(inner => inner is OperationCanceledException or TaskCanceledException))
+            {
+                Debug.Log("[ClientMatchmaker] Matchmaking cancelled by user (aggregate)");
+                NotifyState(ClientConnectionState.Cancelled);
+                return MatchResult.UserCancelled;
             }
             catch (Exception e)
             {
-                IsMatchmaking = false;
-
-                if (e is OperationCanceledException or TaskCanceledException)
-                {
-                    Debug.Log("[ClientMatchmaker] Matchmaking cancelled by user");
-                    NotifyState(ClientConnectionState.Cancelled);
-                    return MatchResult.UserCancelled;
-                }
-
                 Debug.LogError($"[ClientMatchmaker] Matchmaking failed: {e.Message}");
                 NotifyState(ClientConnectionState.Failed);
                 return MatchResult.Failed;
+            }
+            finally
+            {
+                IsMatchmaking = false;
             }
         }
 
@@ -205,7 +198,14 @@ namespace DedicatedServerMultiplayerSample.Client
                 Debug.Log("[ClientMatchmaker] Matchmaking cancel token triggered");
             }
 
-            await LeaveCurrentSessionAsync();
+            try
+            {
+                await LeaveCurrentSessionAsync();
+            }
+            catch (TaskCanceledException)
+            {
+                Debug.Log("[ClientMatchmaker] Leave session cancelled.");
+            }
             IsMatchmaking = false;
             NotifyState(ClientConnectionState.Cancelled);
         }

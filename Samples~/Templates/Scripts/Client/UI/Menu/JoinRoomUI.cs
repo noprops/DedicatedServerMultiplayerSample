@@ -20,15 +20,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
 
         private FriendMatchService _service;
         private bool _isWorking;
-        private string _defaultStatus = string.Empty;
 
         private void Awake()
         {
             closeButton.onClick.AddListener(() => OnCloseRequested?.Invoke(closeButton));
             codeInput.onEndEdit.AddListener(HandleCodeSubmitted);
             codeInput.onValidateInput += UppercaseInput;
-
-            _defaultStatus = statusText.text;
         }
 
         public void SetService(FriendMatchService service)
@@ -44,7 +41,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             closeButton.interactable = true;
 
             SetStatus(string.IsNullOrEmpty(status)
-                ? (string.IsNullOrEmpty(_defaultStatus) ? "Enter room code to join." : _defaultStatus)
+                ? "Enter room code to join."
                 : status);
         }
 

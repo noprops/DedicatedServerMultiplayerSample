@@ -10,6 +10,9 @@ using DedicatedServerMultiplayerSample.Server.Infrastructure;
 
 namespace DedicatedServerMultiplayerSample.Server.Bootstrap
 {
+    /// <summary>
+    /// Singleton bootstrapper that initializes and hosts the dedicated server runtime.
+    /// </summary>
     public class ServerSingleton : MonoBehaviour
     {
 #if UNITY_SERVER || ENABLE_UCS_SERVER
@@ -29,7 +32,7 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
                 DontDestroyOnLoad(gameObject);
                 Debug.Log("[ServerSingleton] Instance created");
 
-                // サーバーのパフォーマンス最適化を専用クラスで実行
+                // Run server-side performance optimizations via the dedicated helper.
                 ServerPerformanceOptimizer.Initialize();
             }
             else
@@ -45,6 +48,9 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
             await CreateServer();
         }
         
+        /// <summary>
+        /// Initializes Unity Services and starts the dedicated server instance.
+        /// </summary>
         public async Task CreateServer()
         {
             try

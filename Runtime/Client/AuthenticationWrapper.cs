@@ -7,22 +7,21 @@ using UnityEngine;
 namespace DedicatedServerMultiplayerSample.Client
 {
     /// <summary>
-    /// Unity Authentication Serviceのラッパークラス（静的クラス）
-    /// クライアント側の認証処理を一元管理
+    /// Static wrapper around the Unity Authentication Service that centralizes client authentication flows.
     /// </summary>
     public static class AuthenticationWrapper
     {
         // ========== Properties ==========
 
         /// <summary>
-        /// 認証済みかどうか
+        /// True when Unity Services are initialized and the player is signed in.
         /// </summary>
         public static bool IsSignedIn =>
             UnityServices.State == ServicesInitializationState.Initialized &&
             AuthenticationService.Instance.IsSignedIn;
 
         /// <summary>
-        /// プレイヤーID（認証済みの場合のみ有効）
+        /// Player ID if authenticated; otherwise null.
         /// </summary>
         public static string PlayerId =>
             IsSignedIn ? AuthenticationService.Instance.PlayerId : null;
@@ -30,19 +29,18 @@ namespace DedicatedServerMultiplayerSample.Client
         // ========== Public Methods ==========
 
         /// <summary>
-        /// 匿名認証を実行
-        /// アプリ起動時に一度だけ呼ばれることを想定
+        /// Performs anonymous authentication. Intended to run once during app startup.
         /// </summary>
         public static async Task<bool> SignInAnonymouslyAsync()
         {
-            // Unity Servicesが初期化されていない場合はエラー
+            // Unity Services must be initialized before signing in.
             if (UnityServices.State != ServicesInitializationState.Initialized)
             {
                 Debug.LogError("[AuthenticationWrapper] Unity Services not initialized");
                 return false;
             }
 
-            // 既にサインイン済みの場合は成功を返す
+            // Return success if already signed in.
             if (AuthenticationService.Instance.IsSignedIn)
             {
                 Debug.Log($"[AuthenticationWrapper] Already signed in as: {PlayerId}");
@@ -73,7 +71,7 @@ namespace DedicatedServerMultiplayerSample.Client
         }
 
         /// <summary>
-        /// サインアウト
+        /// Signs the player out if currently signed in.
         /// </summary>
         public static void SignOut()
         {
@@ -95,8 +93,7 @@ namespace DedicatedServerMultiplayerSample.Client
         }
 
         /// <summary>
-        /// セッショントークンのリフレッシュ
-        /// 長時間のプレイセッション用
+        /// Refreshes the session token, intended for long-running play sessions.
         /// </summary>
         public static async Task<bool> RefreshSessionTokenAsync()
         {

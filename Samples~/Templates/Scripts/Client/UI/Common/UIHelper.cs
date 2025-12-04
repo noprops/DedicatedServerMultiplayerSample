@@ -84,7 +84,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Common
             {
                 for (int i = 0; i < buttons.Length; i++)
                 {
-                    int index = i; // クロージャ用コピー
+                    int index = i; // Capture for the closure
                     void OnClick() => tcs.TrySetResult(index);
                     listeners.Add(OnClick);
                     buttons[i].onClick.AddListener(OnClick);

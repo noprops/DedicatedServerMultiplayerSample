@@ -7,8 +7,7 @@ using UnityEngine.SceneManagement;
 namespace DedicatedServerMultiplayerSample.Client
 {
     /// <summary>
-    /// ローディングシーンの管理クラス
-    /// Unity Services初期化とプレイヤーデータのロードを担当
+    /// Manages the loading scene by preparing services and client data before entering the menu.
     /// </summary>
     public class LoadingScene : MonoBehaviour
     {
@@ -19,7 +18,7 @@ namespace DedicatedServerMultiplayerSample.Client
         private readonly List<Func<Task>> customTasks = new List<Func<Task>>();
 
         /// <summary>
-        /// ローディングシーンがメニューへ遷移する直前に実行する処理を登録します。
+        /// Registers a task to run just before the loading scene transitions to the menu.
         /// </summary>
         public void Register(Func<Task> task)
         {
@@ -31,7 +30,7 @@ namespace DedicatedServerMultiplayerSample.Client
         }
 
         /// <summary>
-        /// Registerした処理を解除します。
+        /// Removes a previously registered task.
         /// </summary>
         public void Unregister(Func<Task> task)
         {
@@ -46,30 +45,30 @@ namespace DedicatedServerMultiplayerSample.Client
 
             try
             {
-                // 上から下へ一直線に処理
+                // Execute the loading flow sequentially from top to bottom.
                 await ExecuteLoadingSequence();
             }
             catch (Exception e)
             {
                 Debug.LogError($"[LoadingScene] Loading sequence failed: {e.Message}");
-                // エラーが起きても何もしない（エラー画面を表示する場合はここで処理）
+                // No fallback here; handle an error screen if desired.
             }
         }
 
         // ========== Main Loading Sequence ==========
         /// <summary>
-        /// ローディングシーケンスのメイン処理（上から下へ一直線）
+        /// Runs the main loading sequence in order before moving to the menu.
         /// </summary>
         private async Task ExecuteLoadingSequence()
         {
             Debug.Log("[LoadingScene] Starting loading sequence...");
 
             // ================================================================
-            // STEP 1: 既存セッションのクリーンアップ
+            // STEP 1: Clean up any existing session
             // ================================================================
             Debug.Log("[LoadingScene] STEP 1: Cleaning up existing session if any...");
 
-            // 既存セッションを離脱
+            // Leave the current session if one exists.
             var matchmaker = ClientSingleton.Instance?.Matchmaker;
             if (matchmaker != null)
             {
@@ -78,7 +77,7 @@ namespace DedicatedServerMultiplayerSample.Client
             Debug.Log("[LoadingScene] ✓ Session cleanup complete");
 
             // ================================================================
-            // STEP 2: 認証状態の確認
+            // STEP 2: Verify authentication state
             // ================================================================
             Debug.Log("[LoadingScene] STEP 2: Checking authentication status...");
 
@@ -90,18 +89,23 @@ namespace DedicatedServerMultiplayerSample.Client
 
             Debug.Log($"[LoadingScene] ✓ Authenticated as: {AuthenticationWrapper.PlayerId}");
 
+            // ================================================================
+            // STEP 3: Execute registered custom tasks
+            // ================================================================
             await RunCustomTasksAsync();
 
             // ================================================================
-            //loadingsceneへloadingscenesampletaskを差し込む方法を説明せよ。現在taskのlistがprivateになっていて差し込めない？ STEP 4: メニューシーンへ遷移
+            // STEP 4: Transition to the menu scene
             // ================================================================
             Debug.Log("[LoadingScene] STEP 4: Loading menu scene...");
 
-            // メニューシーンへ遷移
             SceneManager.LoadScene(MENU_SCENE_NAME);
             Debug.Log("[LoadingScene] ========== LOADING COMPLETE ==========");
         }
 
+        /// <summary>
+        /// Executes any custom tasks that were registered by other components.
+        /// </summary>
         private async Task RunCustomTasksAsync()
         {
             if (customTasks.Count == 0)

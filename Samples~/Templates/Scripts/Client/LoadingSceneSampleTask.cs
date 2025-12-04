@@ -5,8 +5,8 @@ using DedicatedServerMultiplayerSample.Client;
 namespace DedicatedServerMultiplayerSample.Samples.Client
 {
     /// <summary>
-    /// LoadingScene に処理を差し込むサンプルスクリプト。
-    /// LoadingScene と同じ GameObject にアタッチし、`LoadingScene.tasks` リストに登録して使用します。
+    /// Sample task that injects custom work into the LoadingScene lifecycle.
+    /// Attach this to the same GameObject as LoadingScene and register it in the `LoadingScene.tasks` list.
     /// </summary>
     public class LoadingSceneSampleTask : LoadingSceneTaskBase
     {
@@ -15,13 +15,13 @@ namespace DedicatedServerMultiplayerSample.Samples.Client
             Debug.Log("[LoadingSceneSampleTask] Custom task started");
 
             // ================================================================
-            // ここにローディング中に完了させたい処理を記述します。
-            // 例:
-            // 1. Cloud Save からプレイヤーデータを読み込む
-            // 2. Remote Config や自前 API から最新コンフィグを取得する
-            // 3. 取得した値を `ClientData` などローカルのシングルトンへ反映する
-            // 4. 必要な ScriptableObject / Addressables / AssetBundle を事前ロードする
-            // ※ 処理を並列化したい場合は Task.WhenAll を利用し、完了後にまとめて反映するのが安全です。
+            // Add any work that should finish during loading.
+            // Examples:
+            // 1. Load player data from Cloud Save
+            // 2. Fetch the latest config from Remote Config or your own API
+            // 3. Apply the values to local singletons such as `ClientData`
+            // 4. Preload required ScriptableObjects / Addressables / AssetBundles
+            // Tip: If you need parallel work, use Task.WhenAll and apply the results afterward.
             // ================================================================
 
             await Task.Delay(500);
