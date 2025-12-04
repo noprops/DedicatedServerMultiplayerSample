@@ -2895,7 +2895,7 @@ MonoBehaviour:
   menuViewModal: {fileID: 1658254840}
   mainMenuView: {fileID: 569714299}
   friendFlowView: {fileID: 2039028516}
-  friendMatchUI: {fileID: 0}
+  friendMatchUI: {fileID: 2039028522}
 --- !u!114 &1658254840
 MonoBehaviour:
   m_ObjectHideFlags: 0
@@ -3409,8 +3409,8 @@ MonoBehaviour:
   landingCreateButton: {fileID: 131221249}
   landingJoinButton: {fileID: 1340383614}
   landingCloseButton: {fileID: 1745405316}
-  createUi: {fileID: 0}
-  joinUi: {fileID: 0}
+  createUi: {fileID: 1134017011}
+  joinUi: {fileID: 1264294085}
 --- !u!1 &2060652542
 GameObject:
   m_ObjectHideFlags: 0
