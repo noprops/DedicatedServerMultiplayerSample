@@ -39,33 +39,33 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             SubmitChoiceServerRpc(choice);
         }
 
-        public void ConfirmRoundResult()
+        public void ConfirmRoundResult(bool continueGame)
         {
-            ConfirmRoundResultServerRpc();
+            ConfirmRoundResultServerRpc(continueGame);
         }
 
         [ServerRpc(RequireOwnership = false)]
         private void SubmitChoiceServerRpc(Hand choice, ServerRpcParams rpcParams = default)
         {
-            channel?.InvokeChoiceSelected(rpcParams.Receive.SenderClientId, choice);
+            channel?.ReceiveChoice(rpcParams.Receive.SenderClientId, choice);
         }
 
         [ServerRpc(RequireOwnership = false)]
-        private void ConfirmRoundResultServerRpc(ServerRpcParams rpcParams = default)
+        private void ConfirmRoundResultServerRpc(bool continueGame, ServerRpcParams rpcParams = default)
         {
-            channel?.InvokeRoundResultConfirmed(rpcParams.Receive.SenderClientId);
+            channel?.InvokeRoundResultConfirmed(rpcParams.Receive.SenderClientId, continueGame);
         }
 
         // === Server → Client ===
-        public void SendRoundStarted(ulong player1Id, string player1Name, ulong player2Id, string player2Name)
+        public void SendPlayersReady(ulong player1Id, string player1Name, ulong player2Id, string player2Name)
         {
-            RoundStartedClientRpc(player1Id, player1Name, player2Id, player2Name);
+            PlayersReadyClientRpc(player1Id, player1Name, player2Id, player2Name);
         }
 
         public void SendRoundResult(ulong player1Id, RoundOutcome player1Outcome, Hand player1Hand,
-            ulong player2Id, RoundOutcome player2Outcome, Hand player2Hand)
+            ulong player2Id, RoundOutcome player2Outcome, Hand player2Hand, bool canContinue)
         {
-            RoundEndedClientRpc(player1Id, player1Outcome, player1Hand, player2Id, player2Outcome, player2Hand);
+            RoundEndedClientRpc(player1Id, player1Outcome, player1Hand, player2Id, player2Outcome, player2Hand, canContinue);
         }
 
         public void SendGameAborted(string message)
@@ -74,7 +74,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         }
 
         [ClientRpc]
-        private void RoundStartedClientRpc(ulong player1Id, string player1Name, ulong player2Id, string player2Name,
+        private void PlayersReadyClientRpc(ulong player1Id, string player1Name, ulong player2Id, string player2Name,
             ClientRpcParams rpcParams = default)
         {
             if (channel == null)
@@ -85,21 +85,21 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             var localId = NetworkManager.Singleton != null ? NetworkManager.Singleton.LocalClientId : player1Id;
             if (localId == player1Id)
             {
-                channel.InvokeRoundStarted(player1Name, player2Name);
+                channel.InvokePlayersReady(player1Name, player2Name);
             }
             else if (localId == player2Id)
             {
-                channel.InvokeRoundStarted(player2Name, player1Name);
+                channel.InvokePlayersReady(player2Name, player1Name);
             }
             else
             {
-                channel.InvokeRoundStarted(player1Name, player2Name);
+                channel.InvokePlayersReady(player1Name, player2Name);
             }
         }
 
         [ClientRpc]
         private void RoundEndedClientRpc(ulong player1Id, RoundOutcome player1Outcome, Hand player1Hand,
-            ulong player2Id, RoundOutcome player2Outcome, Hand player2Hand, ClientRpcParams rpcParams = default)
+            ulong player2Id, RoundOutcome player2Outcome, Hand player2Hand, bool canContinue, ClientRpcParams rpcParams = default)
         {
             if (channel == null)
             {
@@ -109,15 +109,15 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             var localId = NetworkManager.Singleton != null ? NetworkManager.Singleton.LocalClientId : player1Id;
             if (localId == player1Id)
             {
-                channel.InvokeRoundResult(player1Outcome, player1Hand, player2Hand);
+                channel.InvokeRoundResult(player1Outcome, player1Hand, player2Hand, canContinue);
             }
             else if (localId == player2Id)
             {
-                channel.InvokeRoundResult(player2Outcome, player2Hand, player1Hand);
+                channel.InvokeRoundResult(player2Outcome, player2Hand, player1Hand, canContinue);
             }
             else
             {
-                channel.InvokeRoundResult(player1Outcome, player1Hand, player2Hand);
+                channel.InvokeRoundResult(player1Outcome, player1Hand, player2Hand, canContinue);
             }
         }
 
@@ -126,5 +126,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             channel?.InvokeGameAborted(message);
         }
+
     }
 }

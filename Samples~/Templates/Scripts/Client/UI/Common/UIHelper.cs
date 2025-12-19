@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
-using UnityEngine;
 using UnityEngine.UI;
 
 namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Common
@@ -101,6 +100,134 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Common
             {
                 registration.Dispose();
                 Cleanup();
+            }
+        }
+
+        /// <summary>
+        /// Generic awaiter for an event pattern. Subscribes a handler, waits for the first invocation, and cleans up even on cancellation.
+        /// </summary>
+        /// <typeparam name="T">Payload type delivered by the event adapter.</typeparam>
+        /// <param name="subscribe">Action that wires the provided handler to the event.</param>
+        /// <param name="unsubscribe">Action that unwires the provided handler from the event.</param>
+        /// <param name="ct">Cancellation token to abort the wait.</param>
+        public static async Task<T> WaitForEventAsync<T>(
+            Action<Action<T>> subscribe,
+            Action<Action<T>> unsubscribe,
+            CancellationToken ct = default)
+        {
+            if (subscribe == null) throw new ArgumentNullException(nameof(subscribe));
+            if (unsubscribe == null) throw new ArgumentNullException(nameof(unsubscribe));
+
+            var tcs = new TaskCompletionSource<T>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            void Handler(T value)
+            {
+                unsubscribe(Handler);
+                tcs.TrySetResult(value);
+            }
+
+            subscribe(Handler);
+
+            using (ct.Register(() =>
+                   {
+                       unsubscribe(Handler);
+                       tcs.TrySetCanceled(ct);
+                   }))
+            {
+                return await tcs.Task;
+            }
+        }
+
+        /// <summary>
+        /// Await an event with no payload.
+        /// </summary>
+        public static async Task WaitForEventAsync(
+            Action<Action> subscribe,
+            Action<Action> unsubscribe,
+            CancellationToken ct = default)
+        {
+            if (subscribe == null) throw new ArgumentNullException(nameof(subscribe));
+            if (unsubscribe == null) throw new ArgumentNullException(nameof(unsubscribe));
+
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            void Handler()
+            {
+                unsubscribe(Handler);
+                tcs.TrySetResult(true);
+            }
+
+            subscribe(Handler);
+
+            using (ct.Register(() =>
+                   {
+                       unsubscribe(Handler);
+                       tcs.TrySetCanceled(ct);
+                   }))
+            {
+                await tcs.Task;
+            }
+        }
+
+        /// <summary>
+        /// Await an event with two arguments and return them as a tuple.
+        /// </summary>
+        public static async Task<(T1, T2)> WaitForEventAsync<T1, T2>(
+            Action<Action<T1, T2>> subscribe,
+            Action<Action<T1, T2>> unsubscribe,
+            CancellationToken ct = default)
+        {
+            if (subscribe == null) throw new ArgumentNullException(nameof(subscribe));
+            if (unsubscribe == null) throw new ArgumentNullException(nameof(unsubscribe));
+
+            var tcs = new TaskCompletionSource<(T1, T2)>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Action<T1, T2> wrapper = null;
+            wrapper = (v1, v2) =>
+            {
+                unsubscribe(wrapper);
+                tcs.TrySetResult((v1, v2));
+            };
+
+            subscribe(wrapper);
+
+            using (ct.Register(() =>
+                   {
+                       unsubscribe(wrapper);
+                       tcs.TrySetCanceled(ct);
+                   }))
+            {
+                return await tcs.Task;
+            }
+        }
+
+        /// <summary>
+        /// Await an event with four arguments and return them as a tuple.
+        /// </summary>
+        public static async Task<(T1, T2, T3, T4)> WaitForEventAsync<T1, T2, T3, T4>(
+            Action<Action<T1, T2, T3, T4>> subscribe,
+            Action<Action<T1, T2, T3, T4>> unsubscribe,
+            CancellationToken ct = default)
+        {
+            if (subscribe == null) throw new ArgumentNullException(nameof(subscribe));
+            if (unsubscribe == null) throw new ArgumentNullException(nameof(unsubscribe));
+
+            var tcs = new TaskCompletionSource<(T1, T2, T3, T4)>(TaskCreationOptions.RunContinuationsAsynchronously);
+            Action<T1, T2, T3, T4> wrapper = null;
+            wrapper = (v1, v2, v3, v4) =>
+            {
+                unsubscribe(wrapper);
+                tcs.TrySetResult((v1, v2, v3, v4));
+            };
+
+            subscribe(wrapper);
+
+            using (ct.Register(() =>
+                   {
+                       unsubscribe(wrapper);
+                       tcs.TrySetCanceled(ct);
+                   }))
+            {
+                return await tcs.Task;
             }
         }
     }

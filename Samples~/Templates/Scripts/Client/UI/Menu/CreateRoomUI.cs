@@ -30,7 +30,15 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
 
         public void SetService(FriendMatchService service)
         {
+            if (_service != null)
+            {
+                _service.StateChanged -= HandleStateChanged;
+            }
             _service = service;
+            if (_service != null)
+            {
+                _service.StateChanged += HandleStateChanged;
+            }
         }
 
         public void ResetUI(string overrideStatus = null)
@@ -71,7 +79,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
                 var result = await _service.StartMatchAsync();
                 if (result == MatchResult.Success)
                 {
-                    SetStatus("Match starting...");
+                    SetStatus("Connected!");
                     return true;
                 }
 
@@ -98,6 +106,21 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         private void SetStatus(string message)
         {
             statusText.text = message;
+        }
+
+        private void HandleStateChanged(ClientConnectionState state)
+        {
+            statusText.text = state switch
+            {
+                ClientConnectionState.SearchingMatch => "Searching for match...",
+                ClientConnectionState.MatchFound => "Match found! Preparing...",
+                ClientConnectionState.ConnectingToServer => "Connecting to server...",
+                ClientConnectionState.Connected => "Connected!",
+                ClientConnectionState.Cancelling => "Cancelling...",
+                ClientConnectionState.Cancelled => "Cancelled",
+                ClientConnectionState.Failed => "Connection failed",
+                _ => statusText.text
+            };
         }
 
         private string FormatStatus(MatchResult result)

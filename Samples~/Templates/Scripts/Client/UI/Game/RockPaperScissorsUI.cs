@@ -30,19 +30,19 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
         [SerializeField] private TMP_Text myHandText;
         [SerializeField] private TMP_Text yourHandText;
         [SerializeField] private TMP_Text resultText;
-        [SerializeField] private CountdownButton endButton;
+        [SerializeField] private CountdownMultiButton continueQuitButtons;
+        [SerializeField] private Button continueButton;
         [SerializeField] private float endButtonCountdownSeconds = 10f;
         [SerializeField] private ModalLayerUI modalLayer;
         [SerializeField] private float abortPromptDurationSeconds = 5f;
 
         [SerializeField] private RpsGameEventChannel eventChannel;
 
+        private RpsUiEventSink _uiSink;
+
         // Cancels the ongoing async UI loop (used when abort notifications arrive or the object is destroyed).
         private CancellationTokenSource _lifecycleCts;
 
-        /// <summary>
-        /// Initializes UI widgets so nothing is visible/interactable before the first round begins.
-        /// </summary>
         private void Awake()
         {
             choicePanel.SetActive(false);
@@ -51,9 +51,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
             modalLayer?.Hide();
         }
 
-        /// <summary>
-        /// Starts the asynchronous UI loop once the dispatcher is assigned.
-        /// </summary>
         private void Start()
         {
             if (_lifecycleCts != null)
@@ -68,50 +65,63 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                 return;
             }
 
-            if (endButton == null)
+            if (continueQuitButtons == null || continueButton == null)
             {
-                Debug.LogError("[RockPaperScissorsUI] Countdown/OK button is not assigned.");
+                Debug.LogError("[RockPaperScissorsUI] Buttons must be assigned.");
                 enabled = false;
                 return;
             }
 
+            _uiSink = new RpsUiEventSink(eventChannel);
             _lifecycleCts = new CancellationTokenSource();
             _ = RunUiLoopAsync(_lifecycleCts.Token);
         }
 
-        /// <summary>
-        /// Cancels the running loop and clears any leftover listeners.
-        /// </summary>
         private void OnDestroy()
         {
             _lifecycleCts?.Cancel();
             _lifecycleCts?.Dispose();
             _lifecycleCts = null;
+            _uiSink?.Dispose();
             DetachButtonHandlers();
         }
 
         /// <summary>
-        /// Main sequential UI routine (channel ready → show round → collect input → show results).
+        /// Main UI loop: wait for round start → collect input → show result → send continue/quit decision. Loops until quit/timeout.
         /// </summary>
         private async Task RunUiLoopAsync(CancellationToken token)
         {
             try
             {
-                await eventChannel.WaitUntilReadyAsync(token);
+                await _uiSink.WaitForChannelReadyAsync(token);
                 eventChannel.GameAborted += HandleGameAborted;
 
-                var intro = await WaitForRoundStartedAsync(token);
-                ShowChoicePanel(intro.myName, intro.opponentName);
+                var intro = await _uiSink.WaitForPlayersReadyAsync(token);
 
-                var selected = await WaitForLocalChoiceAsync(token);
-                statusText.text = "Waiting for opponent to select...";
-                eventChannel.RaiseChoiceSelected(selected);
+                while (!token.IsCancellationRequested)
+                {
+                    _uiSink.ResetForNewRound();
+                    ShowChoicePanel(intro.myName, intro.opponentName);
 
-                var result = await WaitForRoundResultAsync(token);
-                ShowResult(result.myOutcome, result.myHand, result.opponentHand);
+                    var selected = await WaitForLocalChoiceAsync(token);
+                    statusText.text = "Waiting for opponent to select...";
+                    eventChannel.RaiseChoiceSelected(selected);
 
-                await WaitForEndButtonAsync(token);
-                eventChannel.RaiseRoundResultConfirmed();
+                    var result = await _uiSink.WaitForRoundResultAsync(token);
+                    ShowResult(result.outcome, result.myHand, result.opponentHand, result.canContinue);
+
+                var selection = await continueQuitButtons.RunAsync(endButtonCountdownSeconds);
+                var continueGame = result.canContinue
+                    ? selection.Reason == CountdownCompletionReason.Clicked && selection.ClickedButton == continueButton
+                    : false;
+
+                eventChannel.RaiseRoundResultConfirmed(continueGame);
+
+                if (!continueGame)
+                {
+                    break;
+                }
+                }
             }
             catch (OperationCanceledException)
             {
@@ -145,74 +155,18 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
             statusText.text = "Make your choice!";
         }
 
-        private void ShowResult(RoundOutcome outcome, Hand myHand, Hand opponentHand)
+        private void ShowResult(RoundOutcome outcome, Hand myHand, Hand opponentHand, bool canContinue)
         {
             choicePanel.SetActive(false);
             resultPanel.SetActive(true);
+            continueButton.gameObject.SetActive(canContinue);
+            continueQuitButtons.gameObject.SetActive(true);
 
             myHandText.text = myHand.ToString();
             yourHandText.text = opponentHand.ToString();
             resultText.text = outcome.ToString();
 
             statusText.text = "Round resolved";
-        }
-
-        private async Task<(string myName, string opponentName)> WaitForRoundStartedAsync(CancellationToken token)
-        {
-            var tcs = new TaskCompletionSource<(string, string)>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            void Handler(string myName, string opponentName)
-            {
-                eventChannel.RoundStarted -= Handler;
-                tcs.TrySetResult((myName, opponentName));
-            }
-
-            eventChannel.RoundStarted += Handler;
-            using (token.Register(() =>
-                   {
-                       eventChannel.RoundStarted -= Handler;
-                       tcs.TrySetCanceled(token);
-                   }))
-            {
-                return await tcs.Task;
-            }
-        }
-
-        private async Task<Hand> WaitForLocalChoiceAsync(CancellationToken token)
-        {
-            var tcs = new TaskCompletionSource<Hand>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            void Handler(Hand hand)
-            {
-                Debug.Log($"[RockPaperScissorsUI] Local selection: {hand}");
-                SetChoiceButtonsInteractable(false);
-                DetachButtonHandlers();
-                tcs.TrySetResult(hand);
-            }
-
-            AttachButtonHandlers(Handler);
-            using (token.Register(() =>
-                   {
-                       DetachButtonHandlers();
-                       tcs.TrySetCanceled(token);
-                   }))
-            {
-                return await tcs.Task;
-            }
-        }
-
-        private void AttachButtonHandlers(Action<Hand> handler)
-        {
-            rockButton.onClick.AddListener(() => handler(Hand.Rock));
-            paperButton.onClick.AddListener(() => handler(Hand.Paper));
-            scissorsButton.onClick.AddListener(() => handler(Hand.Scissors));
-        }
-
-        private void DetachButtonHandlers()
-        {
-            rockButton.onClick.RemoveAllListeners();
-            paperButton.onClick.RemoveAllListeners();
-            scissorsButton.onClick.RemoveAllListeners();
         }
 
         private void SetChoiceButtonsInteractable(bool value)
@@ -222,40 +176,37 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
             scissorsButton.interactable = value;
         }
 
-        private async Task<(RoundOutcome myOutcome, Hand myHand, Hand opponentHand)> WaitForRoundResultAsync(CancellationToken token)
+        private void DetachButtonHandlers()
         {
-            var tcs = new TaskCompletionSource<(RoundOutcome, Hand, Hand)>(TaskCreationOptions.RunContinuationsAsynchronously);
-
-            void Handler(RoundOutcome outcome, Hand myHand, Hand opponentHand)
-            {
-                eventChannel.RoundResultReady -= Handler;
-                tcs.TrySetResult((outcome, myHand, opponentHand));
-            }
-
-            eventChannel.RoundResultReady += Handler;
-            using (token.Register(() =>
-                   {
-                       eventChannel.RoundResultReady -= Handler;
-                       tcs.TrySetCanceled(token);
-                   }))
-            {
-                return await tcs.Task;
-            }
+            rockButton.onClick.RemoveAllListeners();
+            paperButton.onClick.RemoveAllListeners();
+            scissorsButton.onClick.RemoveAllListeners();
         }
 
-        private async Task WaitForEndButtonAsync(CancellationToken token)
+        private async Task<Hand> WaitForLocalChoiceAsync(CancellationToken token)
         {
-            using (token.Register(endButton.Cancel))
-            {
-                await endButton.RunAsync(endButtonCountdownSeconds);
-            }
+            return await UIHelper.WaitForEventAsync<Hand>(
+                handler =>
+                {
+                    rockButton.onClick.AddListener(() => handler(Hand.Rock));
+                    paperButton.onClick.AddListener(() => handler(Hand.Paper));
+                    scissorsButton.onClick.AddListener(() => handler(Hand.Scissors));
+                    SetChoiceButtonsInteractable(true);
+                },
+                _ =>
+                {
+                    rockButton.onClick.RemoveAllListeners();
+                    paperButton.onClick.RemoveAllListeners();
+                    scissorsButton.onClick.RemoveAllListeners();
+                },
+                token);
         }
 
         private void ShowAbortPrompt(string reason)
         {
             var callback = eventChannel != null
-                ? () => eventChannel.RaiseGameAbortConfirmed()
-                : (Action)null;
+                ? new Action(eventChannel.RaiseGameAbortConfirmed)
+                : null;
 
             modalLayer?.Show(
                 string.IsNullOrWhiteSpace(reason) ? "Game aborted." : reason,

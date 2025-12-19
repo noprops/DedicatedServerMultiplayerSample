@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using DedicatedServerMultiplayerSample.Client;
+using DedicatedServerMultiplayerSample.Samples.Client.Data;
 using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu

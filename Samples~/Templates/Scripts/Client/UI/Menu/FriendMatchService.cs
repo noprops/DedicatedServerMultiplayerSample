@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 using DedicatedServerMultiplayerSample.Client;
+using DedicatedServerMultiplayerSample.Samples.Client.Data;
 using Unity.Services.Lobbies;
 using Unity.Services.Lobbies.Models;
 using UnityEngine;
@@ -25,6 +26,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         private Lobby _currentLobby;
         private CancellationTokenSource _heartbeatCts;
         private bool _isMatchmaking;
+
+        public event Action<ClientConnectionState> StateChanged;
 
         public FriendMatchService(
             ClientMatchmaker matchmaker,
@@ -88,6 +91,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             var sessionProps = _clientData?.GetSessionProperties() ?? new Dictionary<string, object>();
             _isMatchmaking = true;
 
+            void HandleStateChanged(ClientConnectionState state) => StateChanged?.Invoke(state);
+            _matchmaker.StateChanged += HandleStateChanged;
+
             try
             {
                 return await _matchmaker.MatchmakeAsync(
@@ -108,6 +114,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             }
             finally
             {
+                _matchmaker.StateChanged -= HandleStateChanged;
                 _isMatchmaking = false;
             }
         }

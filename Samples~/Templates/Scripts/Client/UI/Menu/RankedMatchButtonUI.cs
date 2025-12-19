@@ -2,6 +2,7 @@ using System;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using DedicatedServerMultiplayerSample.Client;
+using DedicatedServerMultiplayerSample.Samples.Client.Data;
 using DedicatedServerMultiplayerSample.Samples.Client.UI.Common;
 using UnityEngine;
 
@@ -13,7 +14,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
     public sealed class RankedMatchButtonUI : MonoBehaviour
     {
         private const string ReadyStatus = "Ready to start matchmaking";
-        private const int CancelCooldownSeconds = 3;
+        private const int CancelCooldownSeconds = 1;
 
         [SerializeField] private StartCancelUI controls;
         [SerializeField] private string queueName = "competitive-queue";

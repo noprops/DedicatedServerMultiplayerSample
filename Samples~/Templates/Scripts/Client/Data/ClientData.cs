@@ -1,7 +1,7 @@
 using System.Collections.Generic;
 using UnityEngine;
 
-namespace DedicatedServerMultiplayerSample.Samples.Client
+namespace DedicatedServerMultiplayerSample.Samples.Client.Data
 {
     /// <summary>
     /// Sample client data store that assembles matchmaking payloads (player, ticket, session, connection).
@@ -87,6 +87,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client
             return new Dictionary<string, object>
             {
                 ["playerName"] = PlayerName,
+                ["gameMode"] = GameMode,
                 ["gameVersion"] = GameVersion,
                 ["rank"] = Rank
             };

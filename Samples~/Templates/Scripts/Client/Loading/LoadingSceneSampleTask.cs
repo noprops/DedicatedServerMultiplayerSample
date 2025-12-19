@@ -2,7 +2,7 @@ using System.Threading.Tasks;
 using UnityEngine;
 using DedicatedServerMultiplayerSample.Client;
 
-namespace DedicatedServerMultiplayerSample.Samples.Client
+namespace DedicatedServerMultiplayerSample.Samples.Client.Loading
 {
     /// <summary>
     /// Sample task that injects custom work into the LoadingScene lifecycle.

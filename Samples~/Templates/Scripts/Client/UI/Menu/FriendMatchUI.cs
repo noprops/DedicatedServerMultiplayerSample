@@ -1,5 +1,6 @@
 using System;
 using DedicatedServerMultiplayerSample.Client;
+using DedicatedServerMultiplayerSample.Samples.Client.Data;
 using UnityEngine;
 using UnityEngine.UI;
 

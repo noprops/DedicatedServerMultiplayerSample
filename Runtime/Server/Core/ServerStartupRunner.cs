@@ -22,7 +22,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private MultiplaySessionService _multiplaySessionService;
 
         private bool _disposed;
-        private readonly TaskCompletionSource<bool> _clientWaitCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private readonly TaskCompletionSource<bool> _startupCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
         private const int WaitingPlayersTimeoutSeconds = 10;
         private const int SceneLoadTimeoutSeconds = 5;
@@ -36,6 +36,8 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             _connectionStack.AllPlayersDisconnected += HandleAllPlayersDisconnected;
         }
 
+        #region Public API
+
         public async Task<bool> StartAsync()
         {
             try
@@ -47,6 +49,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 var allocation = await _multiplaySessionService.AwaitAllocationAsync(CancellationToken.None);
                 if (!allocation.Success)
                 {
+                    _startupCompletion.TrySetResult(false);
                     ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, "Match allocation failed", ShutdownDelaySeconds);
                     return false;
                 }
@@ -57,6 +60,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 var sceneLoadTimeoutMs = (int)TimeSpan.FromSeconds(SceneLoadTimeoutSeconds).TotalMilliseconds;
                 if (!await _connectionStack.LoadSceneAsync("game", sceneLoadTimeoutMs, CancellationToken.None))
                 {
+                    _startupCompletion.TrySetResult(false);
                     ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, "Failed to load game scene", ShutdownDelaySeconds);
                     return false;
                 }
@@ -79,11 +83,17 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             }
             catch (Exception ex)
             {
+                _startupCompletion.TrySetResult(false);
                 Debug.LogError($"[ServerStartupRunner] Startup failed: {ex.Message}");
                 ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Error, ex.Message, ShutdownDelaySeconds);
                 return false;
             }
         }
+
+        /// <summary>
+        /// Await the result of <see cref="StartAsync"/> (true = clients gathered, false = failed/timeout).
+        /// </summary>
+        public Task<bool> WaitForStartupCompletionAsync() => _startupCompletion.Task;
 
         public void Dispose()
         {
@@ -120,21 +130,18 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             }
         }
 
-        public Task<bool> WaitForAllClientsAsync()
-        {
-            return _clientWaitCompletion.Task;
-        }
-
         public IReadOnlyList<ulong> GetReadyClientsSnapshot()
         {
             return _connectionStack.GetReadyClientsSnapshot();
         }
 
+        #endregion
+
         private async Task<bool> WaitForClientsWithTimeoutAsync(TimeSpan timeout)
         {
-            if (_clientWaitCompletion.Task.IsCompleted)
+            if (_startupCompletion.Task.IsCompleted)
             {
-                return await _clientWaitCompletion.Task;
+                return await _startupCompletion.Task;
             }
 
             var waitTask = _connectionStack.WaitForAllClientsAsync();
@@ -159,7 +166,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 }
             }
 
-            _clientWaitCompletion.TrySetResult(success);
+            _startupCompletion.TrySetResult(success);
             return success;
         }
 

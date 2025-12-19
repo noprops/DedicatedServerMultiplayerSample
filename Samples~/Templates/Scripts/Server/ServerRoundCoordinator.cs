@@ -18,23 +18,34 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
     {
         public const int RequiredGamePlayers = 2;
         public const ulong CpuPlayerBaseId = 100;
+        private const int HandCollectionTimeoutSeconds = 10;
+        private const int ResultConfirmTimeoutSeconds = 20;
 
         private readonly ulong[] _clientIds = new ulong[RequiredGamePlayers];
         private readonly Dictionary<ulong, string> _playerNames = new();
         private ServerStartupRunner _startupRunner;
         [SerializeField] private RpsGameEventChannel eventChannel;
+        private RpsRoundCollectionSink _sink;
 
         private static readonly int ShutdownDelay = 10;
 
         /// <summary>
         /// Kicks off the server-side orchestration once the scene loads.
         /// </summary>
-        private void Start()
+        private async void Start()
         {
             _startupRunner = ServerSingleton.Instance?.StartupRunner;
             if (_startupRunner == null)
             {
                 Debug.LogError("[ServerRoundCoordinator] No ServerStartupRunner; shutting down");
+                return;
+            }
+
+            var startupSucceeded = await _startupRunner.WaitForStartupCompletionAsync();
+            if (!startupSucceeded)
+            {
+                Debug.LogWarning("[ServerRoundCoordinator] Startup did not complete successfully; aborting.");
+                BroadcastGameAbort("Failed to start the game.");
                 return;
             }
 
@@ -46,6 +57,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         private void OnDestroy()
         {
+            _sink?.Dispose();
             _startupRunner = null;
         }
 
@@ -56,25 +68,27 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             try
             {
-                await eventChannel.WaitUntilReadyAsync();
+                _sink = new RpsRoundCollectionSink(eventChannel);
+                await _sink.WaitForChannelReadyAsync();
 
                 Debug.Log("[ServerRoundCoordinator] RunRoundAsync starting");
-                var ready = await _startupRunner.WaitForAllClientsAsync();
                 var connectedIds = _startupRunner.GetReadyClientsSnapshot() ?? Array.Empty<ulong>();
-                if (!ready || connectedIds.Count == 0)
-                {
-                    Debug.LogWarning("[ServerRoundCoordinator] Failed to gather required clients.");
-                    BroadcastGameAbort("Failed to start the game.");
-                    ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.StartTimeout, "Clients did not join in time", ShutdownDelay);
-                    return;
-                }
-
                 SetPlayerSlots(connectedIds);
 
-                var result = await CollectHandsAndResolveRoundAsync();
-                Debug.LogFormat("[ServerRoundCoordinator] Round resolved. P1={0}({1}), P2={2}({3})",
-                    result.Player1Id, result.Player1Hand, result.Player2Id, result.Player2Hand);
-                await NotifyResultsAndAwaitExitAsync(result, TimeSpan.FromSeconds(20));
+                // Only send player identities once at the start.
+                BroadcastPlayersReady();
+
+                bool continueGame;
+                do
+                {
+                    _sink.ResetForNewRound();
+
+                    var result = await CollectHandsAndResolveRoundAsync();
+                    Debug.LogFormat("[ServerRoundCoordinator] Round resolved. P1={0}({1}), P2={2}({3})",
+                        result.Player1Id, result.Player1Hand, result.Player2Id, result.Player2Hand);
+                    continueGame = await NotifyResultsAndAwaitExitAsync(result, TimeSpan.FromSeconds(ResultConfirmTimeoutSeconds));
+                } while (continueGame);
+
                 Debug.Log("[ServerRoundCoordinator] Round acknowledgements satisfied; requesting shutdown");
                 ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Normal, "Game completed", ShutdownDelay);
             }
@@ -136,61 +150,43 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         }
 
         /// <summary>
-        /// Sends per-client round start notifications via the dispatcher.
-        /// </summary>
-        /// <summary>
         /// Registers choice handlers, notifies clients to start, and waits for both hands before resolving the round.
         /// </summary>
         private async Task<RpsResult> CollectHandsAndResolveRoundAsync()
         {
             var logic = new RockPaperScissorsGameLogic(_clientIds);
 
-            // Callback invoked whenever a player submits their hand.
-            void ChoiceHandler(ulong playerId, Hand hand)
+            Dictionary<ulong, Hand> choices;
+            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(HandCollectionTimeoutSeconds)))
             {
-                if (IsCpuId(playerId) || Array.IndexOf(_clientIds, playerId) < 0)
+                try
                 {
-                    Debug.LogWarningFormat("[ServerRoundCoordinator] Rejecting submit from {0} (cpu or unknown)", playerId);
-                    return;
+                    choices = await _sink.WaitForChoicesAsync(_clientIds, cts.Token);
                 }
-
-                if (hand == Hand.None)
+                catch (TaskCanceledException)
                 {
-                    Debug.LogWarningFormat("[ServerRoundCoordinator] Rejecting empty hand from {0}", playerId);
-                    return;
+                    Debug.LogWarning("[ServerRoundCoordinator] Hand collection timed out; filling missing hands.");
+                    choices = new Dictionary<ulong, Hand>();
                 }
-
-                var accepted = logic.SubmitHand(playerId, hand);
-                Debug.LogFormat("[ServerRoundCoordinator] Submit from {0} hand={1} accepted={2}", playerId, hand, accepted);
             }
 
-            eventChannel.ChoiceSelected += ChoiceHandler;
-
-            try
+            // Submit CPU hands via the channel so they are captured by the sink.
+            foreach (var id in _clientIds)
             {
-                BroadcastRoundStart();
-
-                // Auto-submit a random hand on behalf of CPU participants.
-                foreach (var id in _clientIds)
+                if (IsCpuId(id))
                 {
-                    if (IsCpuId(id))
-                    {
-                        logic.SubmitHand(id, HandExtensions.RandomHand());
-                    }
+                    var cpuHand = HandExtensions.RandomHand();
+                    eventChannel.RaiseChoiceSelectedForPlayer(id, cpuHand);
                 }
+            }
 
-                return await logic.RunAsync();
-            }
-            finally
-            {
-                eventChannel.ChoiceSelected -= ChoiceHandler;
-            }
+            return logic.ResolveRound(choices);
         }
 
         /// <summary>
-        /// Sends per-client round start notifications via the dispatcher.
+        /// Sends per-client ready notifications via the dispatcher.
         /// </summary>
-        private void BroadcastRoundStart()
+        private void BroadcastPlayersReady()
         {
             var player1Id = _clientIds[0];
             var player2Id = _clientIds[1];
@@ -198,19 +194,19 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             var player1Name = _playerNames[player1Id];
             var player2Name = _playerNames[player2Id];
 
-            Debug.LogFormat("[ServerRoundCoordinator] Broadcasting round start. P1={0}({1}), P2={2}({3})",
+            Debug.LogFormat("[ServerRoundCoordinator] Broadcasting players ready. P1={0}({1}), P2={2}({3})",
                 player1Id, player1Name, player2Id, player2Name);
 
-            eventChannel.RaiseRoundStarted(player1Id, player1Name, player2Id, player2Name);
+            eventChannel.RaisePlayersReady(player1Id, player1Name, player2Id, player2Name);
         }
         /// <summary>
         /// Informs each human client of their personal round results.
         /// </summary>
-        private void BroadcastRoundResult(RpsResult result)
+        private void BroadcastRoundResult(RpsResult result, bool canContinue)
         {
             eventChannel.RaiseRoundResult(
                 result.Player1Id, result.Player1Outcome, result.Player1Hand,
-                result.Player2Id, result.Player2Outcome, result.Player2Hand);
+                result.Player2Id, result.Player2Outcome, result.Player2Hand, canContinue);
 
             Debug.LogFormat("[ServerRoundCoordinator] Sent RoundEnded: P1({0}) hand={1} outcome={2}; P2({3}) hand={4} outcome={5}",
                 result.Player1Id, result.Player1Hand, result.Player1Outcome,
@@ -228,52 +224,87 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Broadcasts the round outcome and waits until every human player confirms or the timeout elapses.
         /// </summary>
-        private async Task NotifyResultsAndAwaitExitAsync(RpsResult result, TimeSpan timeout)
+        private async Task<bool> NotifyResultsAndAwaitExitAsync(RpsResult result, TimeSpan timeout)
         {
             var pending = new HashSet<ulong>(_clientIds.Where(id => !IsCpuId(id)));
 
             if (pending.Count == 0)
             {
-                return;
+                return false;
             }
 
-            using var awaiter = new SimpleSignalAwaiter(timeout);
+            using var cts = new CancellationTokenSource(timeout);
+            var continueVotes = new Dictionary<ulong, bool>();
 
-            void Handler(ulong playerId)
-            {
-                if (!pending.Remove(playerId))
-                {
-                    return;
-                }
-
-                if (pending.Count == 0)
-                {
-                    awaiter.OnSignal();
-                }
-            }
-
-            eventChannel.RoundResultConfirmed += Handler;
+            var canContinue = ShouldAllowContinue();
+            BroadcastRoundResult(result, canContinue);
 
             try
             {
-                BroadcastRoundResult(result);
-
-                try
+                var votes = await _sink.WaitForConfirmationsAsync(pending, cts.Token);
+                foreach (var kvp in votes)
                 {
-                    await awaiter.WaitAsync();
-                }
-                catch (OperationCanceledException)
-                {
-                    // Timeout expired; continue shutdown anyway.
+                    continueVotes[kvp.Key] = kvp.Value;
                 }
             }
-            finally
+            catch (TaskCanceledException)
             {
-                eventChannel.RoundResultConfirmed -= Handler;
+                // Timeout expired; proceed to shutdown.
             }
+
+            var allResponded = pending.All(id => continueVotes.ContainsKey(id));
+            return allResponded && continueVotes.Count > 0 && continueVotes.Values.All(v => v);
         }
 
         private static bool IsCpuId(ulong clientId) => clientId >= CpuPlayerBaseId;
+
+        private bool ShouldAllowContinue()
+        {
+            return IsFriendMatch() && AreAllClientsConnected();
+        }
+
+        private bool IsFriendMatch()
+        {
+            var firstId = _clientIds[0];
+            if (IsCpuId(firstId))
+            {
+                return false;
+            }
+
+            if (_startupRunner != null &&
+                _startupRunner.TryGetPlayerPayloadValue(firstId, "gameMode", out string mode) &&
+                !string.IsNullOrWhiteSpace(mode))
+            {
+                return string.Equals(mode, "friend", StringComparison.OrdinalIgnoreCase);
+            }
+
+            return false;
+        }
+
+        private bool AreAllClientsConnected()
+        {
+            var connected = Unity.Netcode.NetworkManager.Singleton?.ConnectedClientsIds;
+            if (connected == null)
+            {
+                return false;
+            }
+
+            foreach (var id in _clientIds)
+            {
+                if (IsCpuId(id))
+                {
+                    // Any CPU slot means we are not in a full-human match.
+                    return false;
+                }
+
+                if (!connected.Contains(id))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
     }
 }
 #endif

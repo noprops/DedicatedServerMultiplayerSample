@@ -6,7 +6,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
     /// <summary>
     /// Netcode-backed implementation of <see cref="RpsGameEventChannel"/> bridging UI and server logic.
     /// A companion <see cref="NetworkGameEventChannelRpcProxy"/> component handles the RPC surface while
-    /// this class keeps the transport-agnostic API that UI / gameplay code consumes。
+    /// this class keeps the transport-agnostic API that UI / gameplay code consumes.
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(NetworkGameEventChannelRpcProxy))]
@@ -37,9 +37,17 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             HandleClientChoiceSelected(choice);
         }
 
-        public override void RaiseRoundResultConfirmed()
+        public override void RaiseRoundResultConfirmed(bool continueGame)
         {
-            HandleClientRoundResultConfirmed();
+            HandleClientRoundResultConfirmed(continueGame);
+        }
+
+        /// <summary>
+        /// Used by the RPC proxy to surface a received choice with a known player id.
+        /// </summary>
+        internal void ReceiveChoice(ulong playerId, Hand hand)
+        {
+            InvokeChoiceSelected(playerId, hand);
         }
 
         public override void RaiseGameAbortConfirmed()
@@ -48,15 +56,15 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         }
 
         // ==== Game Logic → UI ====
-        public override void RaiseRoundStarted(ulong player1Id, string player1Name, ulong player2Id, string player2Name)
+        public override void RaisePlayersReady(ulong player1Id, string player1Name, ulong player2Id, string player2Name)
         {
-            rpcProxy.SendRoundStarted(player1Id, player1Name, player2Id, player2Name);
+            rpcProxy.SendPlayersReady(player1Id, player1Name, player2Id, player2Name);
         }
 
         public override void RaiseRoundResult(ulong player1Id, RoundOutcome player1Outcome, Hand player1Hand,
-            ulong player2Id, RoundOutcome player2Outcome, Hand player2Hand)
+            ulong player2Id, RoundOutcome player2Outcome, Hand player2Hand, bool canContinue)
         {
-            rpcProxy.SendRoundResult(player1Id, player1Outcome, player1Hand, player2Id, player2Outcome, player2Hand);
+            rpcProxy.SendRoundResult(player1Id, player1Outcome, player1Hand, player2Id, player2Outcome, player2Hand, canContinue);
         }
 
         public override void RaiseGameAborted(string message)
@@ -66,7 +74,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
         // Partial hooks for client-specific behavior
         partial void HandleClientChoiceSelected(Hand choice);
-        partial void HandleClientRoundResultConfirmed();
+        partial void HandleClientRoundResultConfirmed(bool continueGame);
         partial void HandleClientAbortConfirmed();
     }
 }

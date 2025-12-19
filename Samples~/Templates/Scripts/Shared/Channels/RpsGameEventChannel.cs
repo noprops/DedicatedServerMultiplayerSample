@@ -1,6 +1,4 @@
 using System;
-using System.Threading;
-using System.Threading.Tasks;
 using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
@@ -17,35 +15,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         public event Action ChannelReady;
 
-        private TaskCompletionSource<bool> _readyTcs = new(TaskCreationOptions.RunContinuationsAsynchronously);
-
         /// <summary>
         /// Indicates that <see cref="NotifyChannelReady"/> has already run.
         /// </summary>
         public bool IsChannelReady { get; private set; }
-
-        /// <summary>
-        /// Provides an awaitable that completes once the channel reports readiness.
-        /// </summary>
-        public Task WaitUntilReadyAsync(CancellationToken token = default)
-        {
-            if (IsChannelReady)
-            {
-                return Task.CompletedTask;
-            }
-
-            if (!token.CanBeCanceled)
-            {
-                return _readyTcs.Task;
-            }
-
-            if (token.IsCancellationRequested)
-            {
-                return Task.FromCanceled(token);
-            }
-
-            return WaitUntilReadyWithCancellationAsync(token);
-        }
 
         /// <summary>
         /// Marks the channel as ready and notifies listeners exactly once.
@@ -58,7 +31,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
 
             IsChannelReady = true;
-            _readyTcs.TrySetResult(true);
             ChannelReady?.Invoke();
         }
 
@@ -68,20 +40,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         protected internal void ResetChannelReadiness()
         {
             IsChannelReady = false;
-            if (_readyTcs.Task.IsCompleted)
-            {
-                _readyTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            }
-        }
-
-        private async Task WaitUntilReadyWithCancellationAsync(CancellationToken token)
-        {
-            var cancelTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-            using (token.Register(() => cancelTcs.TrySetCanceled(token)))
-            {
-                var completed = await Task.WhenAny(_readyTcs.Task, cancelTcs.Task);
-                await completed;
-            }
         }
 
         // ==== UI -> Game Logic ====
@@ -93,6 +51,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         public abstract void RaiseChoiceSelected(Hand choice);
 
         /// <summary>
+        /// Used by gameplay systems that need to relay a choice on behalf of a specific player
+        /// (e.g., CPU submissions in local mode).
+        /// </summary>
+        public abstract void RaiseChoiceSelectedForPlayer(ulong playerId, Hand hand);
+
+        /// <summary>
         /// Fired when the gameplay layer receives a confirmed hand for a specific player.
         /// </summary>
         public event Action<ulong, Hand> ChoiceSelected;
@@ -100,7 +64,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Notifies subscribers that a player's hand has been captured.
         /// </summary>
-        protected internal void InvokeChoiceSelected(ulong playerId, Hand hand)
+        protected void InvokeChoiceSelected(ulong playerId, Hand hand)
         {
             ChoiceSelected?.Invoke(playerId, hand);
         }
@@ -108,19 +72,19 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Called by the UI when the player presses OK on the result dialog.
         /// </summary>
-        public abstract void RaiseRoundResultConfirmed();
+        public abstract void RaiseRoundResultConfirmed(bool continueGame);
 
         /// <summary>
         /// Fired when the gameplay layer receives the confirmation signal from a client.
         /// </summary>
-        public event Action<ulong> RoundResultConfirmed;
+        public event Action<ulong, bool> RoundResultConfirmed;
 
         /// <summary>
         /// Notifies subscribers that a player has acknowledged the round result.
         /// </summary>
-        protected internal void InvokeRoundResultConfirmed(ulong playerId)
+        protected internal void InvokeRoundResultConfirmed(ulong playerId, bool continueGame)
         {
-            RoundResultConfirmed?.Invoke(playerId);
+            RoundResultConfirmed?.Invoke(playerId, continueGame);
         }
 
         /// <summary>
@@ -132,40 +96,46 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         // ==== Game Logic -> UI ====
 
         /// <summary>
-        /// Called by gameplay logic to instruct clients to show the choice UI with player identities.
+        /// Called by gameplay logic once, to inform clients that all players are ready and provide identities.
         /// </summary>
-        public abstract void RaiseRoundStarted(ulong player1Id, string player1Name, ulong player2Id, string player2Name);
+        public abstract void RaisePlayersReady(ulong player1Id, string player1Name, ulong player2Id, string player2Name);
 
         /// <summary>
-        /// Fired when the UI should display the round-start panel.
+        /// Fired when the UI should initialize with player identities.
         /// </summary>
-        public event Action<string, string> RoundStarted;
+        public event Action<string, string> PlayersReady;
 
         /// <summary>
         /// Notifies subscribers that a round has officially begun.
         /// </summary>
-        protected internal void InvokeRoundStarted(string myName, string opponentName)
+        protected internal void InvokePlayersReady(string myName, string opponentName)
         {
-            RoundStarted?.Invoke(myName, opponentName);
+            PlayersReady?.Invoke(myName, opponentName);
         }
 
         /// <summary>
         /// Called by gameplay logic to deliver the final outcome to all clients.
         /// </summary>
-        public abstract void RaiseRoundResult(ulong player1Id, RoundOutcome player1Outcome, Hand player1Hand,
-            ulong player2Id, RoundOutcome player2Outcome, Hand player2Hand);
+        public abstract void RaiseRoundResult(
+            ulong player1Id,
+            RoundOutcome player1Outcome,
+            Hand player1Hand,
+            ulong player2Id,
+            RoundOutcome player2Outcome,
+            Hand player2Hand,
+            bool canContinue);
 
         /// <summary>
         /// Fired when the UI should switch to the result view with the supplied data.
         /// </summary>
-        public event Action<RoundOutcome, Hand, Hand> RoundResultReady;
+        public event Action<RoundOutcome, Hand, Hand, bool> RoundResultReady;
 
         /// <summary>
         /// Notifies subscribers that a round result has been computed.
         /// </summary>
-        protected internal void InvokeRoundResult(RoundOutcome myOutcome, Hand myHand, Hand opponentHand)
+        protected internal void InvokeRoundResult(RoundOutcome myOutcome, Hand myHand, Hand opponentHand, bool canContinue)
         {
-            RoundResultReady?.Invoke(myOutcome, myHand, opponentHand);
+            RoundResultReady?.Invoke(myOutcome, myHand, opponentHand, canContinue);
         }
 
         /// <summary>
@@ -180,11 +150,24 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         public event Action<string> GameAborted;
 
         /// <summary>
+        /// Fired when the player acknowledged the abort prompt.
+        /// </summary>
+        public event Action GameAbortConfirmed;
+
+        /// <summary>
         /// Notifies subscribers that the match cannot continue.
         /// </summary>
         protected internal void InvokeGameAborted(string message)
         {
             GameAborted?.Invoke(message);
+        }
+
+        /// <summary>
+        /// Notifies subscribers that the player confirmed abort.
+        /// </summary>
+        protected internal void InvokeGameAbortConfirmed()
+        {
+            GameAbortConfirmed?.Invoke();
         }
     }
 }
