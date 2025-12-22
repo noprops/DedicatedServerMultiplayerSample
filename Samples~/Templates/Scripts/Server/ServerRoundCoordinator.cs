@@ -18,15 +18,13 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
     {
         public const int RequiredGamePlayers = 2;
         public const ulong CpuPlayerBaseId = 100;
-        private const int HandCollectionTimeoutSeconds = 10;
+        private const int HandCollectionTimeoutSeconds = 15;
         private const int ResultConfirmTimeoutSeconds = 20;
 
         private readonly ulong[] _clientIds = new ulong[RequiredGamePlayers];
         private readonly Dictionary<ulong, string> _playerNames = new();
         private ServerStartupRunner _startupRunner;
         [SerializeField] private RpsGameEventChannel eventChannel;
-        private RpsRoundCollectionSink _sink;
-
         private static readonly int ShutdownDelay = 10;
 
         /// <summary>
@@ -57,7 +55,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         private void OnDestroy()
         {
-            _sink?.Dispose();
             _startupRunner = null;
         }
 
@@ -68,8 +65,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             try
             {
-                _sink = new RpsRoundCollectionSink(eventChannel);
-                await _sink.WaitForChannelReadyAsync();
+                await eventChannel.WaitForChannelReadyAsync();
 
                 Debug.Log("[ServerRoundCoordinator] RunRoundAsync starting");
                 var connectedIds = _startupRunner.GetReadyClientsSnapshot() ?? Array.Empty<ulong>();
@@ -81,7 +77,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 bool continueGame;
                 do
                 {
-                    _sink.ResetForNewRound();
+                    eventChannel.ResetRoundAwaiters();
 
                     var result = await CollectHandsAndResolveRoundAsync();
                     Debug.LogFormat("[ServerRoundCoordinator] Round resolved. P1={0}({1}), P2={2}({3})",
@@ -161,22 +157,24 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             {
                 try
                 {
-                    choices = await _sink.WaitForChoicesAsync(_clientIds, cts.Token);
+                    var choicesTask = eventChannel.WaitForChoicesAsync(_clientIds, cts.Token);
+
+                    // Submit CPU hands after waiters are registered so they are counted.
+                    foreach (var id in _clientIds)
+                    {
+                        if (IsCpuId(id))
+                        {
+                            var cpuHand = HandExtensions.RandomHand();
+                            eventChannel.RaiseChoiceSelectedForPlayer(id, cpuHand);
+                        }
+                    }
+
+                    choices = await choicesTask;
                 }
                 catch (TaskCanceledException)
                 {
                     Debug.LogWarning("[ServerRoundCoordinator] Hand collection timed out; filling missing hands.");
                     choices = new Dictionary<ulong, Hand>();
-                }
-            }
-
-            // Submit CPU hands via the channel so they are captured by the sink.
-            foreach (var id in _clientIds)
-            {
-                if (IsCpuId(id))
-                {
-                    var cpuHand = HandExtensions.RandomHand();
-                    eventChannel.RaiseChoiceSelectedForPlayer(id, cpuHand);
                 }
             }
 
@@ -241,7 +239,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
             try
             {
-                var votes = await _sink.WaitForConfirmationsAsync(pending, cts.Token);
+                var votes = await eventChannel.WaitForConfirmationsAsync(pending, cts.Token);
                 foreach (var kvp in votes)
                 {
                     continueVotes[kvp.Key] = kvp.Value;

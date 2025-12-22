@@ -165,7 +165,7 @@ MonoBehaviour:
   m_Script: {fileID: 11500000, guid: fde513dffd3f244c8ad176a29953b32a, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
-  matchmakingPayloadProviderBehaviour: {fileID: 2004}
+  maxPlayers: 2
 --- !u!1652712579 &2003
 MultiplayerRolesData:
   m_ObjectHideFlags: 2
@@ -184,7 +184,7 @@ MonoBehaviour:
   m_GameObject: {fileID: 2000}
   m_Enabled: 1
   m_EditorHideFlags: 0
-  m_Script: {fileID: 11500000, guid: d6d24ec0a4d54661a43e45294fa9f2f0, type: 3}
+  m_Script: {fileID: 11500000, guid: c5ed2d4b7f18f43a79e2d3320c497299, type: 3}
   m_Name: 
   m_EditorClassIdentifier: 
 --- !u!1 &3000

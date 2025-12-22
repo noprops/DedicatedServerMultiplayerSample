@@ -16,13 +16,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
     public sealed class LocalRoundCoordinator : MonoBehaviour
     {
         private static readonly ulong[] PlayerOrder = { LocalMatchIds.LocalPlayerId, LocalMatchIds.CpuPlayerId };
-        private const int ResultConfirmTimeoutSeconds = 10;
-        private const int HandCollectionTimeoutSeconds = 10;
+        private const int ResultConfirmTimeoutSeconds = 20;
+        private const int HandCollectionTimeoutSeconds = 15;
 
         [SerializeField] private RpsGameEventChannel eventChannel;
 
         private string _localPlayerName;
-        private RpsRoundCollectionSink _sink;
         private RockPaperScissorsGameLogic _logic;
         private const string CpuDisplayName = "CPU";
 
@@ -40,7 +39,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
                 return;
             }
 
-            _sink = new RpsRoundCollectionSink(eventChannel);
             _localPlayerName = ClientData.Instance?.PlayerName;
             Debug.Log("[LocalRoundCoordinator] Initialized and starting local round.");
             eventChannel.GameAbortConfirmed += HandleGameAbortConfirmed;
@@ -54,7 +52,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
                 eventChannel.GameAbortConfirmed -= HandleGameAbortConfirmed;
             }
 
-            _sink?.Dispose();
             _logic = null;
         }
 
@@ -65,7 +62,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
         {
             try
             {
-                await _sink.WaitForChannelReadyAsync();
+                await eventChannel.WaitForChannelReadyAsync();
                 eventChannel.RaisePlayersReady(LocalMatchIds.LocalPlayerId, _localPlayerName, LocalMatchIds.CpuPlayerId, CpuDisplayName);
                 await RunRoundAsync();
             }
@@ -81,7 +78,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
         /// </summary>
         private async Task RunRoundAsync()
         {
-            _sink.ResetForNewRound();
+            eventChannel.ResetRoundAwaiters();
             _logic = new RockPaperScissorsGameLogic(PlayerOrder);
 
             var choices = await CollectHandsAsync(TimeSpan.FromSeconds(HandCollectionTimeoutSeconds));
@@ -95,12 +92,14 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
         {
             var awaitedIds = new[] { LocalMatchIds.LocalPlayerId, LocalMatchIds.CpuPlayerId };
             var cpuHand = HandExtensions.RandomHand();
-            eventChannel.RaiseChoiceSelectedForPlayer(LocalMatchIds.CpuPlayerId, cpuHand);
 
             try
             {
                 using var cts = new CancellationTokenSource(timeout);
-                var choices = await _sink.WaitForChoicesAsync(awaitedIds, cts.Token);
+                var choicesTask = eventChannel.WaitForChoicesAsync(awaitedIds, cts.Token);
+                // Send CPU hand after waiters are registered so it is counted.
+                eventChannel.RaiseChoiceSelectedForPlayer(LocalMatchIds.CpuPlayerId, cpuHand);
+                var choices = await choicesTask;
                 return choices;
             }
             catch (TaskCanceledException)
@@ -120,7 +119,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
 
             try
             {
-                var confirmations = await _sink.WaitForConfirmationsAsync(new[] { LocalMatchIds.LocalPlayerId }, cts.Token);
+                var confirmations = await eventChannel.WaitForConfirmationsAsync(new[] { LocalMatchIds.LocalPlayerId }, cts.Token);
                 continueGame = confirmations.TryGetValue(LocalMatchIds.LocalPlayerId, out var vote) && vote;
             }
             catch (TaskCanceledException)

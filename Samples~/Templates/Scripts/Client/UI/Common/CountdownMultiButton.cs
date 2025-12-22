@@ -20,6 +20,32 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Common
         private readonly List<(Button button, UnityEngine.Events.UnityAction listener)> _listeners = new();
         private Coroutine _countdownRoutine;
 
+        public int ButtonCount => buttons?.Count ?? 0;
+
+        public void SetButtonsActive(bool active)
+        {
+            if (buttons == null) return;
+            foreach (var btn in buttons)
+            {
+                if (btn != null)
+                {
+                    btn.gameObject.SetActive(active);
+                }
+            }
+        }
+
+        public void SetButtonsInteractable(bool interactable)
+        {
+            if (buttons == null) return;
+            foreach (var btn in buttons)
+            {
+                if (btn != null)
+                {
+                    btn.interactable = interactable;
+                }
+            }
+        }
+
         public void Cancel()
         {
             Complete(new CountdownMultiButtonResult

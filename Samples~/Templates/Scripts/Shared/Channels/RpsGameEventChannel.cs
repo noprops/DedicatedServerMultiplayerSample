@@ -1,4 +1,8 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
@@ -10,6 +14,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
     /// </summary>
     public abstract class RpsGameEventChannel : MonoBehaviour
     {
+        // Awaitable helper encapsulating TCS/buffering logic.
+        private readonly RpsChannelAwaiter _awaiter = new();
+
         /// <summary>
         /// Raised once the channel is ready for UI/gameplay components to subscribe.
         /// </summary>
@@ -31,6 +38,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             }
 
             IsChannelReady = true;
+            _awaiter.RecordChannelReady();
             ChannelReady?.Invoke();
         }
 
@@ -40,7 +48,14 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         protected internal void ResetChannelReadiness()
         {
             IsChannelReady = false;
+            ResetAwaitersForChannel();
         }
+
+        /// <summary>
+        /// Await channel readiness; returns immediately if already ready.
+        /// </summary>
+        public Task WaitForChannelReadyAsync(CancellationToken token = default)
+            => _awaiter.WaitForChannelReadyAsync(token);
 
         // ==== UI -> Game Logic ====
 
@@ -54,7 +69,13 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// Used by gameplay systems that need to relay a choice on behalf of a specific player
         /// (e.g., CPU submissions in local mode).
         /// </summary>
-        public abstract void RaiseChoiceSelectedForPlayer(ulong playerId, Hand hand);
+        /// <summary>
+        /// Used by gameplay systems that need to relay a choice on behalf of a specific player
+        /// (e.g., CPU submissions in local mode). Default implementation is a no-op.
+        /// </summary>
+        public virtual void RaiseChoiceSelectedForPlayer(ulong playerId, Hand hand)
+        {
+        }
 
         /// <summary>
         /// Fired when the gameplay layer receives a confirmed hand for a specific player.
@@ -67,6 +88,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         protected void InvokeChoiceSelected(ulong playerId, Hand hand)
         {
             ChoiceSelected?.Invoke(playerId, hand);
+            _awaiter.RecordChoice(playerId, hand);
         }
 
         /// <summary>
@@ -85,6 +107,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         protected internal void InvokeRoundResultConfirmed(ulong playerId, bool continueGame)
         {
             RoundResultConfirmed?.Invoke(playerId, continueGame);
+            _awaiter.RecordConfirmation(playerId, continueGame);
         }
 
         /// <summary>
@@ -111,6 +134,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         protected internal void InvokePlayersReady(string myName, string opponentName)
         {
             PlayersReady?.Invoke(myName, opponentName);
+            _awaiter.RecordPlayersReady(myName, opponentName);
         }
 
         /// <summary>
@@ -136,6 +160,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         protected internal void InvokeRoundResult(RoundOutcome myOutcome, Hand myHand, Hand opponentHand, bool canContinue)
         {
             RoundResultReady?.Invoke(myOutcome, myHand, opponentHand, canContinue);
+            _awaiter.RecordRoundResult(myOutcome, myHand, opponentHand, canContinue);
         }
 
         /// <summary>
@@ -160,6 +185,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         protected internal void InvokeGameAborted(string message)
         {
             GameAborted?.Invoke(message);
+            _awaiter.RecordGameAborted(message);
         }
 
         /// <summary>
@@ -168,6 +194,51 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         protected internal void InvokeGameAbortConfirmed()
         {
             GameAbortConfirmed?.Invoke();
+        }
+
+        // ==== Awaitable helpers (UI-facing) ====
+
+        public Task<(string myName, string opponentName)> WaitForPlayersReadyAsync(CancellationToken token = default)
+            => _awaiter.WaitForPlayersReadyAsync(token);
+
+        public Task<(RoundOutcome outcome, Hand myHand, Hand opponentHand, bool canContinue)> WaitForRoundResultAsync(CancellationToken token = default)
+            => _awaiter.WaitForRoundResultAsync(token);
+
+        public Task<string> WaitForGameAbortedAsync(CancellationToken token = default)
+            => _awaiter.WaitForGameAbortedAsync(token);
+
+        /// <summary>
+        /// Call once per round to reset per-round UI awaiters.
+        /// </summary>
+        public void ResetResultAwaiter()
+        {
+            _awaiter.ResetResultAwaiter();
+        }
+
+        // ==== Awaitable helpers (choice/confirmation collection) ====
+
+        public Task<Dictionary<ulong, Hand>> WaitForChoicesAsync(IEnumerable<ulong> expectedPlayerIds, CancellationToken token = default)
+        {
+            if (expectedPlayerIds == null) throw new ArgumentNullException(nameof(expectedPlayerIds));
+            var ids = new HashSet<ulong>(expectedPlayerIds);
+            return _awaiter.WaitForChoicesAsync(ids, token);
+        }
+
+        public Task<Dictionary<ulong, bool>> WaitForConfirmationsAsync(IEnumerable<ulong> expectedPlayerIds, CancellationToken token = default)
+        {
+            if (expectedPlayerIds == null) throw new ArgumentNullException(nameof(expectedPlayerIds));
+            var ids = new HashSet<ulong>(expectedPlayerIds);
+            return _awaiter.WaitForConfirmationsAsync(ids, token);
+        }
+
+        public void ResetRoundAwaiters()
+        {
+            _awaiter.ResetRoundAwaiters();
+        }
+
+        private void ResetAwaitersForChannel()
+        {
+            _awaiter.ResetAllAwaiters();
         }
     }
 }

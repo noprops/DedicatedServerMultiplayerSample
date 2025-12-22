@@ -24,6 +24,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
         [SerializeField] private Button rockButton;
         [SerializeField] private Button paperButton;
         [SerializeField] private Button scissorsButton;
+        [SerializeField] private CountdownMultiButton choiceButtonsCountdown;
+        [SerializeField] private float choiceButtonCountdownSeconds = 10f;
 
         [Header("Result Panel")]
         [SerializeField] private GameObject resultPanel;
@@ -37,8 +39,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
         [SerializeField] private float abortPromptDurationSeconds = 5f;
 
         [SerializeField] private RpsGameEventChannel eventChannel;
-
-        private RpsUiEventSink _uiSink;
 
         // Cancels the ongoing async UI loop (used when abort notifications arrive or the object is destroyed).
         private CancellationTokenSource _lifecycleCts;
@@ -71,8 +71,20 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                 enabled = false;
                 return;
             }
+            if (choiceButtonsCountdown == null)
+            {
+                Debug.LogError("[RockPaperScissorsUI] Choice countdown must be assigned.");
+                enabled = false;
+                return;
+            }
+            // choiceButtonsCountdownのボタンはrock/paper/scissorsの3つに対応させる。
+            if (choiceButtonsCountdown.ButtonCount < 3)
+            {
+                Debug.LogError("[RockPaperScissorsUI] Choice buttons must include rock/paper/scissors.");
+                enabled = false;
+                return;
+            }
 
-            _uiSink = new RpsUiEventSink(eventChannel);
             _lifecycleCts = new CancellationTokenSource();
             _ = RunUiLoopAsync(_lifecycleCts.Token);
         }
@@ -82,8 +94,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
             _lifecycleCts?.Cancel();
             _lifecycleCts?.Dispose();
             _lifecycleCts = null;
-            _uiSink?.Dispose();
-            DetachButtonHandlers();
         }
 
         /// <summary>
@@ -93,34 +103,33 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
         {
             try
             {
-                await _uiSink.WaitForChannelReadyAsync(token);
+                await eventChannel.WaitForChannelReadyAsync(token);
                 eventChannel.GameAborted += HandleGameAborted;
 
-                var intro = await _uiSink.WaitForPlayersReadyAsync(token);
+                var intro = await eventChannel.WaitForPlayersReadyAsync(token);
 
                 while (!token.IsCancellationRequested)
                 {
-                    _uiSink.ResetForNewRound();
+                    eventChannel.ResetResultAwaiter();
                     ShowChoicePanel(intro.myName, intro.opponentName);
 
                     var selected = await WaitForLocalChoiceAsync(token);
                     statusText.text = "Waiting for opponent to select...";
                     eventChannel.RaiseChoiceSelected(selected);
 
-                    var result = await _uiSink.WaitForRoundResultAsync(token);
+                    var result = await eventChannel.WaitForRoundResultAsync(token);
                     ShowResult(result.outcome, result.myHand, result.opponentHand, result.canContinue);
 
-                var selection = await continueQuitButtons.RunAsync(endButtonCountdownSeconds);
-                var continueGame = result.canContinue
+                    var selection = await continueQuitButtons.RunAsync(endButtonCountdownSeconds);
+                    var continueGame = result.canContinue
                     ? selection.Reason == CountdownCompletionReason.Clicked && selection.ClickedButton == continueButton
                     : false;
-
-                eventChannel.RaiseRoundResultConfirmed(continueGame);
-
-                if (!continueGame)
-                {
-                    break;
-                }
+                    eventChannel.RaiseRoundResultConfirmed(continueGame);
+                    
+                    if (!continueGame)
+                    {
+                        break;
+                    }
                 }
             }
             catch (OperationCanceledException)
@@ -133,8 +142,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                 {
                     eventChannel.GameAborted -= HandleGameAborted;
                 }
-
-                DetachButtonHandlers();
             }
         }
 
@@ -148,7 +155,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
         {
             choicePanel.SetActive(true);
             resultPanel.SetActive(false);
-            SetChoiceButtonsInteractable(true);
+            choiceButtonsCountdown.SetButtonsActive(true);
+            choiceButtonsCountdown.SetButtonsInteractable(true);
 
             myNameText.text = myName;
             yourNameText.text = opponentName;
@@ -169,37 +177,36 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
             statusText.text = "Round resolved";
         }
 
-        private void SetChoiceButtonsInteractable(bool value)
-        {
-            rockButton.interactable = value;
-            paperButton.interactable = value;
-            scissorsButton.interactable = value;
-        }
-
-        private void DetachButtonHandlers()
-        {
-            rockButton.onClick.RemoveAllListeners();
-            paperButton.onClick.RemoveAllListeners();
-            scissorsButton.onClick.RemoveAllListeners();
-        }
-
         private async Task<Hand> WaitForLocalChoiceAsync(CancellationToken token)
         {
-            return await UIHelper.WaitForEventAsync<Hand>(
-                handler =>
-                {
-                    rockButton.onClick.AddListener(() => handler(Hand.Rock));
-                    paperButton.onClick.AddListener(() => handler(Hand.Paper));
-                    scissorsButton.onClick.AddListener(() => handler(Hand.Scissors));
-                    SetChoiceButtonsInteractable(true);
-                },
-                _ =>
-                {
-                    rockButton.onClick.RemoveAllListeners();
-                    paperButton.onClick.RemoveAllListeners();
-                    scissorsButton.onClick.RemoveAllListeners();
-                },
-                token);
+            // Ensure buttons are visible/enabled before starting the countdown.
+            choiceButtonsCountdown.SetButtonsActive(true);
+            choiceButtonsCountdown.SetButtonsInteractable(true);
+
+            var countdownTask = choiceButtonsCountdown.RunAsync(choiceButtonCountdownSeconds);
+            using (token.Register(choiceButtonsCountdown.Cancel))
+            {
+                var result = await countdownTask;
+                token.ThrowIfCancellationRequested();
+
+                choiceButtonsCountdown.SetButtonsInteractable(false);
+
+                return result.Reason == CountdownCompletionReason.Clicked
+                    ? IndexToHand(result.ClickedIndex)
+                    : HandExtensions.RandomHand();
+            }
+        }
+
+        private Hand IndexToHand(int index)
+        {
+            // 0:rock, 1:paper, 2:scissors の想定で対応付け
+            return index switch
+            {
+                0 => Hand.Rock,
+                1 => Hand.Paper,
+                2 => Hand.Scissors,
+                _ => HandExtensions.RandomHand()
+            };
         }
 
         private void ShowAbortPrompt(string reason)
