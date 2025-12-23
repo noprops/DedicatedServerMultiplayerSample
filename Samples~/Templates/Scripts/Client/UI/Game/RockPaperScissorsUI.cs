@@ -167,6 +167,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
         {
             choicePanel.SetActive(false);
             resultPanel.SetActive(true);
+            ResetResultButtons();
             continueButton.gameObject.SetActive(canContinue);
             continueQuitButtons.gameObject.SetActive(true);
 
@@ -175,6 +176,13 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
             resultText.text = outcome.ToString();
 
             statusText.text = "Round resolved";
+        }
+
+        private void ResetResultButtons()
+        {
+            // Re-enable and show all buttons before deciding visibility.
+            continueQuitButtons.SetButtonsActive(true);
+            continueQuitButtons.SetButtonsInteractable(true);
         }
 
         private async Task<Hand> WaitForLocalChoiceAsync(CancellationToken token)

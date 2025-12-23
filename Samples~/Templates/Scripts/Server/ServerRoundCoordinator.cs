@@ -151,31 +151,36 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         private async Task<RpsResult> CollectHandsAndResolveRoundAsync()
         {
             var logic = new RockPaperScissorsGameLogic(_clientIds);
+            var choicesTask = eventChannel.WaitForChoicesAsync(
+                _clientIds,
+                TimeSpan.FromSeconds(HandCollectionTimeoutSeconds));
 
-            Dictionary<ulong, Hand> choices;
-            using (var cts = new CancellationTokenSource(TimeSpan.FromSeconds(HandCollectionTimeoutSeconds)))
+            // Submit CPU hands after waiters are registered so they are counted.
+            foreach (var id in _clientIds)
             {
-                try
+                if (IsCpuId(id))
                 {
-                    var choicesTask = eventChannel.WaitForChoicesAsync(_clientIds, cts.Token);
-
-                    // Submit CPU hands after waiters are registered so they are counted.
-                    foreach (var id in _clientIds)
-                    {
-                        if (IsCpuId(id))
-                        {
-                            var cpuHand = HandExtensions.RandomHand();
-                            eventChannel.RaiseChoiceSelectedForPlayer(id, cpuHand);
-                        }
-                    }
-
-                    choices = await choicesTask;
+                    var cpuHand = HandExtensions.RandomHand();
+                    eventChannel.RaiseChoiceSelectedForPlayer(id, cpuHand);
                 }
-                catch (TaskCanceledException)
+            }
+
+            var choices = await choicesTask;
+
+            // Ensure every player has a hand (use random for missing entries and CPUs if needed).
+            foreach (var id in _clientIds)
+            {
+                if (IsCpuId(id) || !choices.ContainsKey(id))
                 {
-                    Debug.LogWarning("[ServerRoundCoordinator] Hand collection timed out; filling missing hands.");
-                    choices = new Dictionary<ulong, Hand>();
+                    var fillerHand = HandExtensions.RandomHand();
+                    eventChannel.RaiseChoiceSelectedForPlayer(id, fillerHand);
+                    choices[id] = fillerHand;
                 }
+            }
+
+            if (choices.Count < _clientIds.Length)
+            {
+                Debug.LogWarning("[ServerRoundCoordinator] Hand collection timed out; filling missing hands.");
             }
 
             return logic.ResolveRound(choices);
@@ -231,23 +236,15 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 return false;
             }
 
-            using var cts = new CancellationTokenSource(timeout);
             var continueVotes = new Dictionary<ulong, bool>();
 
             var canContinue = ShouldAllowContinue();
             BroadcastRoundResult(result, canContinue);
 
-            try
+            var votes = await eventChannel.WaitForConfirmationsAsync(pending, timeout);
+            foreach (var kvp in votes)
             {
-                var votes = await eventChannel.WaitForConfirmationsAsync(pending, cts.Token);
-                foreach (var kvp in votes)
-                {
-                    continueVotes[kvp.Key] = kvp.Value;
-                }
-            }
-            catch (TaskCanceledException)
-            {
-                // Timeout expired; proceed to shutdown.
+                continueVotes[kvp.Key] = kvp.Value;
             }
 
             var allResponded = pending.All(id => continueVotes.ContainsKey(id));

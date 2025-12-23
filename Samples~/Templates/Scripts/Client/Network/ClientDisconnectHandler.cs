@@ -2,20 +2,21 @@ using DedicatedServerMultiplayerSample.Client;
 using DedicatedServerMultiplayerSample.Samples.Shared;
 using UnityEngine;
 
-namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
+namespace DedicatedServerMultiplayerSample.Samples.Client.Network
 {
     /// <summary>
-    /// Disconnects this client when the local player chooses to exit (quit or abort).
-    /// Keeps UI/Channel free of transport-side effects.
+    /// Listens for quit/abort confirmations and disconnects this network client.
+    /// Keeps UIとevent channelを純粋に保つため、通信層の切断はここで担う。
     /// </summary>
     public sealed class ClientDisconnectHandler : MonoBehaviour
     {
         [SerializeField] private RpsGameEventChannel eventChannel;
+
         private void Awake()
         {
             if (eventChannel == null)
             {
-                eventChannel = GetComponent<RpsGameEventChannel>();
+                Debug.LogError("[ClientDisconnectHandler] RpsGameEventChannel is not assigned.");
             }
         }
 
@@ -48,14 +49,14 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
                 return;
             }
 
-            // The confirmation came from this client; disconnect immediately.
+            // Quit decided: drop the connection immediately on the client side.
             ClientSingleton.Instance?.DisconnectFromServer();
         }
 
         private void OnGameAbortConfirmed()
         {
+            // Abort acknowledged: disconnect right away.
             ClientSingleton.Instance?.DisconnectFromServer();
         }
-
     }
 }

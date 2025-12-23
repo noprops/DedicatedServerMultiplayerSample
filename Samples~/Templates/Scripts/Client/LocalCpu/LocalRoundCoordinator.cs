@@ -92,37 +92,34 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
         {
             var awaitedIds = new[] { LocalMatchIds.LocalPlayerId, LocalMatchIds.CpuPlayerId };
             var cpuHand = HandExtensions.RandomHand();
+            var choicesTask = eventChannel.WaitForChoicesAsync(awaitedIds, timeout);
 
-            try
+            // Submit CPU hand after waiters are registered so it is counted.
+            eventChannel.RaiseChoiceSelectedForPlayer(LocalMatchIds.CpuPlayerId, cpuHand);
+
+            var choices = await choicesTask;
+
+            if (!choices.ContainsKey(LocalMatchIds.CpuPlayerId))
             {
-                using var cts = new CancellationTokenSource(timeout);
-                var choicesTask = eventChannel.WaitForChoicesAsync(awaitedIds, cts.Token);
-                // Send CPU hand after waiters are registered so it is counted.
-                eventChannel.RaiseChoiceSelectedForPlayer(LocalMatchIds.CpuPlayerId, cpuHand);
-                var choices = await choicesTask;
-                return choices;
+                choices[LocalMatchIds.CpuPlayerId] = cpuHand;
             }
-            catch (TaskCanceledException)
+
+            if (!choices.ContainsKey(LocalMatchIds.LocalPlayerId))
             {
                 Debug.LogWarning("[LocalRoundCoordinator] Hand collection timed out; filling missing hands.");
-                return new Dictionary<ulong, Hand>
-                {
-                    { LocalMatchIds.CpuPlayerId, cpuHand }
-                };
             }
+
+            return choices;
         }
 
         private async Task WaitForResultConfirmationAsync(TimeSpan timeout)
         {
-            using var cts = new CancellationTokenSource(timeout);
             bool continueGame = false;
 
-            try
-            {
-                var confirmations = await eventChannel.WaitForConfirmationsAsync(new[] { LocalMatchIds.LocalPlayerId }, cts.Token);
-                continueGame = confirmations.TryGetValue(LocalMatchIds.LocalPlayerId, out var vote) && vote;
-            }
-            catch (TaskCanceledException)
+            var confirmations = await eventChannel.WaitForConfirmationsAsync(new[] { LocalMatchIds.LocalPlayerId }, timeout);
+            continueGame = confirmations.TryGetValue(LocalMatchIds.LocalPlayerId, out var vote) && vote;
+
+            if (!confirmations.ContainsKey(LocalMatchIds.LocalPlayerId))
             {
                 Debug.LogWarning("[LocalRoundCoordinator] Result confirmation timed out. Treating as quit.");
             }

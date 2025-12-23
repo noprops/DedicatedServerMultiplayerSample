@@ -86,18 +86,28 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
         public Task<Dictionary<ulong, Hand>> WaitForChoicesAsync(HashSet<ulong> expectedIds, CancellationToken token)
         {
+            return WaitForChoicesAsync(expectedIds, Timeout.InfiniteTimeSpan, token);
+        }
+
+        public async Task<Dictionary<ulong, Hand>> WaitForChoicesAsync(HashSet<ulong> expectedIds, TimeSpan timeout, CancellationToken token)
+        {
             _expectedChoiceIds = new HashSet<ulong>(expectedIds);
             _choicesTcs = new TaskCompletionSource<Dictionary<ulong, Hand>>(TaskCreationOptions.RunContinuationsAsynchronously);
             TryCompleteChoices();
-            return WaitWithCancellationAsync(_choicesTcs.Task, token);
+            return await WaitForChoicesWithTimeoutAsync(timeout, token);
         }
 
         public Task<Dictionary<ulong, bool>> WaitForConfirmationsAsync(HashSet<ulong> expectedIds, CancellationToken token)
         {
+            return WaitForConfirmationsAsync(expectedIds, Timeout.InfiniteTimeSpan, token);
+        }
+
+        public async Task<Dictionary<ulong, bool>> WaitForConfirmationsAsync(HashSet<ulong> expectedIds, TimeSpan timeout, CancellationToken token)
+        {
             _expectedConfirmationIds = new HashSet<ulong>(expectedIds);
             _confirmationsTcs = new TaskCompletionSource<Dictionary<ulong, bool>>(TaskCreationOptions.RunContinuationsAsynchronously);
             TryCompleteConfirmations();
-            return WaitWithCancellationAsync(_confirmationsTcs.Task, token);
+            return await WaitForConfirmationsWithTimeoutAsync(timeout, token);
         }
 
         #endregion
@@ -151,6 +161,66 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             {
                 _confirmationsTcs.TrySetResult(new Dictionary<ulong, bool>(_confirmationsBuffer));
             }
+        }
+
+        private async Task<Dictionary<ulong, Hand>> WaitForChoicesWithTimeoutAsync(TimeSpan timeout, CancellationToken token)
+        {
+            if (timeout == Timeout.InfiniteTimeSpan)
+            {
+                return await WaitWithCancellationAsync(_choicesTcs.Task, token);
+            }
+
+            if (timeout <= TimeSpan.Zero)
+            {
+                return new Dictionary<ulong, Hand>(_choicesBuffer);
+            }
+
+            var timeoutTask = Task.Delay(timeout);
+            var cancelTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var registration = token.Register(() => cancelTcs.TrySetCanceled(token));
+
+            var completed = await Task.WhenAny(_choicesTcs.Task, timeoutTask, cancelTcs.Task);
+            if (completed == _choicesTcs.Task)
+            {
+                return await _choicesTcs.Task;
+            }
+
+            if (completed == cancelTcs.Task)
+            {
+                await cancelTcs.Task;
+            }
+
+            return new Dictionary<ulong, Hand>(_choicesBuffer);
+        }
+
+        private async Task<Dictionary<ulong, bool>> WaitForConfirmationsWithTimeoutAsync(TimeSpan timeout, CancellationToken token)
+        {
+            if (timeout == Timeout.InfiniteTimeSpan)
+            {
+                return await WaitWithCancellationAsync(_confirmationsTcs.Task, token);
+            }
+
+            if (timeout <= TimeSpan.Zero)
+            {
+                return new Dictionary<ulong, bool>(_confirmationsBuffer);
+            }
+
+            var timeoutTask = Task.Delay(timeout);
+            var cancelTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using var registration = token.Register(() => cancelTcs.TrySetCanceled(token));
+
+            var completed = await Task.WhenAny(_confirmationsTcs.Task, timeoutTask, cancelTcs.Task);
+            if (completed == _confirmationsTcs.Task)
+            {
+                return await _confirmationsTcs.Task;
+            }
+
+            if (completed == cancelTcs.Task)
+            {
+                await cancelTcs.Task;
+            }
+
+            return new Dictionary<ulong, bool>(_confirmationsBuffer);
         }
 
         private static async Task<T> WaitWithCancellationAsync<T>(Task<T> task, CancellationToken token)

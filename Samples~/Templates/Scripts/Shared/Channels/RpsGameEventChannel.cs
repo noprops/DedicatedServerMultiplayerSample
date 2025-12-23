@@ -224,11 +224,25 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             return _awaiter.WaitForChoicesAsync(ids, token);
         }
 
+        public Task<Dictionary<ulong, Hand>> WaitForChoicesAsync(IEnumerable<ulong> expectedPlayerIds, TimeSpan timeout, CancellationToken token = default)
+        {
+            if (expectedPlayerIds == null) throw new ArgumentNullException(nameof(expectedPlayerIds));
+            var ids = new HashSet<ulong>(expectedPlayerIds);
+            return _awaiter.WaitForChoicesAsync(ids, timeout, token);
+        }
+
         public Task<Dictionary<ulong, bool>> WaitForConfirmationsAsync(IEnumerable<ulong> expectedPlayerIds, CancellationToken token = default)
         {
             if (expectedPlayerIds == null) throw new ArgumentNullException(nameof(expectedPlayerIds));
             var ids = new HashSet<ulong>(expectedPlayerIds);
             return _awaiter.WaitForConfirmationsAsync(ids, token);
+        }
+
+        public Task<Dictionary<ulong, bool>> WaitForConfirmationsAsync(IEnumerable<ulong> expectedPlayerIds, TimeSpan timeout, CancellationToken token = default)
+        {
+            if (expectedPlayerIds == null) throw new ArgumentNullException(nameof(expectedPlayerIds));
+            var ids = new HashSet<ulong>(expectedPlayerIds);
+            return _awaiter.WaitForConfirmationsAsync(ids, timeout, token);
         }
 
         public void ResetRoundAwaiters()
