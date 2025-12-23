@@ -33,6 +33,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         public event Action AllClientsConnected;
         public event Action AllPlayersDisconnected;
+        public event Action<ulong> ClientDisconnected;
 
         /// <summary>
         /// Current number of connected clients.
@@ -124,6 +125,8 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             Debug.Log($"[ConnectionTracker] Client disconnected. ClientId={clientId}");
             Debug.Log($"[ConnectionTracker] Remaining clients: {_connectedClients.Count}");
+
+            ClientDisconnected?.Invoke(clientId);
 
             if (_connectedClients.Count == 0)
             {

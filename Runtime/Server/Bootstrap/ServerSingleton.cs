@@ -20,9 +20,13 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
 
         [SerializeField] private int defaultMaxPlayers = 2;
 
-        private ServerStartupRunner startupRunner;
-        private readonly ServerShutdownScheduler shutdownScheduler = new();
-        public ServerStartupRunner StartupRunner => startupRunner;
+        private ServerStartupRunner _startupRunner;
+        private ServerConnectionStack _connectionStack;
+        private MultiplaySessionService _multiplaySessionService;
+        private readonly ServerShutdownScheduler _shutdownScheduler = new();
+        private const int AllPlayersDisconnectedShutdownDelaySeconds = 10;
+        public ServerStartupRunner StartupRunner => _startupRunner;
+        public ServerConnectionStack ConnectionStack => _connectionStack;
         
         private void Awake()
         {
@@ -65,8 +69,19 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
                     return;
                 }
 
-                startupRunner = new ServerStartupRunner(NetworkManager.Singleton, Mathf.Max(1, defaultMaxPlayers));
-                await startupRunner.StartAsync();
+                var runtimeConfig = ServerRuntimeConfig.Capture();
+                runtimeConfig.LogSummary();
+
+                _connectionStack = new ServerConnectionStack(NetworkManager.Singleton, Mathf.Max(1, defaultMaxPlayers));
+                _connectionStack.AllPlayersDisconnected += HandleAllPlayersDisconnected;
+                _multiplaySessionService = new MultiplaySessionService(runtimeConfig, Mathf.Max(1, defaultMaxPlayers));
+                _startupRunner = new ServerStartupRunner(NetworkManager.Singleton, _connectionStack);
+                var started = await _startupRunner.StartAsync(runtimeConfig, _multiplaySessionService);
+                await LockSessionAsync();
+                if (!started)
+                {
+                    ScheduleShutdown(ShutdownKind.Error, "Server startup failed", AllPlayersDisconnectedShutdownDelaySeconds);
+                }
 
                 Debug.Log("[ServerSingleton] Server created and started successfully");
             }
@@ -80,22 +95,47 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
         private void OnDestroy()
         {
             Debug.Log("[ServerSingleton] Destroying ServerSingleton");
-            startupRunner?.Dispose();
-            shutdownScheduler.Cancel();
+            _startupRunner?.Dispose();
+            if (_connectionStack != null)
+            {
+                _connectionStack.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
+            }
+            _connectionStack?.Dispose();
+            _multiplaySessionService?.Dispose();
+            _shutdownScheduler.Cancel();
         }
 
         private void OnApplicationQuit()
         {
             Debug.Log("[ServerSingleton] Application quitting, cleaning up server");
-            startupRunner?.Dispose();
-            shutdownScheduler.Cancel();
+            _startupRunner?.Dispose();
+            if (_connectionStack != null)
+            {
+                _connectionStack.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
+            }
+            _connectionStack?.Dispose();
+            _multiplaySessionService?.Dispose();
+            _shutdownScheduler.Cancel();
         }
 
         public void ScheduleShutdown(ShutdownKind kind, string reason, int timeoutSeconds)
         {
             TimeSpan delay = TimeSpan.FromSeconds(timeoutSeconds);
-            _ = startupRunner?.LockSessionAsync();
-            shutdownScheduler.Schedule(kind, reason, delay);
+            _shutdownScheduler.Schedule(kind, reason, delay);
+        }
+
+        private async Task LockSessionAsync()
+        {
+            if (_multiplaySessionService != null && _multiplaySessionService.IsConnected)
+            {
+                await _multiplaySessionService.LockSessionAsync();
+                await _multiplaySessionService.SetPlayerReadinessAsync(false);
+            }
+        }
+
+        private void HandleAllPlayersDisconnected()
+        {
+            ScheduleShutdown(ShutdownKind.AllPlayersDisconnected, "All players disconnected", AllPlayersDisconnectedShutdownDelaySeconds);
         }
 #else
         private void Awake()

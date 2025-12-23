@@ -13,7 +13,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
     /// <summary>
     /// Handles connection approval, player tracking, and scene loading for the server startup flow.
     /// </summary>
-    internal sealed class ServerConnectionStack : IDisposable
+    public sealed class ServerConnectionStack : IDisposable
     {
         private readonly NetworkManager _networkManager;
         private readonly int _defaultMaxPlayers;
@@ -29,6 +29,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private IReadOnlyList<ulong> _readyClientsSnapshot = Array.Empty<ulong>();
 
         public event Action AllPlayersDisconnected;
+        public event Action<ulong> ClientDisconnected;
 
         public ServerConnectionStack(NetworkManager networkManager, int defaultMaxPlayers)
         {
@@ -37,6 +38,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             _tracker = new ServerConnectionTracker(_networkManager, _directory, 1);
             _tracker.AllPlayersDisconnected += HandleAllDisconnected;
+            _tracker.ClientDisconnected += HandleClientDisconnected;
             _networkManager.ConnectionApprovalCallback = OnApproval;
         }
 
@@ -51,10 +53,11 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             _readyClientsSnapshot = Array.Empty<ulong>();
         }
 
-        public async Task<bool> LoadSceneAsync(string sceneName, int timeoutMs, CancellationToken token)
+        public async Task<bool> LoadSceneAsync(string sceneName, int timeoutSeconds, CancellationToken token)
         {
             var sceneLoader = new ServerSceneLoader(_networkManager);
             _sceneLoaded = false;
+            var timeoutMs = (int)TimeSpan.FromSeconds(timeoutSeconds).TotalMilliseconds;
 
             var loaded = await sceneLoader.LoadAsync(sceneName, timeoutMs, () =>
             {
@@ -132,6 +135,11 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             return _directory.TryGet(clientId, key, out value);
         }
 
+        public bool TryGetPlayerName(ulong clientId, out string name)
+        {
+            return _directory.TryGet(clientId, "playerName", out name);
+        }
+
         public void Dispose()
         {
             if (_disposed)
@@ -144,6 +152,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             if (_tracker != null)
             {
                 _tracker.AllPlayersDisconnected -= HandleAllDisconnected;
+                _tracker.ClientDisconnected -= HandleClientDisconnected;
                 _tracker.Dispose();
                 _tracker = null;
             }
@@ -232,6 +241,11 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private void HandleAllDisconnected()
         {
             AllPlayersDisconnected?.Invoke();
+        }
+
+        private void HandleClientDisconnected(ulong clientId)
+        {
+            ClientDisconnected?.Invoke(clientId);
         }
     }
 }

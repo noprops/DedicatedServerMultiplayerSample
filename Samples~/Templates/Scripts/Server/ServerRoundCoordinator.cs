@@ -2,11 +2,9 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using System.Threading;
 using System.Threading.Tasks;
 using DedicatedServerMultiplayerSample.Server.Bootstrap;
 using DedicatedServerMultiplayerSample.Server.Core;
-using DedicatedServerMultiplayerSample.Shared;
 using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
@@ -24,6 +22,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         private readonly ulong[] _clientIds = new ulong[RequiredGamePlayers];
         private readonly Dictionary<ulong, string> _playerNames = new();
         private ServerStartupRunner _startupRunner;
+        private ServerConnectionStack _connectionStack;
         [SerializeField] private RpsGameEventChannel eventChannel;
         private static readonly int ShutdownDelay = 10;
 
@@ -36,6 +35,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             if (_startupRunner == null)
             {
                 Debug.LogError("[ServerRoundCoordinator] No ServerStartupRunner; shutting down");
+                return;
+            }
+            _connectionStack = ServerSingleton.Instance?.ConnectionStack;
+            if (_connectionStack == null)
+            {
+                Debug.LogError("[ServerRoundCoordinator] No ServerConnectionStack; shutting down");
                 return;
             }
 
@@ -56,6 +61,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         private void OnDestroy()
         {
             _startupRunner = null;
+            _connectionStack = null;
         }
 
         /// <summary>
@@ -68,7 +74,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 await eventChannel.WaitForChannelReadyAsync();
 
                 Debug.Log("[ServerRoundCoordinator] RunRoundAsync starting");
-                var connectedIds = _startupRunner.GetReadyClientsSnapshot() ?? Array.Empty<ulong>();
+                var connectedIds = _connectionStack.GetReadyClientsSnapshot() ?? Array.Empty<ulong>();
                 SetPlayerSlots(connectedIds);
 
                 // Only send player identities once at the start.
@@ -136,7 +142,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                     return "CPU";
                 }
 
-                if (_startupRunner != null && _startupRunner.TryGetPlayerName(clientId, out var name) && !string.IsNullOrWhiteSpace(name))
+                if (_connectionStack != null && _connectionStack.TryGetPlayerName(clientId, out var name) && !string.IsNullOrWhiteSpace(name))
                 {
                     return name;
                 }
@@ -266,8 +272,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 return false;
             }
 
-            if (_startupRunner != null &&
-                _startupRunner.TryGetPlayerPayloadValue(firstId, "gameMode", out string mode) &&
+            if (_connectionStack != null &&
+                _connectionStack.TryGetPlayerPayloadValue(firstId, "gameMode", out string mode) &&
                 !string.IsNullOrWhiteSpace(mode))
             {
                 return string.Equals(mode, "friend", StringComparison.OrdinalIgnoreCase);
