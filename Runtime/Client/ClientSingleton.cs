@@ -1,6 +1,7 @@
 using System;
 using Unity.Netcode;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace DedicatedServerMultiplayerSample.Client
 {
@@ -8,10 +9,14 @@ namespace DedicatedServerMultiplayerSample.Client
     {
         public static ClientSingleton Instance { get; private set; }
 
-        [SerializeField] private int maxPlayers = 2;
-        private ClientStartupService startupService;
+        private const string LoadingSceneName = "loading";
 
-        public ClientMatchmaker Matchmaker => startupService?.Matchmaker;
+        [SerializeField] private int maxPlayers = 2;
+        private ClientStartupRunner _startupRunner;
+        private ClientConnectionService _connectionService;
+        private ClientMatchmaker _matchmaker;
+
+        public ClientMatchmaker Matchmaker => _matchmaker;
 
         private void Awake()
         {
@@ -32,27 +37,50 @@ namespace DedicatedServerMultiplayerSample.Client
         
         private async void Start()
         {
-            startupService = new ClientStartupService(maxPlayers);
-            await startupService.InitializeAsync();
+            _startupRunner = new ClientStartupRunner();
+            if (!await _startupRunner.InitializeAsync())
+            {
+                Debug.LogError("[ClientSingleton] Client initialization failed.");
+                return;
+            }
+
+            var networkManager = NetworkManager.Singleton;
+            if (networkManager == null)
+            {
+                Debug.LogError("[ClientSingleton] NetworkManager.Singleton is null.");
+                return;
+            }
+
+            _connectionService = new ClientConnectionService(networkManager);
+            _connectionService.RegisterCallbacks();
+            _matchmaker = new ClientMatchmaker(networkManager, maxPlayers);
+
+            SceneManager.LoadScene(LoadingSceneName, LoadSceneMode.Single);
         }
         
         private void OnDestroy()
         {
             Debug.Log("[ClientSingleton] Destroying ClientSingleton");
-            startupService?.Dispose();
-            startupService = null;
+            _matchmaker?.Dispose();
+            _matchmaker = null;
+            _connectionService?.Dispose();
+            _connectionService = null;
+            _startupRunner = null;
         }
         
         private void OnApplicationQuit()
         {
             Debug.Log("[ClientSingleton] Application quitting, cleaning up client");
-            startupService?.Dispose();
-            startupService = null;
+            _matchmaker?.Dispose();
+            _matchmaker = null;
+            _connectionService?.Dispose();
+            _connectionService = null;
+            _startupRunner = null;
         }
 
         public void DisconnectFromServer()
         {
-            startupService?.DisconnectFromServer();
+            _connectionService?.DisconnectFromServer();
         }
     }
 }
