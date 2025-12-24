@@ -13,7 +13,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
     /// <summary>
     /// Handles connection approval, player tracking, and scene loading for the server startup flow.
     /// </summary>
-    public sealed class ServerConnectionStack : IDisposable
+    public sealed class ServerConnectionManager : IDisposable
     {
         private readonly NetworkManager _networkManager;
         private readonly int _defaultMaxPlayers;
@@ -31,7 +31,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         public event Action AllPlayersDisconnected;
         public event Action<ulong> ClientDisconnected;
 
-        public ServerConnectionStack(NetworkManager networkManager, int defaultMaxPlayers)
+        public ServerConnectionManager(NetworkManager networkManager, int defaultMaxPlayers)
         {
             _networkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
             _defaultMaxPlayers = Mathf.Max(1, defaultMaxPlayers);

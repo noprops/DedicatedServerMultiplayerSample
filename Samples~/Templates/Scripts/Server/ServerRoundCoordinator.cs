@@ -22,7 +22,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         private readonly ulong[] _clientIds = new ulong[RequiredGamePlayers];
         private readonly Dictionary<ulong, string> _playerNames = new();
         private ServerStartupRunner _startupRunner;
-        private ServerConnectionStack _connectionStack;
+        private ServerConnectionManager _connectionManager;
         [SerializeField] private RpsGameEventChannel eventChannel;
         private static readonly int ShutdownDelay = 10;
 
@@ -37,10 +37,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 Debug.LogError("[ServerRoundCoordinator] No ServerStartupRunner; shutting down");
                 return;
             }
-            _connectionStack = ServerSingleton.Instance?.ConnectionStack;
-            if (_connectionStack == null)
+            _connectionManager = ServerSingleton.Instance?.ConnectionManager;
+            if (_connectionManager == null)
             {
-                Debug.LogError("[ServerRoundCoordinator] No ServerConnectionStack; shutting down");
+                Debug.LogError("[ServerRoundCoordinator] No ServerConnectionManager; shutting down");
                 return;
             }
 
@@ -61,7 +61,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         private void OnDestroy()
         {
             _startupRunner = null;
-            _connectionStack = null;
+            _connectionManager = null;
         }
 
         /// <summary>
@@ -74,7 +74,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 await eventChannel.WaitForChannelReadyAsync();
 
                 Debug.Log("[ServerRoundCoordinator] RunRoundAsync starting");
-                var connectedIds = _connectionStack.GetReadyClientsSnapshot() ?? Array.Empty<ulong>();
+                var connectedIds = _connectionManager.GetReadyClientsSnapshot() ?? Array.Empty<ulong>();
                 SetPlayerSlots(connectedIds);
 
                 // Only send player identities once at the start.
@@ -142,7 +142,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                     return "CPU";
                 }
 
-                if (_connectionStack != null && _connectionStack.TryGetPlayerName(clientId, out var name) && !string.IsNullOrWhiteSpace(name))
+                if (_connectionManager != null && _connectionManager.TryGetPlayerName(clientId, out var name) && !string.IsNullOrWhiteSpace(name))
                 {
                     return name;
                 }
@@ -272,8 +272,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 return false;
             }
 
-            if (_connectionStack != null &&
-                _connectionStack.TryGetPlayerPayloadValue(firstId, "gameMode", out string mode) &&
+            if (_connectionManager != null &&
+                _connectionManager.TryGetPlayerPayloadValue(firstId, "gameMode", out string mode) &&
                 !string.IsNullOrWhiteSpace(mode))
             {
                 return string.Equals(mode, "friend", StringComparison.OrdinalIgnoreCase);

@@ -15,7 +15,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
     {
         private readonly NetworkManager _networkManager;
 
-        private readonly ServerConnectionStack _connectionStack;
+        private readonly ServerConnectionManager _connectionManager;
 
         private bool _disposed;
         private readonly TaskCompletionSource<bool> _startupCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -23,10 +23,10 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private const int WaitingPlayersTimeoutSeconds = 10;
         private const int SceneLoadTimeoutSeconds = 5;
 
-        public ServerStartupRunner(NetworkManager networkManager, ServerConnectionStack connectionStack)
+        public ServerStartupRunner(NetworkManager networkManager, ServerConnectionManager connectionManager)
         {
             _networkManager = networkManager ?? throw new ArgumentNullException(nameof(networkManager));
-            _connectionStack = connectionStack ?? throw new ArgumentNullException(nameof(connectionStack));
+            _connectionManager = connectionManager ?? throw new ArgumentNullException(nameof(connectionManager));
         }
 
         #region Public API
@@ -53,9 +53,9 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 }
 
                 ServerTransportConfigurator.Configure(_networkManager, runtimeConfig);
-                _connectionStack.Configure(allocation.ExpectedAuthIds ?? Array.Empty<string>(), allocation.TeamCount);
+                _connectionManager.Configure(allocation.ExpectedAuthIds ?? Array.Empty<string>(), allocation.TeamCount);
 
-                if (!await _connectionStack.LoadSceneAsync("game", SceneLoadTimeoutSeconds, CancellationToken.None))
+                if (!await _connectionManager.LoadSceneAsync("game", SceneLoadTimeoutSeconds, CancellationToken.None))
                 {
                     return false;
                 }
@@ -105,7 +105,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         private async Task<bool> WaitForClientsWithTimeoutAsync(TimeSpan timeout)
         {
-            var waitTask = _connectionStack.WaitForAllClientsAsync();
+            var waitTask = _connectionManager.WaitForAllClientsAsync();
             if (timeout <= TimeSpan.Zero)
             {
                 var snapshotImmediate = await waitTask;

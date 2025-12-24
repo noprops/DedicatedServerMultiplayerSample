@@ -21,12 +21,12 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
         [SerializeField] private int defaultMaxPlayers = 2;
 
         private ServerStartupRunner _startupRunner;
-        private ServerConnectionStack _connectionStack;
+        private ServerConnectionManager _connectionManager;
         private MultiplaySessionService _multiplaySessionService;
         private readonly ServerShutdownScheduler _shutdownScheduler = new();
         private const int AllPlayersDisconnectedShutdownDelaySeconds = 10;
         public ServerStartupRunner StartupRunner => _startupRunner;
-        public ServerConnectionStack ConnectionStack => _connectionStack;
+        public ServerConnectionManager ConnectionManager => _connectionManager;
         
         private void Awake()
         {
@@ -72,10 +72,10 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
                 var runtimeConfig = ServerRuntimeConfig.Capture();
                 runtimeConfig.LogSummary();
 
-                _connectionStack = new ServerConnectionStack(NetworkManager.Singleton, Mathf.Max(1, defaultMaxPlayers));
-                _connectionStack.AllPlayersDisconnected += HandleAllPlayersDisconnected;
+                _connectionManager = new ServerConnectionManager(NetworkManager.Singleton, Mathf.Max(1, defaultMaxPlayers));
+                _connectionManager.AllPlayersDisconnected += HandleAllPlayersDisconnected;
                 _multiplaySessionService = new MultiplaySessionService(runtimeConfig, Mathf.Max(1, defaultMaxPlayers));
-                _startupRunner = new ServerStartupRunner(NetworkManager.Singleton, _connectionStack);
+                _startupRunner = new ServerStartupRunner(NetworkManager.Singleton, _connectionManager);
                 var started = await _startupRunner.StartAsync(runtimeConfig, _multiplaySessionService);
                 await LockSessionAsync();
                 if (!started)
@@ -96,11 +96,11 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
         {
             Debug.Log("[ServerSingleton] Destroying ServerSingleton");
             _startupRunner?.Dispose();
-            if (_connectionStack != null)
+            if (_connectionManager != null)
             {
-                _connectionStack.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
+                _connectionManager.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
             }
-            _connectionStack?.Dispose();
+            _connectionManager?.Dispose();
             _multiplaySessionService?.Dispose();
             _shutdownScheduler.Cancel();
         }
@@ -109,11 +109,11 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
         {
             Debug.Log("[ServerSingleton] Application quitting, cleaning up server");
             _startupRunner?.Dispose();
-            if (_connectionStack != null)
+            if (_connectionManager != null)
             {
-                _connectionStack.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
+                _connectionManager.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
             }
-            _connectionStack?.Dispose();
+            _connectionManager?.Dispose();
             _multiplaySessionService?.Dispose();
             _shutdownScheduler.Cancel();
         }
