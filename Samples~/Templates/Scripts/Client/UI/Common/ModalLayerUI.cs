@@ -24,8 +24,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Common
             {
                 Debug.LogWarning("[ModalLayerUI] Text component is not assigned.");
             }
-
-            Hide();
         }
 
         /// <summary>

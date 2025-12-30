@@ -1,4 +1,3 @@
-#if UNITY_SERVER || ENABLE_UCS_SERVER
 using System;
 using DedicatedServerMultiplayerSample.Server.Core;
 using DedicatedServerMultiplayerSample.Shared;
@@ -24,4 +23,3 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
         public void Cancel() => _scheduler.Cancel();
     }
 }
-#endif

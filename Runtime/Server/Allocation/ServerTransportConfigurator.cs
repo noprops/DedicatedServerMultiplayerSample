@@ -1,4 +1,3 @@
-#if UNITY_SERVER || ENABLE_UCS_SERVER
 using DedicatedServerMultiplayerSample.Server.Core;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
@@ -31,4 +30,3 @@ namespace DedicatedServerMultiplayerSample.Server.Allocation
         }
     }
 }
-#endif

@@ -1,4 +1,3 @@
-#if UNITY_SERVER || ENABLE_UCS_SERVER
 using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Server.Infrastructure
@@ -105,4 +104,3 @@ namespace DedicatedServerMultiplayerSample.Server.Infrastructure
         }
     }
 }
-#endif

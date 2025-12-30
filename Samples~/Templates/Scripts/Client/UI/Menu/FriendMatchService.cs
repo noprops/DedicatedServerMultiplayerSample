@@ -20,6 +20,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         private const float HeartbeatIntervalSeconds = 15f;
 
         private readonly ClientMatchmaker _matchmaker;
+        private readonly MatchPayloadBuilder _payloadBuilder;
         private readonly ClientData _clientData;
         private readonly string _queueName;
 
@@ -35,6 +36,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             string queueName = "casual-queue")
         {
             _matchmaker = matchmaker;
+            _payloadBuilder = new MatchPayloadBuilder(clientData, GameMode.Friend, Map.Arena);
             _clientData = clientData;
             _queueName = queueName;
         }
@@ -83,12 +85,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
                 throw new InvalidOperationException("Friend match is already running.");
             }
 
-            var playerProps = _clientData?.GetPlayerProperties() ?? new Dictionary<string, object>();
-            playerProps["roomCode"] = _currentLobby.LobbyCode;
-
-            var ticketAttributes = _clientData?.GetTicketAttributes() ?? new Dictionary<string, object>();
-            var connectionPayload = _clientData?.GetConnectionData() ?? new Dictionary<string, object>();
-            var sessionProps = _clientData?.GetSessionProperties() ?? new Dictionary<string, object>();
+            _payloadBuilder.SetRoomCode(_currentLobby.LobbyCode);
+            var playerProps = _payloadBuilder.BuildPlayerProperties();
+            var ticketAttributes = _payloadBuilder.BuildTicketAttributes();
+            var connectionPayload = _payloadBuilder.BuildConnectionData();
+            var sessionProps = _payloadBuilder.BuildSessionProperties();
             _isMatchmaking = true;
 
             void HandleStateChanged(ClientConnectionState state) => StateChanged?.Invoke(state);

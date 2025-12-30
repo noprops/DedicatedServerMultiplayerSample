@@ -1,4 +1,3 @@
-#if UNITY_SERVER || ENABLE_UCS_SERVER
 namespace DedicatedServerMultiplayerSample.Server.Core
 {
     public enum ShutdownKind
@@ -9,4 +8,3 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         AllPlayersDisconnected
     }
 }
-#endif

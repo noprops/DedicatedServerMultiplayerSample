@@ -13,7 +13,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
     internal sealed class RankedMatchService
     {
         private readonly ClientMatchmaker _matchmaker;
-        private readonly ClientData _clientData;
+        private readonly MatchPayloadBuilder _payloadBuilder;
         private readonly string _queueName;
         private bool _isMatchmaking;
 
@@ -23,7 +23,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
             string queueName = "competitive-queue")
         {
             _matchmaker = matchmaker;
-            _clientData = clientData;
+            _payloadBuilder = new MatchPayloadBuilder(clientData, GameMode.Ranked, Map.Arena);
             _queueName = queueName;
         }
 
@@ -43,10 +43,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
                 throw new InvalidOperationException("Ranked match is already running.");
             }
 
-            var playerProps = _clientData?.GetPlayerProperties();
-            var ticketAttributes = _clientData?.GetTicketAttributes();
-            var connectionPayload = _clientData?.GetConnectionData();
-            var sessionProps = _clientData?.GetSessionProperties();
+            var playerProps = _payloadBuilder.BuildPlayerProperties();
+            var ticketAttributes = _payloadBuilder.BuildTicketAttributes();
+            var connectionPayload = _payloadBuilder.BuildConnectionData();
+            var sessionProps = _payloadBuilder.BuildSessionProperties();
             _isMatchmaking = true;
 
             void HandleStateChanged(ClientConnectionState state) => StateChanged?.Invoke(state);

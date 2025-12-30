@@ -1,3 +1,5 @@
+using UnityEngine;
+
 #if UNITY_SERVER || ENABLE_UCS_SERVER
 using System;
 using System.Collections.Generic;
@@ -5,7 +7,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using DedicatedServerMultiplayerSample.Server.Bootstrap;
 using DedicatedServerMultiplayerSample.Server.Core;
-using UnityEngine;
+#endif
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
@@ -14,6 +16,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
     /// </summary>
     public sealed class ServerRoundCoordinator : MonoBehaviour
     {
+        [SerializeField] private RpsGameEventChannel eventChannel;
+#if UNITY_SERVER || ENABLE_UCS_SERVER
         public const int RequiredGamePlayers = 2;
         public const ulong CpuPlayerBaseId = 100;
         private const int HandCollectionTimeoutSeconds = 15;
@@ -23,7 +27,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         private readonly Dictionary<ulong, string> _playerNames = new();
         private ServerStartupRunner _startupRunner;
         private ServerConnectionManager _connectionManager;
-        [SerializeField] private RpsGameEventChannel eventChannel;
         private static readonly int ShutdownDelay = 10;
 
         /// <summary>
@@ -306,6 +309,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
             return true;
         }
+#endif
     }
 }
-#endif

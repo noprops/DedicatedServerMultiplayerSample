@@ -1,4 +1,3 @@
-#if !UNITY_SERVER && !ENABLE_UCS_SERVER
 using System;
 using System.Collections.Generic;
 using System.Threading;
@@ -15,11 +14,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
     /// </summary>
     public sealed class LocalRoundCoordinator : MonoBehaviour
     {
+        [SerializeField] private RpsGameEventChannel eventChannel;
+#if !UNITY_SERVER && !ENABLE_UCS_SERVER
         private static readonly ulong[] PlayerOrder = { LocalMatchIds.LocalPlayerId, LocalMatchIds.CpuPlayerId };
         private const int ResultConfirmTimeoutSeconds = 20;
         private const int HandCollectionTimeoutSeconds = 15;
-
-        [SerializeField] private RpsGameEventChannel eventChannel;
 
         private string _localPlayerName;
         private RockPaperScissorsGameLogic _logic;
@@ -138,6 +137,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
         {
             SceneManager.LoadScene("loading", LoadSceneMode.Single);
         }
+#endif
     }
 }
-#endif

@@ -1,4 +1,3 @@
-#if UNITY_SERVER || ENABLE_UCS_SERVER
 using System;
 using System.Collections.Generic;
 using Unity.Netcode;
@@ -148,4 +147,3 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         }
     }
 }
-#endif

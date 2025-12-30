@@ -1,4 +1,3 @@
-#if UNITY_SERVER || ENABLE_UCS_SERVER
 using System;
 using System.Threading;
 using System.Threading.Tasks;
@@ -63,4 +62,3 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
     }
 }
-#endif

@@ -1,8 +1,10 @@
-#if UNITY_SERVER || ENABLE_UCS_SERVER
 using System;
 using System.Collections.Generic;
-using Unity.Services.Multiplay;
 using UnityEngine;
+
+#if UNITY_SERVER || ENABLE_UCS_SERVER
+using Unity.Services.Multiplay;
+#endif
 
 namespace DedicatedServerMultiplayerSample.Server.Core
 {
@@ -111,6 +113,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             string ipAddress = null;
             string serverLogDirectory = null;
 
+#if UNITY_SERVER || ENABLE_UCS_SERVER
             try
             {
                 var serverConfig = MultiplayService.Instance?.ServerConfig;
@@ -139,6 +142,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             {
                 Debug.LogWarning($"[ServerRuntimeConfig] Failed to read server.json: {e.Message}");
             }
+#endif
 
             string nameSeed = !string.IsNullOrEmpty(allocationId)
                 ? allocationId
@@ -196,4 +200,3 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         }
     }
 }
-#endif

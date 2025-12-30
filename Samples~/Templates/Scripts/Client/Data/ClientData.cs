@@ -14,10 +14,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Data
         public string PlayerName { get; set; }
         public int Rank { get; set; }
         public int GameVersion { get; set; }
-        public string GameMode { get; set; }
-        public string Map { get; set; }
-        public string RoomCode { get; set; } = string.Empty;
-
         private void Awake()
         {
             if (Instance != null && Instance != this)
@@ -36,70 +32,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Data
         {
             PlayerName = string.IsNullOrWhiteSpace(PlayerName) ? GenerateRandomPlayerName() : PlayerName;
             Rank = Rank == 0 ? 1000 : Rank;
-            GameMode = string.IsNullOrWhiteSpace(GameMode) ? "default" : GameMode;
-            Map = string.IsNullOrWhiteSpace(Map) ? "arena" : Map;
-            RoomCode = string.IsNullOrEmpty(RoomCode) ? string.Empty : RoomCode;
             GameVersion = GameVersion != 0 ? GameVersion : ParseGameVersion(Application.version);
 
             if (GameVersion == 0)
             {
                 Debug.LogWarning("[ClientData] Failed to parse Application.version. Using 0 for gameVersion.");
             }
-        }
-
-        public Dictionary<string, object> GetPlayerProperties()
-        {
-            var dict = new Dictionary<string, object>
-            {
-                ["gameVersion"] = GameVersion,
-                ["gameMode"] = GameMode,
-                ["map"] = Map,
-                ["rank"] = Rank
-            };
-
-            if (!string.IsNullOrEmpty(RoomCode))
-            {
-                dict["roomCode"] = RoomCode;
-            }
-
-            return dict;
-        }
-
-        public Dictionary<string, object> GetTicketAttributes()
-        {
-            var dict = new Dictionary<string, object>
-            {
-                ["gameVersion"] = GameVersion,
-                ["gameMode"] = GameMode,
-                ["map"] = Map
-            };
-
-            if (!string.IsNullOrEmpty(RoomCode))
-            {
-                dict["roomCode"] = RoomCode;
-            }
-
-            return dict;
-        }
-
-        public Dictionary<string, object> GetConnectionData()
-        {
-            return new Dictionary<string, object>
-            {
-                ["playerName"] = PlayerName,
-                ["gameMode"] = GameMode,
-                ["gameVersion"] = GameVersion,
-                ["rank"] = Rank
-            };
-        }
-
-        public Dictionary<string, object> GetSessionProperties()
-        {
-            return new Dictionary<string, object>
-            {
-                ["gameMode"] = GameMode,
-                ["map"] = Map
-            };
         }
 
         private static int ParseGameVersion(string version)

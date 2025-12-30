@@ -1,13 +1,15 @@
-#if UNITY_SERVER || ENABLE_UCS_SERVER
 using System;
 using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
+using UnityEngine;
+
+#if UNITY_SERVER || ENABLE_UCS_SERVER
 using Unity.Services.Authentication.Server;
 using Unity.Services.Core;
 using Unity.Services.Matchmaker.Models;
 using Unity.Services.Multiplayer;
-using UnityEngine;
+#endif
 
 namespace DedicatedServerMultiplayerSample.Server.Core
 {
@@ -17,6 +19,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
     /// </summary>
     internal sealed class MultiplaySessionService : IDisposable
     {
+#if UNITY_SERVER || ENABLE_UCS_SERVER
         private readonly ServerRuntimeConfig _runtimeConfig;
         private readonly int _defaultMaxPlayers;
 
@@ -263,6 +266,26 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         {
             // Required callback registration so Multiplay knows this server handles allocations.
         }
+#else
+        public MultiplaySessionService(ServerRuntimeConfig runtimeConfig, int defaultMaxPlayers)
+        {
+        }
+
+        public bool IsConnected => false;
+
+        public Task<MatchAllocationResult> AwaitAllocationAsync(CancellationToken ct)
+        {
+            return Task.FromResult(MatchAllocationResult.Failed());
+        }
+
+        public Task SetPlayerReadinessAsync(bool ready) => Task.CompletedTask;
+
+        public Task LockSessionAsync() => Task.CompletedTask;
+
+        public void Dispose()
+        {
+        }
+#endif
     }
 
     /// <summary>
@@ -284,4 +307,3 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         public int TeamCount { get; }
     }
 }
-#endif

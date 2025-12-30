@@ -1,10 +1,13 @@
 #if !UNITY_SERVER && !ENABLE_UCS_SERVER
 using DedicatedServerMultiplayerSample.Client;
+#endif
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
     public sealed partial class NetworkGameEventChannel
     {
+#if !UNITY_SERVER && !ENABLE_UCS_SERVER
+
         partial void HandleClientChoiceSelected(Hand choice)
         {
             rpcProxy.SubmitChoice(choice);
@@ -29,6 +32,22 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             // Notify local listeners.
             InvokeGameAbortConfirmed();
         }
+#else
+        partial void HandleClientChoiceSelected(Hand choice)
+        {
+        }
+
+        public override void RaiseChoiceSelectedForPlayer(ulong playerId, Hand hand)
+        {
+        }
+
+        partial void HandleClientRoundResultConfirmed(bool continueGame)
+        {
+        }
+
+        partial void HandleClientAbortConfirmed()
+        {
+        }
+#endif
     }
 }
-#endif
