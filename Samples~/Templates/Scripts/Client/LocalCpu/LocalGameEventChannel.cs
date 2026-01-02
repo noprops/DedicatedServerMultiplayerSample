@@ -65,5 +65,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
         {
             InvokeGameAborted(message);
         }
+
+        public override void RaiseRoundStartDecision(bool startRound)
+        {
+            InvokeRoundStartDecision(startRound);
+        }
     }
 }

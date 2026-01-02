@@ -10,30 +10,32 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
     [RequireComponent(typeof(NetworkObject))]
     public sealed class NetworkGameEventChannelRpcProxy : NetworkBehaviour
     {
-        private NetworkGameEventChannel channel;
+        private NetworkGameEventChannel _channel;
+
         public void Initialize(NetworkGameEventChannel owner)
         {
-            channel = owner;
+            _channel = owner;
         }
 
         public void Cleanup()
         {
-            channel = null;
+            _channel = null;
         }
 
         public override void OnNetworkSpawn()
         {
             base.OnNetworkSpawn();
-            channel?.NotifyChannelReady();
+            _channel?.NotifyChannelReady();
         }
 
         public override void OnNetworkDespawn()
         {
-            channel?.ResetChannelReadiness();
+            _channel?.ResetChannelReadiness();
             base.OnNetworkDespawn();
         }
 
-        // === Client → Server ===
+        // ==== Client -> Server ====
+
         public void SubmitChoice(Hand choice)
         {
             SubmitChoiceServerRpc(choice);
@@ -47,16 +49,17 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         [ServerRpc(RequireOwnership = false)]
         private void SubmitChoiceServerRpc(Hand choice, ServerRpcParams rpcParams = default)
         {
-            channel?.ReceiveChoice(rpcParams.Receive.SenderClientId, choice);
+            _channel?.ReceiveChoice(rpcParams.Receive.SenderClientId, choice);
         }
 
         [ServerRpc(RequireOwnership = false)]
         private void ConfirmRoundResultServerRpc(bool continueGame, ServerRpcParams rpcParams = default)
         {
-            channel?.InvokeRoundResultConfirmed(rpcParams.Receive.SenderClientId, continueGame);
+            _channel?.InvokeRoundResultConfirmed(rpcParams.Receive.SenderClientId, continueGame);
         }
 
-        // === Server → Client ===
+        // ==== Server -> Client ====
+
         public void SendPlayersReady(ulong player1Id, string player1Name, ulong player2Id, string player2Name)
         {
             PlayersReadyClientRpc(player1Id, player1Name, player2Id, player2Name);
@@ -68,6 +71,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             RoundEndedClientRpc(player1Id, player1Outcome, player1Hand, player2Id, player2Outcome, player2Hand, canContinue);
         }
 
+        public void SendRoundStartDecision(bool startRound)
+        {
+            RoundStartDecisionClientRpc(startRound);
+        }
+
         public void SendGameAborted(string message)
         {
             NotifyClientOfAbortClientRpc(string.IsNullOrWhiteSpace(message) ? "Match aborted" : message);
@@ -77,7 +85,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         private void PlayersReadyClientRpc(ulong player1Id, string player1Name, ulong player2Id, string player2Name,
             ClientRpcParams rpcParams = default)
         {
-            if (channel == null)
+            if (_channel == null)
             {
                 return;
             }
@@ -85,15 +93,15 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             var localId = NetworkManager.Singleton != null ? NetworkManager.Singleton.LocalClientId : player1Id;
             if (localId == player1Id)
             {
-                channel.InvokePlayersReady(player1Name, player2Name);
+                _channel.InvokePlayersReady(player1Name, player2Name);
             }
             else if (localId == player2Id)
             {
-                channel.InvokePlayersReady(player2Name, player1Name);
+                _channel.InvokePlayersReady(player2Name, player1Name);
             }
             else
             {
-                channel.InvokePlayersReady(player1Name, player2Name);
+                _channel.InvokePlayersReady(player1Name, player2Name);
             }
         }
 
@@ -101,7 +109,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         private void RoundEndedClientRpc(ulong player1Id, RoundOutcome player1Outcome, Hand player1Hand,
             ulong player2Id, RoundOutcome player2Outcome, Hand player2Hand, bool canContinue, ClientRpcParams rpcParams = default)
         {
-            if (channel == null)
+            if (_channel == null)
             {
                 return;
             }
@@ -109,23 +117,28 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             var localId = NetworkManager.Singleton != null ? NetworkManager.Singleton.LocalClientId : player1Id;
             if (localId == player1Id)
             {
-                channel.InvokeRoundResult(player1Outcome, player1Hand, player2Hand, canContinue);
+                _channel.InvokeRoundResult(player1Outcome, player1Hand, player2Hand, canContinue);
             }
             else if (localId == player2Id)
             {
-                channel.InvokeRoundResult(player2Outcome, player2Hand, player1Hand, canContinue);
+                _channel.InvokeRoundResult(player2Outcome, player2Hand, player1Hand, canContinue);
             }
             else
             {
-                channel.InvokeRoundResult(player1Outcome, player1Hand, player2Hand, canContinue);
+                _channel.InvokeRoundResult(player1Outcome, player1Hand, player2Hand, canContinue);
             }
+        }
+
+        [ClientRpc]
+        private void RoundStartDecisionClientRpc(bool startRound, ClientRpcParams rpcParams = default)
+        {
+            _channel?.InvokeRoundStartDecision(startRound);
         }
 
         [ClientRpc]
         private void NotifyClientOfAbortClientRpc(string message, ClientRpcParams rpcParams = default)
         {
-            channel?.InvokeGameAborted(message);
+            _channel?.InvokeGameAborted(message);
         }
-
     }
 }

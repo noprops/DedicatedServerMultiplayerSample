@@ -72,6 +72,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             rpcProxy.SendGameAborted(message);
         }
 
+        public override void RaiseRoundStartDecision(bool startRound)
+        {
+            rpcProxy.SendRoundStartDecision(startRound);
+        }
+
         // Partial hooks for client-specific behavior
         partial void HandleClientChoiceSelected(Hand choice);
         partial void HandleClientRoundResultConfirmed(bool continueGame);

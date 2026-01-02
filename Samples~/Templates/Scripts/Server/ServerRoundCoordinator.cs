@@ -4,6 +4,7 @@ using UnityEngine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using DedicatedServerMultiplayerSample.Server.Bootstrap;
 using DedicatedServerMultiplayerSample.Server.Core;
@@ -46,7 +47,13 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 Debug.LogError("[ServerRoundCoordinator] No ServerConnectionManager; shutting down");
                 return;
             }
+            if (eventChannel == null)
+            {
+                Debug.LogError("[ServerRoundCoordinator] Event channel is not assigned.");
+                return;
+            }
 
+            await eventChannel.WaitForChannelReadyAsync(CancellationToken.None);
             var startupSucceeded = await _startupRunner.WaitForStartupCompletionAsync();
             if (!startupSucceeded)
             {
@@ -74,8 +81,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             try
             {
-                await eventChannel.WaitForChannelReadyAsync();
-
                 Debug.Log("[ServerRoundCoordinator] RunRoundAsync starting");
                 var connectedIds = _connectionManager.GetReadyClientsSnapshot() ?? Array.Empty<ulong>();
                 SetPlayerSlots(connectedIds);
@@ -83,16 +88,19 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 // Only send player identities once at the start.
                 BroadcastPlayersReady();
 
-                bool continueGame;
-                do
+                while (true)
                 {
-                    eventChannel.ResetRoundAwaiters();
-
+                    eventChannel.RaiseRoundStartDecision(true);
                     var result = await CollectHandsAndResolveRoundAsync();
                     Debug.LogFormat("[ServerRoundCoordinator] Round resolved. P1={0}({1}), P2={2}({3})",
                         result.Player1Id, result.Player1Hand, result.Player2Id, result.Player2Hand);
-                    continueGame = await NotifyResultsAndAwaitExitAsync(result, TimeSpan.FromSeconds(ResultConfirmTimeoutSeconds));
-                } while (continueGame);
+                    var continueGame = await NotifyResultsAndAwaitExitAsync(result, TimeSpan.FromSeconds(ResultConfirmTimeoutSeconds));
+                    if (!continueGame)
+                    {
+                        eventChannel.RaiseRoundStartDecision(false);
+                        break;
+                    }
+                }
 
                 Debug.Log("[ServerRoundCoordinator] Round acknowledgements satisfied; requesting shutdown");
                 ServerSingleton.Instance?.ScheduleShutdown(ShutdownKind.Normal, "Game completed", ShutdownDelay);
@@ -161,8 +169,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             var logic = new RockPaperScissorsGameLogic(_clientIds);
             var choicesTask = eventChannel.WaitForChoicesAsync(
-                _clientIds,
-                TimeSpan.FromSeconds(HandCollectionTimeoutSeconds));
+                new HashSet<ulong>(_clientIds),
+                TimeSpan.FromSeconds(HandCollectionTimeoutSeconds),
+                CancellationToken.None);
 
             // Submit CPU hands after waiters are registered so they are counted.
             foreach (var id in _clientIds)
@@ -245,19 +254,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 return false;
             }
 
-            var continueVotes = new Dictionary<ulong, bool>();
-
             var canContinue = ShouldAllowContinue();
             BroadcastRoundResult(result, canContinue);
 
-            var votes = await eventChannel.WaitForConfirmationsAsync(pending, timeout);
-            foreach (var kvp in votes)
-            {
-                continueVotes[kvp.Key] = kvp.Value;
-            }
-
-            var allResponded = pending.All(id => continueVotes.ContainsKey(id));
-            return allResponded && continueVotes.Count > 0 && continueVotes.Values.All(v => v);
+            return await eventChannel.WaitForConfirmationsAsync(pending, timeout, CancellationToken.None);
         }
 
         private static bool IsCpuId(ulong clientId) => clientId >= CpuPlayerBaseId;

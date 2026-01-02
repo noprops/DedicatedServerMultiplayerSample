@@ -77,8 +77,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
         /// </summary>
         private async Task RunRoundAsync()
         {
-            eventChannel.ResetRoundAwaiters();
             _logic = new RockPaperScissorsGameLogic(PlayerOrder);
+            eventChannel.RaiseRoundStartDecision(true);
 
             var choices = await CollectHandsAsync(TimeSpan.FromSeconds(HandCollectionTimeoutSeconds));
             var result = _logic.ResolveRound(choices);
@@ -91,7 +91,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
         {
             var awaitedIds = new[] { LocalMatchIds.LocalPlayerId, LocalMatchIds.CpuPlayerId };
             var cpuHand = HandExtensions.RandomHand();
-            var choicesTask = eventChannel.WaitForChoicesAsync(awaitedIds, timeout);
+            var choicesTask = eventChannel.WaitForChoicesAsync(new HashSet<ulong>(awaitedIds), timeout, CancellationToken.None);
 
             // Submit CPU hand after waiters are registered so it is counted.
             eventChannel.RaiseChoiceSelectedForPlayer(LocalMatchIds.CpuPlayerId, cpuHand);
@@ -113,14 +113,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
 
         private async Task WaitForResultConfirmationAsync(TimeSpan timeout)
         {
-            bool continueGame = false;
-
-            var confirmations = await eventChannel.WaitForConfirmationsAsync(new[] { LocalMatchIds.LocalPlayerId }, timeout);
-            continueGame = confirmations.TryGetValue(LocalMatchIds.LocalPlayerId, out var vote) && vote;
-
-            if (!confirmations.ContainsKey(LocalMatchIds.LocalPlayerId))
+            var continueGame = await eventChannel.WaitForConfirmationsAsync(new HashSet<ulong> { LocalMatchIds.LocalPlayerId }, timeout, CancellationToken.None);
+            if (!continueGame)
             {
-                Debug.LogWarning("[LocalRoundCoordinator] Result confirmation timed out. Treating as quit.");
+                Debug.LogWarning("[LocalRoundCoordinator] Result confirmation timed out or quit selected.");
             }
 
             if (continueGame)

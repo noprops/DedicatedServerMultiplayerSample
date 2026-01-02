@@ -77,7 +77,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                 enabled = false;
                 return;
             }
-            // choiceButtonsCountdownのボタンはrock/paper/scissorsの3つに対応させる。
+            // Choice countdown buttons must map to rock/paper/scissors.
             if (choiceButtonsCountdown.ButtonCount < 3)
             {
                 Debug.LogError("[RockPaperScissorsUI] Choice buttons must include rock/paper/scissors.");
@@ -110,7 +110,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
 
                 while (!token.IsCancellationRequested)
                 {
-                    eventChannel.ResetResultAwaiter();
+                    statusText.text = "Waiting for round start...";
+                    var startRound = await eventChannel.WaitForRoundStartDecisionAsync(token);
+                    if (!startRound)
+                    {
+                        break;
+                    }
                     ShowChoicePanel(intro.myName, intro.opponentName);
 
                     var selected = await WaitForLocalChoiceAsync(token);
@@ -121,11 +126,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                     ShowResult(result.outcome, result.myHand, result.opponentHand, result.canContinue);
 
                     var selection = await continueQuitButtons.RunAsync(endButtonCountdownSeconds);
-                    var continueGame = result.canContinue
-                    ? selection.Reason == CountdownCompletionReason.Clicked && selection.ClickedButton == continueButton
-                    : false;
+                    var continueGame = selection.Reason == CountdownCompletionReason.Clicked
+                        && selection.ClickedButton == continueButton;
                     eventChannel.RaiseRoundResultConfirmed(continueGame);
-                    
+
                     if (!continueGame)
                     {
                         break;
