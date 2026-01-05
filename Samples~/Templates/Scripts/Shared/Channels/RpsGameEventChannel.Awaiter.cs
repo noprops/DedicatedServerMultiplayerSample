@@ -1,5 +1,4 @@
 using System;
-using System.Collections.Generic;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -7,28 +6,102 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 {
     public abstract partial class RpsGameEventChannel
     {
-        public Task WaitForChannelReadyAsync(CancellationToken token = default)
-            => Awaiter.WaitForChannelReadyAsync(token);
+        private TaskCompletionSource<bool> _channelReadyTcs =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private TaskCompletionSource<(string myName, string opponentName)> _playersReadyTcs =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private TaskCompletionSource<bool> _roundStartedTcs =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private TaskCompletionSource<(RoundOutcome outcome, Hand myHand, Hand opponentHand, bool canContinue)> _roundResultTcs =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
+        private TaskCompletionSource<bool> _continueDecisionTcs =
+            new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        public Task<(string myName, string opponentName)> WaitForPlayersReadyAsync(CancellationToken token = default)
-            => Awaiter.WaitForPlayersReadyAsync(token);
+        public async Task WaitForChannelReadyAsync(CancellationToken token)
+        {
+            await WaitWithCancellationAsync(_channelReadyTcs.Task, token);
+        }
 
-        public Task<bool> WaitForRoundStartDecisionAsync(CancellationToken token = default)
-            => Awaiter.WaitForRoundStartDecisionAsync(token);
+        // ==== Awaitable UI waits ====
 
-        public Task<(RoundOutcome outcome, Hand myHand, Hand opponentHand, bool canContinue)> WaitForRoundResultAsync(CancellationToken token = default)
-            => Awaiter.WaitForRoundResultAsync(token);
+        public async Task<(string myName, string opponentName)> WaitForPlayersReadyAsync(CancellationToken token)
+        {
+            var result = await WaitWithCancellationAsync(_playersReadyTcs.Task, token);
+            _playersReadyTcs = new TaskCompletionSource<(string, string)>(TaskCreationOptions.RunContinuationsAsynchronously);
+            return result;
+        }
 
-        public Task<string> WaitForGameAbortedAsync(CancellationToken token = default)
-            => Awaiter.WaitForGameAbortedAsync(token);
+        public async Task WaitForRoundStartedAsync(CancellationToken token)
+        {
+            await WaitWithCancellationAsync(_roundStartedTcs.Task, token);
+            _roundStartedTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        }
 
-        public Task<Dictionary<ulong, Hand>> WaitForChoicesAsync(HashSet<ulong> expectedIds, TimeSpan timeout, CancellationToken token = default)
-            => Awaiter.WaitForChoicesAsync(expectedIds, timeout, token);
+        public async Task<(RoundOutcome outcome, Hand myHand, Hand opponentHand, bool canContinue)> WaitForRoundResultAsync(
+            CancellationToken token)
+        {
+            var result = await WaitWithCancellationAsync(_roundResultTcs.Task, token);
+            _roundResultTcs = new TaskCompletionSource<(RoundOutcome, Hand, Hand, bool)>(
+                TaskCreationOptions.RunContinuationsAsynchronously);
+            return result;
+        }
 
-        public Task<bool> WaitForConfirmationsAsync(HashSet<ulong> expectedIds, TimeSpan timeout, CancellationToken token = default)
-            => Awaiter.WaitForConfirmationsAsync(expectedIds, timeout, token);
+        public async Task<bool> WaitForContinueDecisionAsync(CancellationToken token)
+        {
+            var result = await WaitWithCancellationAsync(_continueDecisionTcs.Task, token);
+            _continueDecisionTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            return result;
+        }
 
-        private RpsGameEventChannelAwaiter Awaiter => _awaiter ??= new RpsGameEventChannelAwaiter(this);
-        private RpsGameEventChannelAwaiter _awaiter;
+        private async Task WaitWithCancellationAsync(Task task, CancellationToken token)
+        {
+            if (!token.CanBeCanceled)
+            {
+                await task;
+                return;
+            }
+
+            if (token.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(token);
+            }
+
+            var cancelTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using (token.Register(() => cancelTcs.TrySetResult(true)))
+            {
+                var completed = await Task.WhenAny(task, cancelTcs.Task);
+                if (completed != task)
+                {
+                    throw new OperationCanceledException(token);
+                }
+
+                await task;
+            }
+        }
+
+        private async Task<T> WaitWithCancellationAsync<T>(Task<T> task, CancellationToken token)
+        {
+            if (!token.CanBeCanceled)
+            {
+                return await task;
+            }
+
+            if (token.IsCancellationRequested)
+            {
+                throw new OperationCanceledException(token);
+            }
+
+            var cancelTcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            using (token.Register(() => cancelTcs.TrySetResult(true)))
+            {
+                var completed = await Task.WhenAny(task, cancelTcs.Task);
+                if (completed != task)
+                {
+                    throw new OperationCanceledException(token);
+                }
+
+                return await task;
+            }
+        }
     }
 }

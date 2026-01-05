@@ -106,17 +106,13 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                 await eventChannel.WaitForChannelReadyAsync(token);
                 eventChannel.GameAborted += HandleGameAborted;
 
-                var intro = await eventChannel.WaitForPlayersReadyAsync(token);
+                var (myName, opponentName) = await eventChannel.WaitForPlayersReadyAsync(token);
 
                 while (!token.IsCancellationRequested)
                 {
                     statusText.text = "Waiting for round start...";
-                    var startRound = await eventChannel.WaitForRoundStartDecisionAsync(token);
-                    if (!startRound)
-                    {
-                        break;
-                    }
-                    ShowChoicePanel(intro.myName, intro.opponentName);
+                    await eventChannel.WaitForRoundStartedAsync(token);
+                    ShowChoicePanel(myName, opponentName);
 
                     var selected = await WaitForLocalChoiceAsync(token);
                     statusText.text = "Waiting for opponent to select...";
@@ -131,6 +127,13 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                     eventChannel.RaiseRoundResultConfirmed(continueGame);
 
                     if (!continueGame)
+                    {
+                        break;
+                    }
+
+                    statusText.text = "Waiting for opponent to continue...";
+                    var continueDecision = await eventChannel.WaitForContinueDecisionAsync(token);
+                    if (!continueDecision)
                     {
                         break;
                     }
@@ -233,5 +236,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                 true,
                 abortPromptDurationSeconds);
         }
+
     }
 }

@@ -17,11 +17,10 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
         [SerializeField] private RpsGameEventChannel eventChannel;
 #if !UNITY_SERVER && !ENABLE_UCS_SERVER
         private static readonly ulong[] PlayerOrder = { LocalMatchIds.LocalPlayerId, LocalMatchIds.CpuPlayerId };
-        private const int ResultConfirmTimeoutSeconds = 20;
         private const int HandCollectionTimeoutSeconds = 15;
+        private const int ResultConfirmTimeoutSeconds = 20;
 
         private string _localPlayerName;
-        private RockPaperScissorsGameLogic _logic;
         private const string CpuDisplayName = "CPU";
 
         private void Awake()
@@ -29,7 +28,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
             Debug.Log("[LocalRoundCoordinator] Awake");
         }
 
-        private void Start()
+        private async void Start()
         {
             if (eventChannel == null)
             {
@@ -41,7 +40,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
             _localPlayerName = ClientData.Instance?.PlayerName;
             Debug.Log("[LocalRoundCoordinator] Initialized and starting local round.");
             eventChannel.GameAbortConfirmed += HandleGameAbortConfirmed;
-            _ = InitializeAndRunAsync();
+            await InitializeAndRunAsync();
         }
 
         private void OnDestroy()
@@ -51,7 +50,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
                 eventChannel.GameAbortConfirmed -= HandleGameAbortConfirmed;
             }
 
-            _logic = null;
         }
 
         /// <summary>
@@ -61,9 +59,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
         {
             try
             {
-                await eventChannel.WaitForChannelReadyAsync();
+                await eventChannel.WaitForChannelReadyAsync(CancellationToken.None);
                 eventChannel.RaisePlayersReady(LocalMatchIds.LocalPlayerId, _localPlayerName, LocalMatchIds.CpuPlayerId, CpuDisplayName);
-                await RunRoundAsync();
+                await RunRoundLoopAsync();
             }
             catch (Exception ex)
             {
@@ -75,63 +73,138 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
         /// <summary>
         /// Full local round lifecycle: collect hands, resolve, and notify UI.
         /// </summary>
-        private async Task RunRoundAsync()
+        private async Task RunRoundLoopAsync()
         {
-            _logic = new RockPaperScissorsGameLogic(PlayerOrder);
-            eventChannel.RaiseRoundStartDecision(true);
+            var logic = new RockPaperScissorsGameLogic(PlayerOrder);
+            var cpuIds = new[] { LocalMatchIds.CpuPlayerId };
+            var expectedChoices = new HashSet<ulong>(PlayerOrder);
+            var expectedConfirmations = new HashSet<ulong> { LocalMatchIds.LocalPlayerId };
 
-            var choices = await CollectHandsAsync(TimeSpan.FromSeconds(HandCollectionTimeoutSeconds));
-            var result = _logic.ResolveRound(choices);
-            eventChannel.RaiseRoundResult(result.Player1Id, result.Player1Outcome, result.Player1Hand,
-                result.Player2Id, result.Player2Outcome, result.Player2Hand, true);
-            await WaitForResultConfirmationAsync(TimeSpan.FromSeconds(ResultConfirmTimeoutSeconds));
-        }
-
-        private async Task<Dictionary<ulong, Hand>> CollectHandsAsync(TimeSpan timeout)
-        {
-            var awaitedIds = new[] { LocalMatchIds.LocalPlayerId, LocalMatchIds.CpuPlayerId };
-            var cpuHand = HandExtensions.RandomHand();
-            var choicesTask = eventChannel.WaitForChoicesAsync(new HashSet<ulong>(awaitedIds), timeout, CancellationToken.None);
-
-            // Submit CPU hand after waiters are registered so it is counted.
-            eventChannel.RaiseChoiceSelectedForPlayer(LocalMatchIds.CpuPlayerId, cpuHand);
-
-            var choices = await choicesTask;
-
-            if (!choices.ContainsKey(LocalMatchIds.CpuPlayerId))
+            while (true)
             {
-                choices[LocalMatchIds.CpuPlayerId] = cpuHand;
+                eventChannel.RaiseRoundStarted();
+
+                var choices = await CollectChoicesAsync(expectedChoices, cpuIds, TimeSpan.FromSeconds(HandCollectionTimeoutSeconds));
+                var result = logic.ResolveRound(choices);
+                eventChannel.RaiseRoundResult(result.Player1Id, result.Player1Outcome, result.Player1Hand,
+                    result.Player2Id, result.Player2Outcome, result.Player2Hand, true);
+
+                var continueGame = await CollectConfirmationsAsync(
+                    expectedConfirmations,
+                    TimeSpan.FromSeconds(ResultConfirmTimeoutSeconds));
+                eventChannel.RaiseContinueDecision(continueGame);
+                if (!continueGame)
+                {
+                    break;
+                }
             }
 
-            if (!choices.ContainsKey(LocalMatchIds.LocalPlayerId))
-            {
-                Debug.LogWarning("[LocalRoundCoordinator] Hand collection timed out; filling missing hands.");
-            }
-
-            return choices;
-        }
-
-        private async Task WaitForResultConfirmationAsync(TimeSpan timeout)
-        {
-            var continueGame = await eventChannel.WaitForConfirmationsAsync(new HashSet<ulong> { LocalMatchIds.LocalPlayerId }, timeout, CancellationToken.None);
-            if (!continueGame)
-            {
-                Debug.LogWarning("[LocalRoundCoordinator] Result confirmation timed out or quit selected.");
-            }
-
-            if (continueGame)
-            {
-                _ = RunRoundAsync();
-            }
-            else
-            {
-                SceneManager.LoadScene("loading", LoadSceneMode.Single);
-            }
+            SceneManager.LoadScene("loading", LoadSceneMode.Single);
         }
 
         private void HandleGameAbortConfirmed()
         {
             SceneManager.LoadScene("loading", LoadSceneMode.Single);
+        }
+
+        private async Task<Dictionary<ulong, Hand>> CollectChoicesAsync(
+            HashSet<ulong> expectedIds,
+            IReadOnlyCollection<ulong> cpuIds,
+            TimeSpan timeout)
+        {
+            var choices = new Dictionary<ulong, Hand>();
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            void Handler(ulong playerId, Hand hand)
+            {
+                if (!expectedIds.Contains(playerId) || choices.ContainsKey(playerId))
+                {
+                    return;
+                }
+
+                choices[playerId] = hand;
+                if (choices.Count == expectedIds.Count)
+                {
+                    tcs.TrySetResult(true);
+                }
+            }
+
+            eventChannel.ChoiceSelected += Handler;
+            using (var cts = new CancellationTokenSource(timeout))
+            {
+                using (cts.Token.Register(() => tcs.TrySetCanceled(cts.Token)))
+                {
+                    foreach (var cpuId in cpuIds)
+                    {
+                        eventChannel.RaiseChoiceSelectedForPlayer(cpuId, HandExtensions.RandomHand());
+                    }
+
+                    try
+                    {
+                        await tcs.Task;
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        Debug.LogWarning("[LocalRoundCoordinator] Hand collection timed out; filling missing hands.");
+                    }
+                }
+            }
+
+            eventChannel.ChoiceSelected -= Handler;
+
+            foreach (var expectedId in expectedIds)
+            {
+                if (!choices.ContainsKey(expectedId))
+                {
+                    choices[expectedId] = HandExtensions.RandomHand();
+                }
+            }
+
+            return choices;
+        }
+
+        private async Task<bool> CollectConfirmationsAsync(HashSet<ulong> expectedIds, TimeSpan timeout)
+        {
+            var confirmations = new Dictionary<ulong, bool>();
+            var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+            void Handler(ulong playerId, bool continueGame)
+            {
+                if (!expectedIds.Contains(playerId) || confirmations.ContainsKey(playerId))
+                {
+                    return;
+                }
+
+                confirmations[playerId] = continueGame;
+
+                if (!continueGame)
+                {
+                    tcs.TrySetResult(false);
+                    return;
+                }
+
+                if (confirmations.Count == expectedIds.Count)
+                {
+                    tcs.TrySetResult(true);
+                }
+            }
+
+            eventChannel.RoundResultConfirmed += Handler;
+            using (var cts = new CancellationTokenSource(timeout))
+            {
+                using (cts.Token.Register(() => tcs.TrySetCanceled(cts.Token)))
+                {
+                    try
+                    {
+                        return await tcs.Task;
+                    }
+                    catch (TaskCanceledException)
+                    {
+                        Debug.LogWarning("[LocalRoundCoordinator] Result confirmation timed out. Treating as quit.");
+                        return false;
+                    }
+                }
+            }
         }
 #endif
     }

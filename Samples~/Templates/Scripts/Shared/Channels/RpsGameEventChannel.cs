@@ -17,22 +17,15 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// </summary>
         public event Action ChannelReady;
 
-        public bool IsChannelReady { get; private set; }
-
-        public virtual void NotifyChannelReady()
+        internal virtual void InvokeChannelReady()
         {
-            if (IsChannelReady)
+            if (_channelReadyTcs.Task.IsCompleted)
             {
                 return;
             }
 
-            IsChannelReady = true;
+            _channelReadyTcs.TrySetResult(true);
             ChannelReady?.Invoke();
-        }
-
-        protected internal void ResetChannelReadiness()
-        {
-            IsChannelReady = false;
         }
 
         // ==== UI -> Game logic ====
@@ -44,11 +37,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
         // Choice selected.
         public abstract void RaiseChoiceSelected(Hand choice);
-        public virtual void RaiseChoiceSelectedForPlayer(ulong playerId, Hand hand)
-        {
-        }
+        public abstract void RaiseChoiceSelectedForPlayer(ulong playerId, Hand hand);
         public event Action<ulong, Hand> ChoiceSelected;
-        protected void InvokeChoiceSelected(ulong playerId, Hand hand)
+        internal void InvokeChoiceSelected(ulong playerId, Hand hand)
         {
             ChoiceSelected?.Invoke(playerId, hand);
         }
@@ -80,15 +71,26 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         public event Action<string, string> PlayersReady;
         protected internal void InvokePlayersReady(string myName, string opponentName)
         {
+            _playersReadyTcs.TrySetResult((myName, opponentName));
             PlayersReady?.Invoke(myName, opponentName);
         }
 
-        // Round start decision.
-        public abstract void RaiseRoundStartDecision(bool startRound);
-        public event Action<bool> RoundStartDecision;
-        protected internal void InvokeRoundStartDecision(bool startRound)
+        // Round started.
+        public abstract void RaiseRoundStarted();
+        public event Action RoundStarted;
+        protected internal void InvokeRoundStarted()
         {
-            RoundStartDecision?.Invoke(startRound);
+            _roundStartedTcs.TrySetResult(true);
+            RoundStarted?.Invoke();
+        }
+
+        // Continue decision.
+        public abstract void RaiseContinueDecision(bool continueGame);
+        public event Action<bool> ContinueDecision;
+        protected internal void InvokeContinueDecision(bool continueGame)
+        {
+            _continueDecisionTcs.TrySetResult(continueGame);
+            ContinueDecision?.Invoke(continueGame);
         }
 
         // Round result.
@@ -103,6 +105,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         public event Action<RoundOutcome, Hand, Hand, bool> RoundResultReady;
         protected internal void InvokeRoundResult(RoundOutcome myOutcome, Hand myHand, Hand opponentHand, bool canContinue)
         {
+            _roundResultTcs.TrySetResult((myOutcome, myHand, opponentHand, canContinue));
             RoundResultReady?.Invoke(myOutcome, myHand, opponentHand, canContinue);
         }
 
@@ -113,5 +116,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         {
             GameAborted?.Invoke(message);
         }
+
     }
 }

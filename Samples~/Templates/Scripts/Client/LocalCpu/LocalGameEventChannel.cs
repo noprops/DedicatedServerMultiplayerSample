@@ -17,7 +17,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
 
         private void Start()
         {
-            NotifyChannelReady();
+            InvokeChannelReady();
             Debug.Log("[LocalGameEventChannel] Channel ready (local mode).");
         }
 
@@ -66,9 +66,14 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
             InvokeGameAborted(message);
         }
 
-        public override void RaiseRoundStartDecision(bool startRound)
+        public override void RaiseRoundStarted()
         {
-            InvokeRoundStartDecision(startRound);
+            InvokeRoundStarted();
+        }
+
+        public override void RaiseContinueDecision(bool continueGame)
+        {
+            InvokeContinueDecision(continueGame);
         }
     }
 }

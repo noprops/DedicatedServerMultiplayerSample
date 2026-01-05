@@ -25,12 +25,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         public override void OnNetworkSpawn()
         {
             base.OnNetworkSpawn();
-            _channel?.NotifyChannelReady();
+            _channel?.InvokeChannelReady();
         }
 
         public override void OnNetworkDespawn()
         {
-            _channel?.ResetChannelReadiness();
+            // Channel readiness is one-shot; no explicit reset needed.
             base.OnNetworkDespawn();
         }
 
@@ -46,14 +46,14 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             ConfirmRoundResultServerRpc(continueGame);
         }
 
-        [ServerRpc(RequireOwnership = false)]
-        private void SubmitChoiceServerRpc(Hand choice, ServerRpcParams rpcParams = default)
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+        private void SubmitChoiceServerRpc(Hand choice, RpcParams rpcParams = default)
         {
-            _channel?.ReceiveChoice(rpcParams.Receive.SenderClientId, choice);
+            _channel?.InvokeChoiceSelected(rpcParams.Receive.SenderClientId, choice);
         }
 
-        [ServerRpc(RequireOwnership = false)]
-        private void ConfirmRoundResultServerRpc(bool continueGame, ServerRpcParams rpcParams = default)
+        [Rpc(SendTo.Server, InvokePermission = RpcInvokePermission.Everyone)]
+        private void ConfirmRoundResultServerRpc(bool continueGame, RpcParams rpcParams = default)
         {
             _channel?.InvokeRoundResultConfirmed(rpcParams.Receive.SenderClientId, continueGame);
         }
@@ -71,9 +71,14 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             RoundEndedClientRpc(player1Id, player1Outcome, player1Hand, player2Id, player2Outcome, player2Hand, canContinue);
         }
 
-        public void SendRoundStartDecision(bool startRound)
+        public void SendRoundStarted()
         {
-            RoundStartDecisionClientRpc(startRound);
+            RoundStartedClientRpc();
+        }
+
+        public void SendContinueDecision(bool continueGame)
+        {
+            ContinueDecisionClientRpc(continueGame);
         }
 
         public void SendGameAborted(string message)
@@ -130,9 +135,15 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         }
 
         [ClientRpc]
-        private void RoundStartDecisionClientRpc(bool startRound, ClientRpcParams rpcParams = default)
+        private void RoundStartedClientRpc(ClientRpcParams rpcParams = default)
         {
-            _channel?.InvokeRoundStartDecision(startRound);
+            _channel?.InvokeRoundStarted();
+        }
+
+        [ClientRpc]
+        private void ContinueDecisionClientRpc(bool continueGame, ClientRpcParams rpcParams = default)
+        {
+            _channel?.InvokeContinueDecision(continueGame);
         }
 
         [ClientRpc]

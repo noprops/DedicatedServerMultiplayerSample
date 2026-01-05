@@ -1,4 +1,3 @@
-using DedicatedServerMultiplayerSample.Shared;
 using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Samples.Shared
@@ -10,7 +9,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
     /// </summary>
     [DisallowMultipleComponent]
     [RequireComponent(typeof(NetworkGameEventChannelRpcProxy))]
-    public sealed partial class NetworkGameEventChannel : RpsGameEventChannel
+    public sealed class NetworkGameEventChannel : RpsGameEventChannel
     {
         [SerializeField] private NetworkGameEventChannelRpcProxy rpcProxy;
 
@@ -37,6 +36,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             HandleClientChoiceSelected(choice);
         }
 
+        public override void RaiseChoiceSelectedForPlayer(ulong playerId, Hand hand)
+        {
+            InvokeChoiceSelected(playerId, hand);
+        }
+
         public override void RaiseRoundResultConfirmed(bool continueGame)
         {
             HandleClientRoundResultConfirmed(continueGame);
@@ -45,10 +49,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         /// <summary>
         /// Used by the RPC proxy to surface a received choice with a known player id.
         /// </summary>
-        internal void ReceiveChoice(ulong playerId, Hand hand)
-        {
-            InvokeChoiceSelected(playerId, hand);
-        }
 
         public override void RaiseGameAbortConfirmed()
         {
@@ -72,14 +72,40 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             rpcProxy.SendGameAborted(message);
         }
 
-        public override void RaiseRoundStartDecision(bool startRound)
+        public override void RaiseRoundStarted()
         {
-            rpcProxy.SendRoundStartDecision(startRound);
+            rpcProxy.SendRoundStarted();
         }
 
-        // Partial hooks for client-specific behavior
-        partial void HandleClientChoiceSelected(Hand choice);
-        partial void HandleClientRoundResultConfirmed(bool continueGame);
-        partial void HandleClientAbortConfirmed();
+        public override void RaiseContinueDecision(bool continueGame)
+        {
+            rpcProxy.SendContinueDecision(continueGame);
+        }
+
+        // Client-only behavior (server builds are no-ops).
+        private void HandleClientChoiceSelected(Hand choice)
+        {
+#if !UNITY_SERVER && !ENABLE_UCS_SERVER
+            rpcProxy.SubmitChoice(choice);
+#endif
+        }
+
+        private void HandleClientRoundResultConfirmed(bool continueGame)
+        {
+#if !UNITY_SERVER && !ENABLE_UCS_SERVER
+            // Notify local listeners without relying on a client id (server will include sender id via RPC).
+            InvokeRoundResultConfirmed(0, continueGame);
+            // Forward the selection to the server via RPC proxy.
+            rpcProxy.ConfirmRoundResult(continueGame);
+#endif
+        }
+
+        private void HandleClientAbortConfirmed()
+        {
+#if !UNITY_SERVER && !ENABLE_UCS_SERVER
+            // Notify local listeners.
+            InvokeGameAbortConfirmed();
+#endif
+        }
     }
 }
