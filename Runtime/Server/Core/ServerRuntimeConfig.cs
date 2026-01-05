@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using UnityEngine;
 
-#if UNITY_SERVER || ENABLE_UCS_SERVER
+#if (UNITY_SERVER || ENABLE_UCS_SERVER) && UNITY_SERVICES_MULTIPLAY
 using Unity.Services.Multiplay;
 #endif
 
@@ -113,7 +113,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             string ipAddress = null;
             string serverLogDirectory = null;
 
-#if UNITY_SERVER || ENABLE_UCS_SERVER
+#if (UNITY_SERVER || ENABLE_UCS_SERVER) && UNITY_SERVICES_MULTIPLAY
             try
             {
                 var serverConfig = MultiplayService.Instance?.ServerConfig;

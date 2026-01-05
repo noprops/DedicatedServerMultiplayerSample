@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 
-#if UNITY_SERVER || ENABLE_UCS_SERVER
+#if (UNITY_SERVER || ENABLE_UCS_SERVER) && UNITY_SERVICES_MULTIPLAY
 using Unity.Services.Authentication.Server;
 using Unity.Services.Core;
 using Unity.Services.Matchmaker.Models;
@@ -19,7 +19,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
     /// </summary>
     internal sealed class MultiplaySessionService : IDisposable
     {
-#if UNITY_SERVER || ENABLE_UCS_SERVER
+#if (UNITY_SERVER || ENABLE_UCS_SERVER) && UNITY_SERVICES_MULTIPLAY
         private readonly ServerRuntimeConfig _runtimeConfig;
         private readonly int _defaultMaxPlayers;
 
