@@ -46,15 +46,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             HandleClientRoundResultConfirmed(continueGame);
         }
 
-        /// <summary>
-        /// Used by the RPC proxy to surface a received choice with a known player id.
-        /// </summary>
-
-        public override void RaiseGameAbortConfirmed()
-        {
-            HandleClientAbortConfirmed();
-        }
-
         // ==== Game Logic → UI ====
         public override void RaisePlayersReady(ulong player1Id, string player1Name, ulong player2Id, string player2Name)
         {
@@ -97,14 +88,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             InvokeRoundResultConfirmed(0, continueGame);
             // Forward the selection to the server via RPC proxy.
             rpcProxy.ConfirmRoundResult(continueGame);
-#endif
-        }
-
-        private void HandleClientAbortConfirmed()
-        {
-#if !UNITY_SERVER && !ENABLE_UCS_SERVER
-            // Notify local listeners.
-            InvokeGameAbortConfirmed();
 #endif
         }
     }

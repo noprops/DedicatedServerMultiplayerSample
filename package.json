@@ -6,9 +6,10 @@
   "description": "Reusable core components for Unity Multiplayer Services dedicated server samples.",
   "keywords": ["multiplayer", "dedicated", "server"],
   "dependencies": {
-    "com.unity.netcode.gameobjects": "2.5.1",
+    "com.unity.netcode.gameobjects": "2.7.0",
     "com.unity.services.multiplayer": "1.1.8",
-    "com.unity.services.authentication": "2.5.3",
+    "com.unity.services.authentication": "3.5.2",
+    "com.unity.multiplayer.playmode": "1.6.3",
     "com.unity.textmeshpro": "3.0.8"
   },
   "samples": [

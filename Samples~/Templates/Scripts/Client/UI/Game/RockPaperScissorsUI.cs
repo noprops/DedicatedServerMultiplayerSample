@@ -128,6 +128,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
 
                     if (!continueGame)
                     {
+                        eventChannel.RaiseGameEndRequested();
                         break;
                     }
 
@@ -135,6 +136,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                     var continueDecision = await eventChannel.WaitForContinueDecisionAsync(token);
                     if (!continueDecision)
                     {
+                        eventChannel.RaiseGameEndRequested();
                         break;
                     }
                 }
@@ -227,7 +229,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
         private void ShowAbortPrompt(string reason)
         {
             var callback = eventChannel != null
-                ? new Action(eventChannel.RaiseGameAbortConfirmed)
+                ? new Action(eventChannel.RaiseGameEndRequested)
                 : null;
 
             modalLayer?.Show(

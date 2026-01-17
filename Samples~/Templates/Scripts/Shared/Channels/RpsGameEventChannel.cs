@@ -52,12 +52,16 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             RoundResultConfirmed?.Invoke(playerId, continueGame);
         }
 
-        // Abort confirmation.
-        public abstract void RaiseGameAbortConfirmed();
-        public event Action GameAbortConfirmed;
-        protected internal void InvokeGameAbortConfirmed()
+        // Game end requested (local-only exit intent).
+        public virtual void RaiseGameEndRequested()
         {
-            GameAbortConfirmed?.Invoke();
+            InvokeGameEndRequested();
+        }
+
+        public event Action GameEndRequested;
+        protected internal void InvokeGameEndRequested()
+        {
+            GameEndRequested?.Invoke();
         }
 
         // ==== Game logic -> UI ====

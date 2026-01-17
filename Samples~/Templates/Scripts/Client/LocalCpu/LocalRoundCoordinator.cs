@@ -39,7 +39,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
 
             _localPlayerName = ClientData.Instance?.PlayerName;
             Debug.Log("[LocalRoundCoordinator] Initialized and starting local round.");
-            eventChannel.GameAbortConfirmed += HandleGameAbortConfirmed;
+            eventChannel.GameEndRequested += HandleGameEndRequested;
             await InitializeAndRunAsync();
         }
 
@@ -47,7 +47,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
         {
             if (eventChannel != null)
             {
-                eventChannel.GameAbortConfirmed -= HandleGameAbortConfirmed;
+                eventChannel.GameEndRequested -= HandleGameEndRequested;
             }
 
         }
@@ -98,11 +98,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
                     break;
                 }
             }
-
-            SceneManager.LoadScene("loading", LoadSceneMode.Single);
         }
 
-        private void HandleGameAbortConfirmed()
+        private void HandleGameEndRequested()
         {
             SceneManager.LoadScene("loading", LoadSceneMode.Single);
         }

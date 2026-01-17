@@ -37,11 +37,6 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.LocalCpu
             InvokeRoundResultConfirmed(LocalMatchIds.LocalPlayerId, continueGame);
         }
 
-        public override void RaiseGameAbortConfirmed()
-        {
-            InvokeGameAbortConfirmed();
-        }
-
         // ==== Game Logic -> UI ====
         public override void RaisePlayersReady(ulong player1Id, string player1Name, ulong player2Id, string player2Name)
         {

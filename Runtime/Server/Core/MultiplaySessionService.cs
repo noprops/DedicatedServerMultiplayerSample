@@ -4,7 +4,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using UnityEngine;
 
-#if (UNITY_SERVER || ENABLE_UCS_SERVER) && UNITY_SERVICES_MULTIPLAY
+#if (UNITY_SERVER || ENABLE_UCS_SERVER)
 using Unity.Services.Authentication.Server;
 using Unity.Services.Core;
 using Unity.Services.Matchmaker.Models;
@@ -19,7 +19,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
     /// </summary>
     internal sealed class MultiplaySessionService : IDisposable
     {
-#if (UNITY_SERVER || ENABLE_UCS_SERVER) && UNITY_SERVICES_MULTIPLAY
+#if (UNITY_SERVER || ENABLE_UCS_SERVER)
         private readonly ServerRuntimeConfig _runtimeConfig;
         private readonly int _defaultMaxPlayers;
 
@@ -269,12 +269,14 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 #else
         public MultiplaySessionService(ServerRuntimeConfig runtimeConfig, int defaultMaxPlayers)
         {
+            Debug.LogWarning("[MultiplaySessionService] Stub active: not running as server build. Allocation will always fail.");
         }
 
         public bool IsConnected => false;
 
         public Task<MatchAllocationResult> AwaitAllocationAsync(CancellationToken ct)
         {
+            Debug.LogWarning("[MultiplaySessionService] AwaitAllocationAsync using stub. Returning failed allocation.");
             return Task.FromResult(MatchAllocationResult.Failed());
         }
 

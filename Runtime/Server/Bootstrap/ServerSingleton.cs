@@ -62,6 +62,7 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
                 Debug.Log("[ServerSingleton] Initializing Unity Services for server");
                 await UnityServices.InitializeAsync();
                 Debug.Log("[ServerSingleton] Unity Services initialized");
+                Debug.Log($"[ServerSingleton] BuildVersion: {Application.version} BuildGuid: {Application.buildGUID}");
                 
                 if (NetworkManager.Singleton == null)
                 {

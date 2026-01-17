@@ -1,12 +1,13 @@
 using DedicatedServerMultiplayerSample.Client;
 using DedicatedServerMultiplayerSample.Samples.Shared;
 using UnityEngine;
+using UnityEngine.SceneManagement;
 
 namespace DedicatedServerMultiplayerSample.Samples.Client.Network
 {
     /// <summary>
-    /// Listens for quit/abort confirmations and disconnects this network client.
-    /// Keeps UIとevent channelを純粋に保つため、通信層の切断はここで担う。
+    /// Disconnects this network client when the UI explicitly requests to end the game.
+    /// Keeps UI/event channel code free from transport-specific disconnect logic.
     /// </summary>
     public sealed class ClientDisconnectHandler : MonoBehaviour
     {
@@ -27,8 +28,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Network
                 return;
             }
 
-            eventChannel.RoundResultConfirmed += OnRoundResultConfirmed;
-            eventChannel.GameAbortConfirmed += OnGameAbortConfirmed;
+            eventChannel.GameEndRequested += OnGameEndRequested;
         }
 
         private void OnDisable()
@@ -38,25 +38,23 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Network
                 return;
             }
 
-            eventChannel.RoundResultConfirmed -= OnRoundResultConfirmed;
-            eventChannel.GameAbortConfirmed -= OnGameAbortConfirmed;
+            eventChannel.GameEndRequested -= OnGameEndRequested;
         }
 
-        private void OnRoundResultConfirmed(ulong playerId, bool continueGame)
+        private void OnGameEndRequested()
         {
-            if (continueGame)
+            ExitToLoading();
+        }
+
+        private void ExitToLoading()
+        {
+            if (ClientSingleton.Instance != null)
             {
+                ClientSingleton.Instance.DisconnectFromServer();
                 return;
             }
 
-            // Quit decided: drop the connection immediately on the client side.
-            ClientSingleton.Instance?.DisconnectFromServer();
-        }
-
-        private void OnGameAbortConfirmed()
-        {
-            // Abort acknowledged: disconnect right away.
-            ClientSingleton.Instance?.DisconnectFromServer();
+            SceneManager.LoadScene("loading");
         }
     }
 }
