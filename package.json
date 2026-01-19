@@ -9,6 +9,7 @@
     "com.unity.netcode.gameobjects": "2.7.0",
     "com.unity.services.multiplayer": "1.1.8",
     "com.unity.services.authentication": "3.5.2",
+    "com.unity.dedicated-server": "1.6.3",
     "com.unity.multiplayer.playmode": "1.6.3",
     "com.unity.textmeshpro": "3.0.8"
   },
