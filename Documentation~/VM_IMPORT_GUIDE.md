@@ -23,9 +23,9 @@ Current local VM operations file:
 
 That is the intended local source of truth for A/B rollout slots.
 
-For the planned A/B rollout design, see:
+For the planned A/B rollout design, see the DSMS workspace documentation:
 
-- [DSMS_AB_VM_ROLLOUT_DESIGN.md](/Users/masanori/DedicatedServerMultiplayerSample2/docs/DSMS_AB_VM_ROLLOUT_DESIGN.md)
+- `docs/DSMS_AB_VM_ROLLOUT_DESIGN.md`
 
 ## What The Package Already Includes
 
@@ -298,9 +298,9 @@ Important current limitation:
 - therefore the package-delivered `.mmq` files currently ship only `poolA`
 - if you need `poolB` for rollout, create it manually in the live Matchmaker configuration and maintain its version filter there
 
-For the detailed design, see:
+For the detailed design, see the DSMS workspace document:
 
-- [DSMS_AB_VM_ROLLOUT_DESIGN.md](/Users/masanori/DedicatedServerMultiplayerSample2/docs/DSMS_AB_VM_ROLLOUT_DESIGN.md)
+- `docs/DSMS_AB_VM_ROLLOUT_DESIGN.md`
 
 ## Recommended Downstream Workflow
 

@@ -1,7 +1,7 @@
 {
   "bindHost": "0.0.0.0",
   "bindPort": 8080,
-  "publicIp": "52.69.188.7",
+  "publicIp": "YOUR_VM_PUBLIC_IP",
   "launcherToken": "CHANGE_ME",
   "serverExecutable": "/home/ubuntu/dsms-server/DedicatedServer.x86_64",
   "serverWorkingDirectory": "/home/ubuntu/dsms-server",
