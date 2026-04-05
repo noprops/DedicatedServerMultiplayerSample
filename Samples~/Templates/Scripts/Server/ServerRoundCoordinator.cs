@@ -170,7 +170,9 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                     return "CPU";
                 }
 
-                if (_connectionManager != null && _connectionManager.TryGetPlayerName(clientId, out var name) && !string.IsNullOrWhiteSpace(name))
+                if (_connectionManager != null &&
+                    _connectionManager.TryGetPlayerPayloadValue(clientId, "playerName", out string name) &&
+                    !string.IsNullOrWhiteSpace(name))
                 {
                     return name;
                 }

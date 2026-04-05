@@ -141,11 +141,6 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             return _directory.TryGet(clientId, key, out value);
         }
 
-        public bool TryGetPlayerName(ulong clientId, out string name)
-        {
-            return _directory.TryGet(clientId, "playerName", out name);
-        }
-
         public void Dispose()
         {
             if (_disposed)
