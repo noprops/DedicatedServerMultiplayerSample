@@ -55,6 +55,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
 
             _connectionManager.ClientDisconnected += HandleClientDisconnected;
             await eventChannel.WaitForChannelReadyAsync(CancellationToken.None);
+            Debug.Log($"[MM-PROBE][ServerRoundCoordinator] ChannelReady t={Time.realtimeSinceStartup:F3}");
             var startupSucceeded = await _startupRunner.WaitForStartupCompletionAsync();
             if (!startupSucceeded)
             {
@@ -89,6 +90,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             {
                 Debug.Log("[ServerRoundCoordinator] RunRoundAsync starting");
                 var connectedIds = _connectionManager.GetReadyClientsSnapshot() ?? Array.Empty<ulong>();
+                Debug.Log($"[MM-PROBE][ServerRoundCoordinator] ReadyClientsSnapshot count={connectedIds.Count} t={Time.realtimeSinceStartup:F3}");
                 SetPlayerSlots(connectedIds);
 
                 // Only send player identities once at the start.
@@ -191,6 +193,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
             Debug.LogFormat("[ServerRoundCoordinator] Broadcasting players ready. P1={0}({1}), P2={2}({3})",
                 player1Id, player1Name, player2Id, player2Name);
 
+            Debug.Log($"[MM-PROBE][ServerRoundCoordinator] BroadcastPlayersReady t={Time.realtimeSinceStartup:F3}");
             eventChannel.RaisePlayersReady(player1Id, player1Name, player2Id, player2Name);
         }
         /// <summary>

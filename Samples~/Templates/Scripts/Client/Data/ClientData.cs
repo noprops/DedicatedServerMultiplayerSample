@@ -1,4 +1,5 @@
-using System.Collections.Generic;
+using System;
+using System.Linq;
 using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Samples.Client.Data
@@ -13,7 +14,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Data
 
         public string PlayerName { get; set; }
         public int Rank { get; set; }
-        public int GameVersion { get; set; }
+        public string GameVersion { get; set; }
+        public int GameVersionInt { get; set; }
         private void Awake()
         {
             if (Instance != null && Instance != this)
@@ -32,23 +34,30 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Data
         {
             PlayerName = string.IsNullOrWhiteSpace(PlayerName) ? GenerateRandomPlayerName() : PlayerName;
             Rank = Rank == 0 ? 1000 : Rank;
-            GameVersion = GameVersion != 0 ? GameVersion : ParseGameVersion(Application.version);
+            GameVersion = string.IsNullOrWhiteSpace(GameVersion) ? Application.version : GameVersion;
+            GameVersionInt = GameVersionInt != 0 ? GameVersionInt : ConvertGameVersionToInt(GameVersion);
 
-            if (GameVersion == 0)
+            if (GameVersionInt == 0)
             {
-                Debug.LogWarning("[ClientData] Failed to parse Application.version. Using 0 for gameVersion.");
+                Debug.LogWarning("[ClientData] Failed to parse Application.version. Using 0 for gameVersionInt.");
             }
         }
 
-        private static int ParseGameVersion(string version)
+        private static int ConvertGameVersionToInt(string version)
         {
             if (string.IsNullOrEmpty(version))
             {
                 return 0;
             }
 
-            var cleanVersion = version.Replace(".", "").Replace(",", "");
-            return int.TryParse(cleanVersion, out var versionInt) ? versionInt : 0;
+            try
+            {
+                return int.Parse(string.Concat(version.Split('.').Select(part => int.Parse(part).ToString("D2"))));
+            }
+            catch (Exception)
+            {
+                return 0;
+            }
         }
 
         private static string GenerateRandomPlayerName()

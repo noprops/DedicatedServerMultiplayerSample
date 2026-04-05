@@ -1,0 +1,16 @@
+[Unit]
+Description=DSMS VM Launcher
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=ubuntu
+WorkingDirectory=/home/ubuntu/dsms-launcher
+Environment=DSMS_VM_LAUNCHER_CONFIG=/home/ubuntu/dsms-launcher/config.json
+ExecStart=/usr/bin/python3 /home/ubuntu/dsms-launcher/server_launcher.py
+Restart=always
+RestartSec=2
+
+[Install]
+WantedBy=multi-user.target

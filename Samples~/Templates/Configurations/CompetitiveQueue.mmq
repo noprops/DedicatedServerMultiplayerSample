@@ -1,9 +1,9 @@
 {
-    "name": "casual-queue",
+    "name": "competitive-queue",
     "enabled": true,
     "maxPlayersPerTicket": 1,
     "defaultPool": {
-        "name": "casual-pool",
+        "name": "poolA",
         "enabled": true,
         "timeoutSeconds": 300,
         "variants": [],
@@ -37,22 +37,15 @@
                         "type": "Equality",
                         "source": "Players.CustomData.map",
                         "enableRule": true
-                    },
-                    {
-                        "name": "RoomCodeRule",
-                        "type": "Equality",
-                        "source": "Players.CustomData.roomCode",
-                        "enableRule": true
                     }
                 ]
             }
         },
         "matchHosting": {
-            "type": "Multiplay",
-            "fleetName": "fleet",
-            "buildConfigurationName": "build-config",
-            "defaultQoSRegionName": "Asia"
+            "type": "CloudCode",
+            "moduleName": "MatchmakerVmHostingA",
+            "allocateFunctionName": "allocate",
+            "pollFunctionName": "poll"
         }
-    },
-    "filteredPools": []
+    }
 }

@@ -4,10 +4,37 @@ Reusable client/server scaffolding for Unity Multiplayer Services dedicated serv
 
 This README is the complete manual for importing and running the sample in another project.
 
+VM migration support is now included in-package:
+- Cloud Code allocator templates:
+  - `CloudCode~/matchmaker-vm-hosting-a/`
+  - `CloudCode~/matchmaker-vm-hosting-b/`
+- VM launcher template: `VmLauncher~/`
+- Import/migration guide: `Documentation~/VM_IMPORT_GUIDE.md`
+- helper scripts: `Tools~/`
+- Linux server build menu: `DSMS/VM/Build Linux Dedicated Server`
+
+VM helper scripts include slot-based:
+- create
+- start
+- stop
+- open ports
+- upload server build
+- deploy launcher
+- install launcher service
+
+Per-project VM operations are standardized through:
+- `project-root/dsms-vm.json`
+- generated automatically by `Tools~/vm/create_lightsail_vm.sh`
+- includes `currentWorkSlot`
+- scripts use an explicit slot argument if provided, otherwise they use `currentWorkSlot`
+
+For downstream projects, these package-contained assets are the canonical integration entry points.
+Do not depend on root-level migration workspace `modules/` or `scripts/` paths from this repository.
+
 ## What This Package Includes
 - Sample scenes: `bootStrap`, `loading`, `menu`, `game`
 - Client and server runtime helpers
-- Matchmaker and Multiplay configuration templates (`*.mmq`, `*.mme`, `*.gsh`)
+- Matchmaker and VM-hosting configuration templates (`*.mmq`, `*.mme`, `*.gsh`)
 - Multiplayer Play Mode support for editor testing
 
 ## Install (Add Package by Git URL)
@@ -40,33 +67,57 @@ Dedicated Server build should include only:
 ## Unity Services Project Linking
 1. Open `Project Settings > Services`
 2. Link the project to your Unity Cloud project
-3. Ensure **Authentication**, **Matchmaker**, and **Multiplay Hosting** are enabled
+3. Ensure **Authentication**, **Matchmaker**, and **Cloud Code** are enabled
 
-Note: open the Multiplay Hosting page at least once in the Dashboard to initialize the project.
-
-## Configure Matchmaking and Multiplay
+## Configure Matchmaking and VM Hosting
 Edit the files under:
 `Assets/Samples/Dedicated Server Multiplayer Sample/<version>/Basic Scene Setup/Configurations/`
 
 Required edits:
-- `MatchmakerQueue.mmq` (queue name, pool, rank rules, etc.)
+- `CompetitiveQueue.mmq` / `CasualQueue.mmq` (queue name, pool, rules, etc.)
 - `MatchmakerEnvironment.mme`
-- `MultiplayConfiguration.gsh` (build name, executable, build output path, fleet)
+- Cloud Code module name / allocate / poll function names inside the `.mmq` files
 - `DefaultNetworkPrefabs.asset` (if you add/remove networked prefabs)
 
-## Deployment (Editor)
-Open `Services/Deployment` and deploy in this order:
-1. Build (`*.build`)
-2. Build Configuration (`*.buildConfig`)
-3. Fleet (`*.fleet`)
-4. Matchmaker Queue (`*.mmq`)
-5. Matchmaker Environment (`*.mme`)
+Current package-deliverable queue templates only include `poolA`.
+
+Important current limitation:
+- filtered pool rollout rules for `gameVersionInt` are not deploying reliably from `.mmq` authoring in this Unity package/version combination
+- if you need A/B rollout pools, create and maintain `poolB` manually in the live Matchmaker configuration
+- use `poolA -> MatchmakerVmHostingA` as the deployable baseline from this package
+- treat `poolB -> MatchmakerVmHostingB` as a manual backend rollout step for now
+
+Do not migrate by falling back to `Multiplay Hosting (Deprecated)`.
+Use `CloudCode` hosting only.
+
+## Deployment (Editor / CLI)
+Open `Services/Deployment` and deploy:
+1. Matchmaker Queue (`*.mmq`)
+2. Matchmaker Environment (`*.mme`)
+
+Deploy your Cloud Code modules with:
+
+```bash
+Packages/info.mygames888.dedicatedservermultiplayersample/Tools~/cloud/deploy_cloudcode_module.sh <project-id> <environment-name> [slot:A|B|ALL]
+```
+
+This is the supported path.
+It builds the C# modules and imports them with `ugs cc modules import`.
+Do not rely on `ugs deploy` for these modules.
+
+For the full VM path, follow:
+`Documentation~/VM_IMPORT_GUIDE.md`
+
+Important:
+- Unity Secret Manager stores Cloud Code secrets
+- `project-root/dsms-vm.json` stores local deploy/SSH values for VM slot `A` and `B`
+- both this DSMS repo and downstream repos use the same `dsms-vm.json` convention
 
 ## Build
 Server build (Linux Server):
 1. Switch platform to **Linux Server**
 2. Build with only `bootStrap` and `game`
-3. Output path should match `MultiplayConfiguration.gsh`
+3. Use your VM deployment process to upload the Linux server build and launch it with the required runtime arguments
 
 Client build:
 - Build with `bootStrap`, `loading`, `menu`, `game`
@@ -89,5 +140,5 @@ If you copy, update references and ensure the Build Settings use your copied sce
 
 ## Troubleshooting
 - Authentication errors: confirm project linking and services enabled.
-- Matchmaking stuck: confirm queue/pool/fleet names match the config files.
-- Connection failures: check Multiplay fleet ports, QoS, and firewall rules.
+- Matchmaking stuck: confirm queue names and Cloud Code module/function names match the config files.
+- Connection failures: check the endpoint returned by Cloud Code, VM firewall rules, and server launch arguments.

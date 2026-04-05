@@ -1,0 +1,20 @@
+{
+  "bindHost": "0.0.0.0",
+  "bindPort": 8080,
+  "publicIp": "52.69.188.7",
+  "launcherToken": "CHANGE_ME",
+  "serverExecutable": "/home/ubuntu/dsms-server/DedicatedServer.x86_64",
+  "serverWorkingDirectory": "/home/ubuntu/dsms-server",
+  "logsDirectory": "/home/ubuntu/dsms-runs",
+  "stateFile": "/home/ubuntu/dsms-launcher/state.json",
+  "minPort": 7777,
+  "maxPort": 7792,
+  "defaultExpectedPlayers": 2,
+  "maxConcurrentMatches": 3,
+  "startupTimeoutSeconds": 90,
+  "reconcileIntervalSeconds": 5,
+  "readyMarkers": [
+    "[ServerTransportConfigurator] Listening on port",
+    "[MM-PROBE][ServerStartupRunner] WaitForClients begin"
+  ]
+}

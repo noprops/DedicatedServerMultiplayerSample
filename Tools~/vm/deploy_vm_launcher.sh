@@ -1,0 +1,62 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck disable=SC1091
+source "$SCRIPT_DIR/load_dsms_vm_json.sh"
+
+SLOT_ARG=""
+PACKAGE_ROOT_INDEX=1
+if [[ "${1:-}" =~ ^[AaBb]$ ]]; then
+  SLOT_ARG="$1"
+  PACKAGE_ROOT_INDEX=2
+fi
+
+SLOT="$(resolve_slot_or_current "$SLOT_ARG")"
+load_dsms_vm_slot "$SLOT"
+
+SSH_KEY_PATH="${DSMS_VM_SSH_KEY_PATH:-}"
+VM_HOST="${DSMS_VM_HOST:-}"
+LAUNCHER_TOKEN="${DSMS_VM_LAUNCHER_TOKEN:-}"
+PUBLIC_IP="${DSMS_VM_PUBLIC_IP:-}"
+PACKAGE_ROOT="${!PACKAGE_ROOT_INDEX:-Packages/info.mygames888.dedicatedservermultiplayersample}"
+
+require_value "ssh-key-path or DSMS_VM_SSH_KEY_PATH" "$SSH_KEY_PATH"
+require_value "vm-host or DSMS_VM_HOST" "$VM_HOST"
+require_value "launcher-token or DSMS_VM_LAUNCHER_TOKEN" "$LAUNCHER_TOKEN"
+require_value "public-ip or DSMS_VM_PUBLIC_IP" "$PUBLIC_IP"
+
+VM_LAUNCHER_DIR="$PACKAGE_ROOT/VmLauncher~"
+REMOTE_DIR="${REMOTE_DIR:-~/dsms-launcher}"
+VM_USER="${VM_USER:-ubuntu}"
+LAUNCHER_PORT="${VM_LAUNCHER_PORT:-8080}"
+
+TMP_DIR="$(mktemp -d)"
+cleanup() {
+  rm -rf "$TMP_DIR"
+}
+trap cleanup EXIT
+
+cp "$VM_LAUNCHER_DIR/server_launcher.py" "$TMP_DIR/server_launcher.py"
+python3 - <<'PY' "$VM_LAUNCHER_DIR/config.example.json" "$TMP_DIR/config.json" "$PUBLIC_IP" "$LAUNCHER_TOKEN" "$LAUNCHER_PORT"
+import json
+import sys
+src, dst, ip, token, port = sys.argv[1:]
+with open(src, "r", encoding="utf-8") as f:
+    data = json.load(f)
+data["publicIp"] = ip
+data["launcherToken"] = token
+data["bindPort"] = int(port)
+with open(dst, "w", encoding="utf-8") as f:
+    json.dump(data, f, indent=2, sort_keys=True)
+    f.write("\n")
+PY
+
+scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no \
+  "$TMP_DIR/server_launcher.py" \
+  "$TMP_DIR/config.json" \
+  "$VM_LAUNCHER_DIR/dsms-vm-launcher.service" \
+  "$VM_USER@$VM_HOST:$REMOTE_DIR/"
+
+ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$VM_USER@$VM_HOST" \
+  "mkdir -p $REMOTE_DIR && chmod +x $REMOTE_DIR/server_launcher.py"

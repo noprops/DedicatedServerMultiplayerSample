@@ -5,6 +5,8 @@ using System.Threading;
 using System.Threading.Tasks;
 using Unity.Netcode;
 using Unity.Netcode.Transports.UTP;
+using Unity.Services.Matchmaker;
+using Unity.Services.Matchmaker.Models;
 using Unity.Services.Multiplayer;
 using UnityEngine;
 
@@ -45,6 +47,7 @@ namespace DedicatedServerMultiplayerSample.Client
         private readonly int maxPlayers;
         private ISession currentSession;
         private CancellationTokenSource matchmakerCancellationSource;
+        private string currentTicketId;
 
         public bool IsMatchmaking { get; private set; }
         public bool HasActiveSession => currentSession != null;
@@ -79,7 +82,24 @@ namespace DedicatedServerMultiplayerSample.Client
             }
 
             Debug.Log("[ClientMatchmaker] ========== MATCHMAKING BEGIN ==========");
+            Debug.Log($"[MM-TIMING][ClientMatchmaker] MatchmakeAsync start t={Time.realtimeSinceStartup:F3}");
             IsMatchmaking = true;
+
+            NetworkSceneManager.OnEventCompletedDelegateHandler loadHandler = null;
+            if (networkManager != null && networkManager.SceneManager != null)
+            {
+                loadHandler = (sceneName, mode, clientsCompleted, clientsTimedOut) =>
+                {
+                    if (sceneName == "game" &&
+                        clientsCompleted != null &&
+                        clientsCompleted.Contains(networkManager.LocalClientId))
+                    {
+                        Debug.Log($"[MM-PROBE][ClientMatchmaker] SceneLoadCompleted scene=game t={Time.realtimeSinceStartup:F3}");
+                        Debug.Log($"[MM-TIMING][ClientMatchmaker] SceneLoadCompleted scene=game t={Time.realtimeSinceStartup:F3}");
+                    }
+                };
+                networkManager.SceneManager.OnLoadEventCompleted += loadHandler;
+            }
 
             try
             {
@@ -94,41 +114,32 @@ namespace DedicatedServerMultiplayerSample.Client
                 ticketAttributes ??= new Dictionary<string, object>();
                 sessionMetadata ??= new Dictionary<string, object>();
 
-                var matchmakerOptions = new MatchmakerOptions
-                {
-                    QueueName = queueName,
-                    PlayerProperties = MatchmakingPayloadConverter.ToPlayerProperties(playerProperties),
-                    TicketAttributes = ticketAttributes
-                };
-
                 var connectionBytes = MatchmakingPayloadConverter.ToConnectionPayload(connectionPayload, authId);
                 networkManager.NetworkConfig.ConnectionData = connectionBytes;
 
-                var sessionOptions = new SessionOptions()
-                {
-                    MaxPlayers = maxPlayers,
-                    SessionProperties = MatchmakingPayloadConverter.ToSessionProperties(sessionMetadata)
-                }.WithDirectNetwork();
-
                 Debug.Log("[ClientMatchmaker] STEP 2: Searching for match...");
-                Debug.Log($"[ClientMatchmaker] Calling MatchmakeSessionAsync with queue: {queueName}");
+                Debug.Log($"[ClientMatchmaker] Creating low-level matchmaking ticket with queue: {queueName}");
 
-                currentSession = await MultiplayerService.Instance.MatchmakeSessionAsync(
-                    matchmakerOptions,
-                    sessionOptions,
-                    matchmakerCancellationSource.Token
-                );
+                var ticketOptions = new CreateTicketOptions(queueName, ticketAttributes);
+                var ticketPlayer = new Player(authId, playerProperties);
+                var ticketResponse = await MatchmakerService.Instance.CreateTicketAsync(
+                    new List<Player> { ticketPlayer },
+                    ticketOptions);
 
-                if (currentSession == null)
+                currentTicketId = ticketResponse?.Id;
+                Debug.Log($"[ClientMatchmaker] Ticket created: {currentTicketId}");
+                var assignment = await WaitForIpPortAssignmentAsync(currentTicketId, matchmakerCancellationSource.Token);
+                Debug.Log($"[MM-TIMING][ClientMatchmaker] Ticket resolved t={Time.realtimeSinceStartup:F3}");
+
+                if (assignment == null || string.IsNullOrWhiteSpace(assignment.Ip) || !assignment.Port.HasValue)
                 {
-                    Debug.LogError("[ClientMatchmaker] Failed to find match");
+                    Debug.LogError("[ClientMatchmaker] Failed to resolve ip/port assignment");
                     NotifyState(ClientConnectionState.Failed);
                     return MatchResult.Failed;
                 }
 
-                Debug.Log($"[ClientMatchmaker] ✓ Match found: {currentSession.Code}");
-                Debug.Log($"[ClientMatchmaker] Session details - Code: {currentSession.Code}, Id: {currentSession.Id}");
-                Debug.Log($"[ClientMatchmaker] Proceeding to connect with Session Code={currentSession.Code}, Id={currentSession.Id}");
+                Debug.Log($"[ClientMatchmaker] ✓ Match found via ticket: {assignment.MatchId}");
+                Debug.Log($"[ClientMatchmaker] Proceeding to connect with assignment {assignment.Ip}:{assignment.Port.Value}");
                 NotifyState(ClientConnectionState.MatchFound);
 
                 Debug.Log("[ClientMatchmaker] STEP 3: Preparing connection...");
@@ -140,20 +151,32 @@ namespace DedicatedServerMultiplayerSample.Client
                     return MatchResult.Failed;
                 }
 
+                transport.SetConnectionData(assignment.Ip, (ushort)assignment.Port.Value);
                 networkManager.NetworkConfig.NetworkTransport = transport;
+
+                if (!networkManager.StartClient())
+                {
+                    Debug.LogError("[ClientMatchmaker] Failed to start client with ip/port assignment.");
+                    NotifyState(ClientConnectionState.Failed);
+                    return MatchResult.Failed;
+                }
 
                 Debug.Log("[ClientMatchmaker] STEP 4: Connecting to server...");
                 NotifyState(ClientConnectionState.ConnectingToServer);
 
+                Debug.Log($"[MM-TIMING][ClientMatchmaker] WaitForConnection begin t={Time.realtimeSinceStartup:F3}");
                 bool connected = await WaitForConnection();
                 if (!connected)
                 {
                     Debug.LogError("[ClientMatchmaker] Connection timeout");
+                    Debug.Log($"[MM-TIMING][ClientMatchmaker] WaitForConnection timeout t={Time.realtimeSinceStartup:F3}");
                     NotifyState(ClientConnectionState.Failed);
                     return MatchResult.Timeout;
                 }
 
                 Debug.Log("[ClientMatchmaker] ✓ Connected to server");
+                Debug.Log($"[MM-TIMING][ClientMatchmaker] WaitForConnection success t={Time.realtimeSinceStartup:F3}");
+                Debug.Log($"[MM-PROBE][ClientMatchmaker] Connected t={Time.realtimeSinceStartup:F3}");
                 NotifyState(ClientConnectionState.Connected);
 
                 Debug.Log("[ClientMatchmaker] STEP 5: Waiting for scene sync...");
@@ -182,6 +205,12 @@ namespace DedicatedServerMultiplayerSample.Client
             }
             finally
             {
+                await DeleteCurrentTicketIfNeededAsync();
+
+                if (loadHandler != null && networkManager != null && networkManager.SceneManager != null)
+                {
+                    networkManager.SceneManager.OnLoadEventCompleted -= loadHandler;
+                }
                 IsMatchmaking = false;
             }
         }
@@ -197,6 +226,8 @@ namespace DedicatedServerMultiplayerSample.Client
                 matchmakerCancellationSource.Cancel();
                 Debug.Log("[ClientMatchmaker] Matchmaking cancel token triggered");
             }
+
+            await DeleteCurrentTicketIfNeededAsync();
 
             try
             {
@@ -239,6 +270,88 @@ namespace DedicatedServerMultiplayerSample.Client
             matchmakerCancellationSource?.Cancel();
             matchmakerCancellationSource?.Dispose();
             matchmakerCancellationSource = null;
+        }
+
+        public async Task ShutdownAsync()
+        {
+            try
+            {
+                await DeleteCurrentTicketIfNeededAsync();
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[ClientMatchmaker] Shutdown cleanup failed: {e.Message}");
+            }
+
+            matchmakerCancellationSource?.Cancel();
+            matchmakerCancellationSource?.Dispose();
+            matchmakerCancellationSource = null;
+        }
+
+        private async Task<IpPortAssignment> WaitForIpPortAssignmentAsync(string ticketId, CancellationToken cancellationToken)
+        {
+            const float timeoutSeconds = 30f;
+            float elapsed = 0f;
+
+            while (elapsed < timeoutSeconds)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var ticketStatus = await MatchmakerService.Instance.GetTicketAsync(ticketId);
+                if (ticketStatus?.Type == typeof(IpPortAssignment) && ticketStatus.Value is IpPortAssignment ipPortAssignment)
+                {
+                    switch (ipPortAssignment.Status)
+                    {
+                        case IpPortAssignment.StatusOptions.Found:
+                            return ipPortAssignment;
+                        case IpPortAssignment.StatusOptions.Failed:
+                            throw new Exception($"Ticket Failed: {ipPortAssignment.Message ?? "AllocationError"}");
+                        case IpPortAssignment.StatusOptions.Timeout:
+                            throw new Exception($"Ticket Timeout: {ipPortAssignment.Message ?? "Timeout"}");
+                    }
+                }
+
+                if (ticketStatus?.Type == typeof(NoneAssignment) && ticketStatus.Value is NoneAssignment noneAssignment)
+                {
+                    switch (noneAssignment.Status)
+                    {
+                        case NoneAssignment.StatusOptions.InProgress:
+                            break;
+                        case NoneAssignment.StatusOptions.Failed:
+                            throw new Exception($"Ticket Failed: {noneAssignment.Message ?? "AllocationError"}");
+                        case NoneAssignment.StatusOptions.Timeout:
+                            throw new Exception($"Ticket Timeout: {noneAssignment.Message ?? "Timeout"}");
+                        case NoneAssignment.StatusOptions.Found:
+                            throw new Exception("Ticket Failed: Assignment should have changed.");
+                    }
+                }
+
+                await Task.Delay(1000, cancellationToken);
+                elapsed += 1f;
+            }
+
+            throw new Exception("Ticket Timeout: polling exceeded 30 seconds");
+        }
+
+        private async Task DeleteCurrentTicketIfNeededAsync()
+        {
+            if (string.IsNullOrWhiteSpace(currentTicketId))
+            {
+                return;
+            }
+
+            try
+            {
+                await MatchmakerService.Instance.DeleteTicketAsync(currentTicketId);
+            }
+            catch (Exception e)
+            {
+                Debug.LogWarning($"[ClientMatchmaker] Failed to delete ticket {currentTicketId}: {e.Message}");
+            }
+            finally
+            {
+                currentTicketId = null;
+            }
         }
 
         private async Task<bool> WaitForConnection()
@@ -289,5 +402,6 @@ namespace DedicatedServerMultiplayerSample.Client
         {
             StateChanged?.Invoke(state);
         }
+
     }
 }

@@ -19,6 +19,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Data
     public sealed class MatchPayloadBuilder
     {
         private const string KeyGameVersion = "gameVersion";
+        private const string KeyGameVersionInt = "gameVersionInt";
         private const string KeyGameMode = "gameMode";
         private const string KeyMap = "map";
         private const string KeyRank = "rank";
@@ -47,7 +48,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Data
         {
             var dict = new Dictionary<string, object>
             {
-                [KeyGameVersion] = _clientData?.GameVersion ?? 0,
+                [KeyGameVersionInt] = _clientData?.GameVersionInt ?? 0,
                 [KeyGameMode] = _gameMode.ToString().ToLowerInvariant(),
                 [KeyMap] = _mapId.ToString().ToLowerInvariant(),
                 [KeyRank] = _clientData?.Rank ?? 0
@@ -65,7 +66,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Data
         {
             var dict = new Dictionary<string, object>
             {
-                [KeyGameVersion] = _clientData?.GameVersion ?? 0,
+                [KeyGameVersionInt] = _clientData?.GameVersionInt ?? 0,
                 [KeyGameMode] = _gameMode.ToString().ToLowerInvariant(),
                 [KeyMap] = _mapId.ToString().ToLowerInvariant()
             };
@@ -84,7 +85,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Data
             {
                 [KeyPlayerName] = _clientData?.PlayerName ?? "Player",
                 [KeyGameMode] = _gameMode.ToString().ToLowerInvariant(),
-                [KeyGameVersion] = _clientData?.GameVersion ?? 0,
+                [KeyGameVersion] = _clientData?.GameVersion ?? "0.00",
+                [KeyGameVersionInt] = _clientData?.GameVersionInt ?? 0,
                 [KeyRank] = _clientData?.Rank ?? 0
             };
         }

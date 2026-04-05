@@ -3,6 +3,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using DedicatedServerMultiplayerSample.Client;
 using DedicatedServerMultiplayerSample.Samples.Client.Data;
+using DedicatedServerMultiplayerSample.Samples.Client.Testing;
 using DedicatedServerMultiplayerSample.Samples.Client.UI.Common;
 using UnityEngine;
 
@@ -21,6 +22,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
         [SerializeField] private ElapsedTimeTextUI matchmakingTimer;
 
         private RankedMatchService _matchService;
+        private Task<MatchResult> _activeMatchTask;
         private bool _userCancelled;
 
         /// <summary>
@@ -30,6 +32,11 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
 
         private void Start()
         {
+            if (AutoMatchTestBootstrap.IsEnabled && !string.IsNullOrWhiteSpace(AutoMatchTestConfig.QueueName))
+            {
+                queueName = AutoMatchTestConfig.QueueName;
+            }
+
             _matchService = new RankedMatchService(
                 ClientSingleton.Instance?.Matchmaker,
                 ClientData.Instance,
@@ -72,6 +79,74 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
 
 
         private async void HandleStartPressed()
+        {
+            await StartAutomatedMatchAsync();
+        }
+
+        private async void HandleCancelPressed()
+        {
+            _userCancelled = true;
+            matchmakingTimer?.StopTimer();
+            controls?.SetStatus("Cancelling...");
+            await _matchService.CancelMatchAsync();
+        }
+
+        private void HandleStateChanged(ClientConnectionState state)
+        {
+            if (state == ClientConnectionState.SearchingMatch)
+            {
+                matchmakingTimer?.StartTimer();
+                return;
+            }
+
+            matchmakingTimer?.StopTimer();
+
+            controls?.SetStatus(state switch
+            {
+                ClientConnectionState.SearchingMatch => "Searching for match...",
+                ClientConnectionState.MatchFound => "Match found! Preparing...",
+                ClientConnectionState.ConnectingToServer => "Connecting to server...",
+                ClientConnectionState.Connected => "Connected!",
+                ClientConnectionState.Cancelling => "Cancelling...",
+                ClientConnectionState.Cancelled => "Cancelled",
+                ClientConnectionState.Failed => "Connection failed",
+                _ => ReadyStatus
+            });
+        }
+
+        private async Task ShowStartButtonWithDelayAsync(int delaySeconds)
+        {
+            if (delaySeconds > 0)
+            {
+                await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
+            }
+            controls?.ShowStartButton();
+        }
+
+        public Task<MatchResult> StartAutomatedMatchAsync()
+        {
+            if (_activeMatchTask != null)
+            {
+                return _activeMatchTask;
+            }
+
+            _activeMatchTask = RunMatchFlowAndClearAsync();
+            return _activeMatchTask;
+        }
+
+        private async Task<MatchResult> RunMatchFlowAndClearAsync()
+        {
+            try
+            {
+                return await RunMatchFlowAsync();
+            }
+            finally
+            {
+                _activeMatchTask = null;
+            }
+        }
+
+        private async Task<MatchResult> RunMatchFlowAsync()
         {
             _userCancelled = false;
             controls?.ShowCancelButton();
@@ -119,46 +194,8 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Menu
                 controls?.SetStatus(finalStatus);
                 MatchmakingAborted?.Invoke();
             }
-        }
 
-        private async void HandleCancelPressed()
-        {
-            _userCancelled = true;
-            matchmakingTimer?.StopTimer();
-            controls?.SetStatus("Cancelling...");
-            await _matchService.CancelMatchAsync();
-        }
-
-        private void HandleStateChanged(ClientConnectionState state)
-        {
-            if (state == ClientConnectionState.SearchingMatch)
-            {
-                matchmakingTimer?.StartTimer();
-                return;
-            }
-
-            matchmakingTimer?.StopTimer();
-
-            controls?.SetStatus(state switch
-            {
-                ClientConnectionState.SearchingMatch => "Searching for match...",
-                ClientConnectionState.MatchFound => "Match found! Preparing...",
-                ClientConnectionState.ConnectingToServer => "Connecting to server...",
-                ClientConnectionState.Connected => "Connected!",
-                ClientConnectionState.Cancelling => "Cancelling...",
-                ClientConnectionState.Cancelled => "Cancelled",
-                ClientConnectionState.Failed => "Connection failed",
-                _ => ReadyStatus
-            });
-        }
-
-        private async Task ShowStartButtonWithDelayAsync(int delaySeconds)
-        {
-            if (delaySeconds > 0)
-            {
-                await Task.Delay(TimeSpan.FromSeconds(delaySeconds));
-            }
-            controls?.ShowStartButton();
+            return result;
         }
     }
 }

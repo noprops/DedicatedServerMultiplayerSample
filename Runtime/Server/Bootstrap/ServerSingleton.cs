@@ -3,10 +3,8 @@ using System.Threading.Tasks;
 using Unity.Netcode;
 using Unity.Services.Core;
 using UnityEngine;
-#if UNITY_SERVER || ENABLE_UCS_SERVER
 using DedicatedServerMultiplayerSample.Server.Core;
 using DedicatedServerMultiplayerSample.Server.Infrastructure;
-#endif
 
 namespace DedicatedServerMultiplayerSample.Server.Bootstrap
 {
@@ -15,7 +13,6 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
     /// </summary>
     public class ServerSingleton : MonoBehaviour
     {
-#if UNITY_SERVER || ENABLE_UCS_SERVER
         public static ServerSingleton Instance { get; private set; }
 
         [SerializeField] private int defaultMaxPlayers = 2;
@@ -27,9 +24,14 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
         private const int AllPlayersDisconnectedShutdownDelaySeconds = 10;
         public ServerStartupRunner StartupRunner => _startupRunner;
         public ServerConnectionManager ConnectionManager => _connectionManager;
-        
+
         private void Awake()
         {
+#if !(UNITY_SERVER || ENABLE_UCS_SERVER)
+            Debug.LogWarning("[ServerSingleton] Awake but UNITY_SERVER / ENABLE_UCS_SERVER is NOT defined. Destroying this component.");
+            Destroy(this);
+            return;
+#endif
             if (Instance == null)
             {
                 Instance = this;
@@ -138,12 +140,5 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
         {
             ScheduleShutdown(ShutdownKind.AllPlayersDisconnected, "All players disconnected", AllPlayersDisconnectedShutdownDelaySeconds);
         }
-#else
-        private void Awake()
-        {
-            Debug.LogWarning("[ServerSingleton] Awake but UNITY_SERVER / ENABLE_UCS_SERVER is NOT defined. Destroying this component.");
-            Destroy(this);
-        }
-#endif
     }
 }

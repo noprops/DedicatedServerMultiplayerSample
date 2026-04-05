@@ -25,6 +25,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
         public override void OnNetworkSpawn()
         {
             base.OnNetworkSpawn();
+            Debug.Log($"[MM-PROBE][NetworkGameEventChannelRpcProxy] OnNetworkSpawn t={Time.realtimeSinceStartup:F3}");
             _channel?.InvokeChannelReady();
         }
 
@@ -95,6 +96,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Shared
                 return;
             }
 
+            Debug.Log($"[MM-PROBE][NetworkGameEventChannelRpcProxy] PlayersReadyClientRpc t={Time.realtimeSinceStartup:F3}");
             var localId = NetworkManager.Singleton != null ? NetworkManager.Singleton.LocalClientId : player1Id;
             if (localId == player1Id)
             {

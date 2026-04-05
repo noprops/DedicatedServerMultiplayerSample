@@ -11,6 +11,8 @@ namespace DedicatedServerMultiplayerSample.Client
     /// </summary>
     public static class AuthenticationWrapper
     {
+        public static string PendingProfileName { get; set; }
+
         // ========== Properties ==========
 
         /// <summary>
@@ -49,6 +51,13 @@ namespace DedicatedServerMultiplayerSample.Client
 
             try
             {
+                if (!string.IsNullOrWhiteSpace(PendingProfileName))
+                {
+                    AuthenticationService.Instance.SwitchProfile(PendingProfileName);
+                    Debug.Log($"[AuthenticationWrapper] Switched auth profile: {PendingProfileName}");
+                    PendingProfileName = null;
+                }
+
                 Debug.Log("[AuthenticationWrapper] Starting anonymous sign in...");
                 await AuthenticationService.Instance.SignInAnonymouslyAsync();
 

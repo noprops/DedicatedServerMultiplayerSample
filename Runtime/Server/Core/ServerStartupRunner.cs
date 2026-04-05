@@ -15,11 +15,10 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private readonly NetworkManager _networkManager;
 
         private readonly ServerConnectionManager _connectionManager;
-
         private bool _disposed;
         private readonly TaskCompletionSource<bool> _startupCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        private const int WaitingPlayersTimeoutSeconds = 10;
+        private const int WaitingPlayersTimeoutSeconds = 180;
         private const int SceneLoadTimeoutSeconds = 5;
 
         public ServerStartupRunner(NetworkManager networkManager, ServerConnectionManager connectionManager)
@@ -35,6 +34,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             var startupSucceeded = false;
             try
             {
+                Debug.Log($"[MM-PROBE][ServerStartupRunner] StartAsync t={Time.realtimeSinceStartup:F3}");
                 if (runtimeConfig == null)
                 {
                     throw new ArgumentNullException(nameof(runtimeConfig));
@@ -50,21 +50,34 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 {
                     return false;
                 }
+                Debug.Log($"[MM-PROBE][ServerStartupRunner] Allocation received t={Time.realtimeSinceStartup:F3} teamCount={allocation.TeamCount} expectedAuthIds={allocation.ExpectedAuthIds?.Count ?? 0}");
 
                 ServerTransportConfigurator.Configure(_networkManager, runtimeConfig);
+                if (!runtimeConfig.UseMultiplayAllocation)
+                {
+                    if (!_networkManager.StartServer())
+                    {
+                        Debug.LogError("[ServerStartupRunner] StartServer failed in self-hosted mode.");
+                        return false;
+                    }
+                }
+
                 _connectionManager.Configure(allocation.ExpectedAuthIds ?? Array.Empty<string>(), allocation.TeamCount);
 
                 if (!await _connectionManager.LoadSceneAsync("game", SceneLoadTimeoutSeconds, CancellationToken.None))
                 {
                     return false;
                 }
+                Debug.Log($"[MM-PROBE][ServerStartupRunner] Scene loaded t={Time.realtimeSinceStartup:F3}");
 
                 if (multiplaySessionService.IsConnected)
                 {
                     await multiplaySessionService.SetPlayerReadinessAsync(true);
                 }
 
+                Debug.Log($"[MM-PROBE][ServerStartupRunner] WaitForClients begin t={Time.realtimeSinceStartup:F3}");
                 var ready = await WaitForClientsWithTimeoutAsync(TimeSpan.FromSeconds(WaitingPlayersTimeoutSeconds));
+                Debug.Log($"[MM-PROBE][ServerStartupRunner] WaitForClients done={ready} t={Time.realtimeSinceStartup:F3}");
                 if (!ready)
                 {
                     return false;

@@ -1,17 +1,17 @@
 {
   "name": "info.mygames888.dedicatedservermultiplayersample",
   "displayName": "Dedicated Server Multiplayer Sample",
-  "version": "0.1.0",
-  "unity": "2022.3",
+  "version": "0.2.0",
+  "unity": "6000.0",
   "description": "Reusable core components for Unity Multiplayer Services dedicated server samples.",
   "keywords": ["multiplayer", "dedicated", "server"],
   "dependencies": {
-    "com.unity.netcode.gameobjects": "2.7.0",
-    "com.unity.services.multiplayer": "1.1.8",
-    "com.unity.services.authentication": "3.5.2",
-    "com.unity.dedicated-server": "1.6.3",
-    "com.unity.multiplayer.playmode": "1.6.3",
-    "com.unity.textmeshpro": "3.0.8"
+    "com.unity.netcode.gameobjects": "2.9.1",
+    "com.unity.services.multiplayer": "2.1.3",
+    "com.unity.services.authentication": "3.6.0",
+    "com.unity.dedicated-server": "2.0.1",
+    "com.unity.multiplayer.playmode": "2.0.2",
+    "com.unity.textmeshpro": "5.0.0"
   },
   "samples": [
     {

@@ -1,4 +1,5 @@
 using System;
+using System.Threading.Tasks;
 using Unity.Netcode;
 using UnityEngine;
 using UnityEngine.SceneManagement;
@@ -80,6 +81,16 @@ namespace DedicatedServerMultiplayerSample.Client
 
         public void DisconnectFromServer()
         {
+            _connectionService?.DisconnectFromServer();
+        }
+
+        public async Task ShutdownAsync()
+        {
+            if (_matchmaker != null)
+            {
+                await _matchmaker.ShutdownAsync();
+            }
+
             _connectionService?.DisconnectFromServer();
         }
     }

@@ -1,6 +1,7 @@
 using System;
 using System.Threading;
 using System.Threading.Tasks;
+using DedicatedServerMultiplayerSample.Samples.Client.Testing;
 using DedicatedServerMultiplayerSample.Samples.Client.UI.Common;
 using DedicatedServerMultiplayerSample.Samples.Shared;
 using TMPro;
@@ -42,6 +43,7 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
 
         // Cancels the ongoing async UI loop (used when abort notifications arrive or the object is destroyed).
         private CancellationTokenSource _lifecycleCts;
+        private int _roundIndex;
 
         private void Awake()
         {
@@ -121,13 +123,12 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                     var result = await eventChannel.WaitForRoundResultAsync(token);
                     ShowResult(result.outcome, result.myHand, result.opponentHand, result.canContinue);
 
-                    var selection = await continueQuitButtons.RunAsync(endButtonCountdownSeconds);
-                    var continueGame = selection.Reason == CountdownCompletionReason.Clicked
-                        && selection.ClickedButton == continueButton;
+                    var continueGame = await WaitForContinueOrQuitAsync(token);
                     eventChannel.RaiseRoundResultConfirmed(continueGame);
 
                     if (!continueGame)
                     {
+                        AutoMatchTestBootstrap.NotifyMatchFinished("quit selected");
                         eventChannel.RaiseGameEndRequested();
                         break;
                     }
@@ -196,6 +197,14 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
 
         private async Task<Hand> WaitForLocalChoiceAsync(CancellationToken token)
         {
+            if (AutoMatchTestBootstrap.IsEnabled)
+            {
+                await Task.Delay(250, token);
+                var selectedHand = AutoMatchTestConfig.GetChoiceForRound(_roundIndex++);
+                Debug.Log($"[RockPaperScissorsUI] Auto-selected hand={selectedHand}");
+                return selectedHand;
+            }
+
             // Ensure buttons are visible/enabled before starting the countdown.
             choiceButtonsCountdown.SetButtonsActive(true);
             choiceButtonsCountdown.SetButtonsInteractable(true);
@@ -224,6 +233,20 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.UI.Game
                 2 => Hand.Scissors,
                 _ => HandExtensions.RandomHand()
             };
+        }
+
+        private async Task<bool> WaitForContinueOrQuitAsync(CancellationToken token)
+        {
+            if (AutoMatchTestBootstrap.IsEnabled)
+            {
+                await Task.Delay(500, token);
+                Debug.Log("[RockPaperScissorsUI] Auto-selected Quit after round end.");
+                return false;
+            }
+
+            var selection = await continueQuitButtons.RunAsync(endButtonCountdownSeconds);
+            return selection.Reason == CountdownCompletionReason.Clicked
+                && selection.ClickedButton == continueButton;
         }
 
         private void ShowAbortPrompt(string reason)

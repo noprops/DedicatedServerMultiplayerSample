@@ -45,6 +45,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         {
             _expectedAuthIds = expectedAuthIds ?? Array.Empty<string>();
             _tracker.UpdateRequiredPlayers(Mathf.Max(1, teamCount));
+            Debug.Log($"[MM-PROBE][ServerConnectionManager] Configure teamCount={teamCount} expectedAuthIds={_expectedAuthIds.Count} t={Time.realtimeSinceStartup:F3}");
             _allowNewConnections = true;
             _sceneLoaded = false;
             _directory.Clear();
@@ -56,6 +57,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         {
             var sceneLoader = new ServerSceneLoader(_networkManager);
             _sceneLoaded = false;
+            Debug.Log($"[MM-PROBE][ServerConnectionManager] LoadSceneAsync begin scene={sceneName} t={Time.realtimeSinceStartup:F3}");
             var timeoutMs = (int)TimeSpan.FromSeconds(timeoutSeconds).TotalMilliseconds;
 
             var loaded = await sceneLoader.LoadAsync(sceneName, timeoutMs, () =>
@@ -69,6 +71,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 ReleasePendingResponses();
             }
 
+            Debug.Log($"[MM-PROBE][ServerConnectionManager] LoadSceneAsync done loaded={loaded} t={Time.realtimeSinceStartup:F3}");
             return loaded;
         }
 
@@ -91,6 +94,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 _allowNewConnections = false;
                 _readyClientsSnapshot = _tracker.GetKnownClientIds()?.ToArray() ?? Array.Empty<ulong>();
                 _clientWaitCompleted = true;
+                Debug.Log($"[MM-PROBE][ServerConnectionManager] WaitForAllClientsAsync immediate ready count={_readyClientsSnapshot.Count} t={Time.realtimeSinceStartup:F3}");
                 return _readyClientsSnapshot;
             }
 
@@ -102,18 +106,21 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
             try
             {
+                Debug.Log($"[MM-PROBE][ServerConnectionManager] WaitForAllClientsAsync waiting requiredPlayers t={Time.realtimeSinceStartup:F3}");
                 await awaiter.WaitAsync();
 
                 if (_tracker == null || !_tracker.HasRequiredPlayers)
                 {
                     _clientWaitCompleted = true;
                     _readyClientsSnapshot = Array.Empty<ulong>();
+                    Debug.Log($"[MM-PROBE][ServerConnectionManager] WaitForAllClientsAsync done no players t={Time.realtimeSinceStartup:F3}");
                     return _readyClientsSnapshot;
                 }
 
                 _allowNewConnections = false;
                 _readyClientsSnapshot = _tracker.GetKnownClientIds()?.ToArray() ?? Array.Empty<ulong>();
                 _clientWaitCompleted = true;
+                Debug.Log($"[MM-PROBE][ServerConnectionManager] WaitForAllClientsAsync done count={_readyClientsSnapshot.Count} t={Time.realtimeSinceStartup:F3}");
                 return _readyClientsSnapshot;
             }
             finally
