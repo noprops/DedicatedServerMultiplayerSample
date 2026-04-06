@@ -200,6 +200,13 @@ def spawn_server(match_id, port, expected_players, expected_auth_ids):
     logs_dir = Path(CONFIG["logsDirectory"])
     logs_dir.mkdir(parents=True, exist_ok=True)
     log_path = logs_dir / f"{match_id}.log"
+    working_directory = Path(CONFIG["serverWorkingDirectory"]).resolve()
+    launch_env = os.environ.copy()
+    existing_library_path = launch_env.get("LD_LIBRARY_PATH", "")
+    if existing_library_path:
+        launch_env["LD_LIBRARY_PATH"] = f"{working_directory}:{existing_library_path}"
+    else:
+        launch_env["LD_LIBRARY_PATH"] = str(working_directory)
 
     cmd = [
         CONFIG["serverExecutable"],
@@ -222,7 +229,8 @@ def spawn_server(match_id, port, expected_players, expected_auth_ids):
 
     process = subprocess.Popen(
         cmd,
-        cwd=CONFIG["serverWorkingDirectory"],
+        cwd=working_directory,
+        env=launch_env,
         stdout=subprocess.DEVNULL,
         stderr=subprocess.DEVNULL,
         preexec_fn=os.setsid,
