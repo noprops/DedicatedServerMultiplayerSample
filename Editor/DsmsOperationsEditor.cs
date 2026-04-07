@@ -27,8 +27,8 @@ namespace DedicatedServerMultiplayerSample.Editor
             RunPackageScript(
                 "Deploy Cloud Code Module A",
                 Path.Combine("Tools~", "cloud", "deploy_cloudcode_module.sh"),
-                settings.ProjectId,
-                settings.EnvironmentName,
+                settings.EffectiveProjectId,
+                settings.EffectiveEnvironmentName,
                 "A",
                 ResolvePackageRoot());
         }
@@ -46,8 +46,8 @@ namespace DedicatedServerMultiplayerSample.Editor
             RunPackageScript(
                 "Deploy Cloud Code Module B",
                 Path.Combine("Tools~", "cloud", "deploy_cloudcode_module.sh"),
-                settings.ProjectId,
-                settings.EnvironmentName,
+                settings.EffectiveProjectId,
+                settings.EffectiveEnvironmentName,
                 "B",
                 ResolvePackageRoot());
         }
@@ -65,8 +65,8 @@ namespace DedicatedServerMultiplayerSample.Editor
             RunPackageScript(
                 "Deploy Matchmaker Config",
                 Path.Combine("Tools~", "matchmaker", "deploy_matchmaker_config.sh"),
-                settings.ProjectId,
-                settings.EnvironmentName,
+                settings.EffectiveProjectId,
+                settings.EffectiveEnvironmentName,
                 ResolveProjectPath(settings.MatchmakerEnvironmentPath),
                 ResolveProjectPath(settings.CompetitiveQueuePath),
                 ResolveProjectPath(settings.CasualQueuePath));
@@ -224,7 +224,7 @@ namespace DedicatedServerMultiplayerSample.Editor
 
         private static bool EnsureCloudDeploySettings(DsmsOperationsSettings settings)
         {
-            if (!string.IsNullOrWhiteSpace(settings.ProjectId) && !string.IsNullOrWhiteSpace(settings.EnvironmentName))
+            if (!string.IsNullOrWhiteSpace(settings.EffectiveProjectId) && !string.IsNullOrWhiteSpace(settings.EffectiveEnvironmentName))
             {
                 return true;
             }
@@ -232,7 +232,7 @@ namespace DedicatedServerMultiplayerSample.Editor
             OpenOperationsWindow();
             EditorUtility.DisplayDialog(
                 "DSMS",
-                "Project ID and Environment Name are required. Opened DSMS Operations settings.",
+                "Project ID or Environment Name could not be auto-detected. Opened DSMS Operations settings.",
                 "OK");
             return false;
         }
@@ -299,7 +299,7 @@ namespace DedicatedServerMultiplayerSample.Editor
 
         private static string ResolvePackageRoot()
         {
-            var packageInfo = PackageInfo.FindForAssetPath($"Packages/{PackageName}");
+            var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath($"Packages/{PackageName}");
             if (packageInfo == null || string.IsNullOrWhiteSpace(packageInfo.resolvedPath))
             {
                 throw new InvalidOperationException($"Failed to resolve package root for {PackageName}.");
@@ -343,7 +343,7 @@ namespace DedicatedServerMultiplayerSample.Editor
 
         private static string RunShellCommand(string label, string command)
         {
-            EditorUtility.DisplayProgressBar("DSMS", $"{label}...", "Running");
+            EditorUtility.DisplayProgressBar("DSMS", $"{label}...", 0.5f);
             try
             {
                 var startInfo = new ProcessStartInfo
@@ -414,7 +414,7 @@ namespace DedicatedServerMultiplayerSample.Editor
     internal sealed class DsmsOperationsSettings : ScriptableSingleton<DsmsOperationsSettings>
     {
         public string ProjectId = string.Empty;
-        public string EnvironmentName = "production";
+        public string EnvironmentName = string.Empty;
         public string MatchmakerEnvironmentPath = string.Empty;
         public string CompetitiveQueuePath = string.Empty;
         public string CasualQueuePath = string.Empty;
@@ -427,9 +427,15 @@ namespace DedicatedServerMultiplayerSample.Editor
         public string VmCreateAvailabilityZone = "ap-northeast-1a";
         public string VmCreateBlueprintId = "ubuntu_24_04";
         public string VmCreateBundleId = "nano_3_0";
+        public string EffectiveProjectId => !string.IsNullOrWhiteSpace(ProjectId) ? ProjectId : AutoDetectedProjectId;
+        public string EffectiveEnvironmentName => !string.IsNullOrWhiteSpace(EnvironmentName) ? EnvironmentName : AutoDetectedEnvironmentName;
+
+        public string AutoDetectedProjectId { get; private set; } = string.Empty;
+        public string AutoDetectedEnvironmentName { get; private set; } = string.Empty;
 
         public void EnsureDefaults()
         {
+            RefreshAutoDetectedValues();
             MatchmakerEnvironmentPath = DefaultIfBlank(
                 MatchmakerEnvironmentPath,
                 "Assets/Samples/Dedicated Server Multiplayer Sample/0.1.0/Basic Scene Setup/Configurations/MatchmakerEnvironment.mme");
@@ -441,7 +447,52 @@ namespace DedicatedServerMultiplayerSample.Editor
                 "Assets/Samples/Dedicated Server Multiplayer Sample/0.1.0/Basic Scene Setup/Configurations/CasualQueue.mmq");
             AutoMatchInstanceCount = Mathf.Max(1, AutoMatchInstanceCount);
             VmCreateSlot = NormalizeSlot(VmCreateSlot);
+            Persist();
+        }
+
+        public void Persist()
+        {
             Save(true);
+        }
+
+        private void RefreshAutoDetectedValues()
+        {
+            AutoDetectedProjectId = DetectProjectId();
+            AutoDetectedEnvironmentName = DetectEnvironmentName();
+        }
+
+        private static string DetectProjectId()
+        {
+            return CloudProjectSettings.projectId?.Trim() ?? string.Empty;
+        }
+
+        private static string DetectEnvironmentName()
+        {
+            var settingsPath = Path.Combine(
+                Path.GetFullPath(Path.Combine(Application.dataPath, "..")),
+                "ProjectSettings",
+                "Packages",
+                "com.unity.services.core",
+                "Settings.json");
+            if (!File.Exists(settingsPath))
+            {
+                return string.Empty;
+            }
+
+            try
+            {
+                var settingsJson = JsonUtility.FromJson<UnityServicesCoreSettingsJson>(File.ReadAllText(settingsPath));
+                if (settingsJson != null && !string.IsNullOrWhiteSpace(settingsJson.EnvironmentName))
+                {
+                    return settingsJson.EnvironmentName.Trim();
+                }
+            }
+            catch (Exception ex)
+            {
+                Debug.LogWarning($"[DSMS] Failed to read Unity Services environment name from {settingsPath}: {ex.Message}");
+            }
+
+            return string.Empty;
         }
 
         private static string DefaultIfBlank(string currentValue, string candidate)
@@ -458,6 +509,12 @@ namespace DedicatedServerMultiplayerSample.Editor
         private static string NormalizeSlot(string slot)
         {
             return string.Equals(slot, "B", StringComparison.OrdinalIgnoreCase) ? "B" : "A";
+        }
+
+        [Serializable]
+        private sealed class UnityServicesCoreSettingsJson
+        {
+            public string EnvironmentName = string.Empty;
         }
     }
 
@@ -489,7 +546,7 @@ namespace DedicatedServerMultiplayerSample.Editor
             EditorGUILayout.Space();
             if (GUILayout.Button("Save Settings"))
             {
-                settings.Save(true);
+                settings.Persist();
                 Debug.Log("[DSMS] Saved DSMS operations settings.");
             }
 
@@ -497,7 +554,7 @@ namespace DedicatedServerMultiplayerSample.Editor
 
             if (GUI.changed)
             {
-                settings.Save(true);
+                settings.Persist();
             }
         }
 
@@ -505,8 +562,17 @@ namespace DedicatedServerMultiplayerSample.Editor
         {
             EditorGUILayout.Space();
             EditorGUILayout.LabelField("Cloud", EditorStyles.boldLabel);
-            settings.ProjectId = EditorGUILayout.TextField("Project ID", settings.ProjectId);
-            settings.EnvironmentName = EditorGUILayout.TextField("Environment", settings.EnvironmentName);
+            EditorGUILayout.HelpBox(
+                "Leave Project ID and Environment blank to use auto-detected values from the current Unity project.",
+                MessageType.None);
+            EditorGUILayout.LabelField(
+                "Auto-detected Project ID",
+                string.IsNullOrWhiteSpace(settings.AutoDetectedProjectId) ? "(not detected)" : settings.AutoDetectedProjectId);
+            EditorGUILayout.LabelField(
+                "Auto-detected Environment",
+                string.IsNullOrWhiteSpace(settings.AutoDetectedEnvironmentName) ? "(not detected)" : settings.AutoDetectedEnvironmentName);
+            settings.ProjectId = EditorGUILayout.TextField("Project ID Override", settings.ProjectId);
+            settings.EnvironmentName = EditorGUILayout.TextField("Environment Override", settings.EnvironmentName);
         }
 
         private static void DrawMatchmakerSection(DsmsOperationsSettings settings)
