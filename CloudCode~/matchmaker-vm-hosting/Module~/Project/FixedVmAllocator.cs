@@ -31,6 +31,7 @@ public class FixedVmAllocator : IMatchmakerAllocator
     private const int DefaultExpectedPlayers = 2;
     private const int AllocateReadyTimeoutSeconds = 20;
     private const int AllocatePollIntervalMilliseconds = 1000;
+    private const int AllocateRetryDelayMilliseconds = 250;
 
     private static readonly HttpClient s_HttpClient = new()
     {
@@ -60,6 +61,7 @@ public class FixedVmAllocator : IMatchmakerAllocator
 
         try
         {
+            LogAllocator($"Allocate start matchId={matchId}, expectedPlayers={expectedPlayers}, expectedAuthIds={expectedAuthIds.Count}");
             var launcherSettings = await LoadLauncherSettingsAsync(context);
             var launcherResponse = await WaitForAllocationReadyAsync(
                 launcherSettings,
@@ -86,9 +88,10 @@ public class FixedVmAllocator : IMatchmakerAllocator
         }
         catch (Exception ex)
         {
+            LogAllocator($"Allocate exception matchId={matchId}: {FormatException(ex)}");
             return new AllocateResponse(AllocateStatus.Error)
             {
-                Message = $"allocate request failed: {ex.Message}"
+                Message = $"allocate request failed: {FormatException(ex)}"
             };
         }
     }
@@ -107,6 +110,7 @@ public class FixedVmAllocator : IMatchmakerAllocator
 
         try
         {
+            LogAllocator($"Poll start matchId={matchId}");
             var launcherSettings = await LoadLauncherSettingsAsync(context);
             var launcherResponse = await SendPollAsync(launcherSettings, matchId);
             if (IsReady(launcherResponse))
@@ -131,9 +135,10 @@ public class FixedVmAllocator : IMatchmakerAllocator
         }
         catch (Exception ex)
         {
+            LogAllocator($"Poll exception matchId={matchId}: {FormatException(ex)}");
             return new PollResponse(PollStatus.Error)
             {
-                Message = $"poll request failed: {ex.Message}"
+                Message = $"poll request failed: {FormatException(ex)}"
             };
         }
     }
@@ -213,21 +218,50 @@ public class FixedVmAllocator : IMatchmakerAllocator
             ExpectedAuthIds = expectedAuthIds
         };
 
-        using var httpRequest = CreateRequest(launcherSettings, HttpMethod.Post, "matches/allocate");
-        httpRequest.Content = new StringContent(
-            JsonSerializer.Serialize(payload, s_JsonOptions),
-            Encoding.UTF8,
-            "application/json");
+        var requestUri = new Uri(new Uri(EnsureTrailingSlash(launcherSettings.BaseUrl)), "matches/allocate");
 
-        using var response = await s_HttpClient.SendAsync(httpRequest);
-        return await ReadLauncherResponseAsync(response);
+        for (var attempt = 0; attempt < 2; attempt++)
+        {
+            try
+            {
+                using var httpRequest = CreateRequest(launcherSettings, HttpMethod.Post, requestUri);
+                httpRequest.Content = new StringContent(
+                    JsonSerializer.Serialize(payload, s_JsonOptions),
+                    Encoding.UTF8,
+                    "application/json");
+
+                LogAllocator($"Launcher allocate HTTP POST attempt={attempt + 1} uri={requestUri}");
+                using var response = await s_HttpClient.SendAsync(httpRequest);
+                var launcherResponse = await ReadLauncherResponseAsync(requestUri, response);
+                if (attempt == 0 && ShouldRetryAllocateResponse(response))
+                {
+                    LogAllocator($"Launcher allocate retrying after HTTP {(int)response.StatusCode} for uri={requestUri}");
+                    await Task.Delay(AllocateRetryDelayMilliseconds);
+                    continue;
+                }
+
+                return launcherResponse;
+            }
+            catch (Exception ex) when (attempt == 0 && IsTransientLauncherException(ex))
+            {
+                LogAllocator($"Launcher allocate transient failure attempt={attempt + 1} uri={requestUri}: {FormatException(ex)}; retrying");
+                await Task.Delay(AllocateRetryDelayMilliseconds);
+            }
+        }
+
+        throw new InvalidOperationException($"launcher allocate retry loop exhausted for uri={requestUri}");
     }
 
     private static async Task<LauncherMatchResponse> SendPollAsync(LauncherSettings launcherSettings, string matchId)
     {
-        using var httpRequest = CreateRequest(launcherSettings, HttpMethod.Get, $"matches/{Uri.EscapeDataString(matchId)}");
+        var requestUri = new Uri(
+            new Uri(EnsureTrailingSlash(launcherSettings.BaseUrl)),
+            $"matches/{Uri.EscapeDataString(matchId)}");
+        using var httpRequest = CreateRequest(launcherSettings, HttpMethod.Get, requestUri);
+
+        LogAllocator($"Launcher poll HTTP GET uri={requestUri}");
         using var response = await s_HttpClient.SendAsync(httpRequest);
-        return await ReadLauncherResponseAsync(response);
+        return await ReadLauncherResponseAsync(requestUri, response);
     }
 
     private static async Task<LauncherMatchResponse> WaitForAllocationReadyAsync(
@@ -265,24 +299,30 @@ public class FixedVmAllocator : IMatchmakerAllocator
         };
     }
 
-    private static HttpRequestMessage CreateRequest(LauncherSettings launcherSettings, HttpMethod method, string relativePath)
+    private static HttpRequestMessage CreateRequest(LauncherSettings launcherSettings, HttpMethod method, Uri uri)
     {
-        var uri = new Uri(new Uri(EnsureTrailingSlash(launcherSettings.BaseUrl)), relativePath);
         var request = new HttpRequestMessage(method, uri);
         request.Headers.TryAddWithoutValidation("Authorization", $"Bearer {launcherSettings.ApiToken}");
         return request;
     }
 
-    private static async Task<LauncherMatchResponse> ReadLauncherResponseAsync(HttpResponseMessage response)
+    private static async Task<LauncherMatchResponse> ReadLauncherResponseAsync(Uri requestUri, HttpResponseMessage response)
     {
+        var responseBody = response.Content == null
+            ? string.Empty
+            : await response.Content.ReadAsStringAsync();
+
         LauncherMatchResponse? launcherResponse = null;
-        try
+        if (!string.IsNullOrWhiteSpace(responseBody))
         {
-            launcherResponse = await response.Content.ReadFromJsonAsync<LauncherMatchResponse>(s_JsonOptions);
-        }
-        catch
-        {
-            // Fall through to status-based handling below.
+            try
+            {
+                launcherResponse = JsonSerializer.Deserialize<LauncherMatchResponse>(responseBody, s_JsonOptions);
+            }
+            catch (Exception ex)
+            {
+                LogAllocator($"Launcher response JSON parse failed uri={requestUri}, status={(int)response.StatusCode}: {FormatException(ex)}");
+            }
         }
 
         if (response.IsSuccessStatusCode)
@@ -294,11 +334,50 @@ public class FixedVmAllocator : IMatchmakerAllocator
             };
         }
 
+        var statusSummary = $"{(int)response.StatusCode} {response.ReasonPhrase}".Trim();
+        var message = !string.IsNullOrWhiteSpace(launcherResponse?.Message)
+            ? launcherResponse!.Message!
+            : !string.IsNullOrWhiteSpace(responseBody)
+                ? $"launcher http error: {statusSummary}; body={Truncate(responseBody, 400)}"
+                : $"launcher http error: {statusSummary}";
+        LogAllocator($"Launcher HTTP failure uri={requestUri}, status={statusSummary}, message={message}");
+
         return launcherResponse ?? new LauncherMatchResponse
         {
             Status = "failed",
-            Message = $"launcher http error: {(int)response.StatusCode} {response.ReasonPhrase}"
+            Message = message
         };
+    }
+
+    private static bool ShouldRetryAllocateResponse(HttpResponseMessage response)
+    {
+        return (int)response.StatusCode >= 500;
+    }
+
+    private static bool IsTransientLauncherException(Exception ex)
+    {
+        return ex is HttpRequestException or TaskCanceledException or TimeoutException;
+    }
+
+    private static string FormatException(Exception ex)
+    {
+        var message = $"{ex.GetType().Name}: {ex.Message}";
+        if (ex.InnerException != null)
+        {
+            message += $" | Inner {ex.InnerException.GetType().Name}: {ex.InnerException.Message}";
+        }
+
+        return message;
+    }
+
+    private static string Truncate(string value, int maxLength)
+    {
+        return value.Length <= maxLength ? value : $"{value[..maxLength]}...";
+    }
+
+    private static void LogAllocator(string message)
+    {
+        Console.WriteLine($"[FixedVmAllocator] {message}");
     }
 
     private static bool IsReady(LauncherMatchResponse response)
