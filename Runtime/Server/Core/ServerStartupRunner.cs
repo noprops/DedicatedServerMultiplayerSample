@@ -8,7 +8,7 @@ using UnityEngine;
 namespace DedicatedServerMultiplayerSample.Server.Core
 {
     /// <summary>
-    /// Minimal orchestrator that wires together Multiplay allocation, scene loading, and shutdown scheduling.
+    /// Minimal orchestrator that wires together VM-hosted startup, scene loading, and shutdown scheduling.
     /// </summary>
     public sealed class ServerStartupRunner : IDisposable
     {
@@ -29,7 +29,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
 
         #region Public API
 
-        internal async Task<bool> StartAsync(ServerRuntimeConfig runtimeConfig, MultiplaySessionService multiplaySessionService)
+        internal async Task<bool> StartAsync(ServerRuntimeConfig runtimeConfig)
         {
             var startupSucceeded = false;
             try
@@ -40,40 +40,22 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                     throw new ArgumentNullException(nameof(runtimeConfig));
                 }
 
-                if (multiplaySessionService == null)
-                {
-                    throw new ArgumentNullException(nameof(multiplaySessionService));
-                }
-
-                var allocation = await multiplaySessionService.AwaitAllocationAsync(CancellationToken.None);
-                if (!allocation.Success)
-                {
-                    return false;
-                }
-                Debug.Log($"[MM-PROBE][ServerStartupRunner] Allocation received t={Time.realtimeSinceStartup:F3} teamCount={allocation.TeamCount} expectedAuthIds={allocation.ExpectedAuthIds?.Count ?? 0}");
+                Debug.Log($"[MM-PROBE][ServerStartupRunner] Runtime ready t={Time.realtimeSinceStartup:F3} teamCount={runtimeConfig.ExpectedPlayerCount} expectedAuthIds={runtimeConfig.ExpectedAuthIds?.Count ?? 0}");
 
                 ServerTransportConfigurator.Configure(_networkManager, runtimeConfig);
-                if (!runtimeConfig.UseMultiplayAllocation)
+                if (!_networkManager.StartServer())
                 {
-                    if (!_networkManager.StartServer())
-                    {
-                        Debug.LogError("[ServerStartupRunner] StartServer failed in self-hosted mode.");
-                        return false;
-                    }
+                    Debug.LogError("[ServerStartupRunner] StartServer failed.");
+                    return false;
                 }
 
-                _connectionManager.Configure(allocation.ExpectedAuthIds ?? Array.Empty<string>(), allocation.TeamCount);
+                _connectionManager.Configure(runtimeConfig.ExpectedAuthIds ?? Array.Empty<string>(), runtimeConfig.ExpectedPlayerCount);
 
                 if (!await _connectionManager.LoadSceneAsync("game", SceneLoadTimeoutSeconds, CancellationToken.None))
                 {
                     return false;
                 }
                 Debug.Log($"[MM-PROBE][ServerStartupRunner] Scene loaded t={Time.realtimeSinceStartup:F3}");
-
-                if (multiplaySessionService.IsConnected)
-                {
-                    await multiplaySessionService.SetPlayerReadinessAsync(true);
-                }
 
                 Debug.Log($"[MM-PROBE][ServerStartupRunner] WaitForClients begin t={Time.realtimeSinceStartup:F3}");
                 var ready = await WaitForClientsWithTimeoutAsync(TimeSpan.FromSeconds(WaitingPlayersTimeoutSeconds));

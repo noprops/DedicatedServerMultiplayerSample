@@ -4,16 +4,9 @@ using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Server.Core
 {
-    public enum ServerHostingMode
-    {
-        Auto,
-        Multiplay,
-        SelfHosted
-    }
-
     /// <summary>
-    /// Captures and exposes server runtime configuration sourced from command line arguments and Multiplay server.json.
-    /// Stores the resolved ports, identifiers, and log paths so other systems can read a consistent view of deployment data.
+    /// Captures and exposes server runtime configuration sourced from command line arguments.
+    /// Stores the resolved ports, identifiers, and log paths so other systems can read a consistent view of VM-hosted deployment data.
     /// </summary>
     public class ServerRuntimeConfig
     {
@@ -27,20 +20,10 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         public bool QueryPortFromCommandLine { get; }
         public string LogFilePath { get; }
 
-        public bool ServerConfigAvailable { get; }
-        public long? ServerId { get; }
-        public string AllocationId { get; }
-        public ushort? ServerConfigPort { get; }
-        public ushort? ServerConfigQueryPort { get; }
-        public string IpAddress { get; }
-        public string ServerLogDirectory { get; }
-
         public string GeneratedServerName { get; }
         public string MatchId { get; }
-        public ServerHostingMode HostingMode { get; }
         public int ExpectedPlayerCount { get; }
         public IReadOnlyList<string> ExpectedAuthIds { get; }
-        public bool UseMultiplayAllocation => HostingMode == ServerHostingMode.Multiplay;
 
         private ServerRuntimeConfig(
             IReadOnlyList<string> args,
@@ -49,16 +32,8 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             ushort queryPort,
             bool queryPortFromCommandLine,
             string logFilePath,
-            bool serverConfigAvailable,
-            long? serverId,
-            string allocationId,
-            ushort? serverConfigPort,
-            ushort? serverConfigQueryPort,
-            string ipAddress,
-            string serverLogDirectory,
             string generatedServerName,
             string matchId,
-            ServerHostingMode hostingMode,
             int expectedPlayerCount,
             IReadOnlyList<string> expectedAuthIds)
         {
@@ -68,16 +43,8 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             QueryPort = queryPort;
             QueryPortFromCommandLine = queryPortFromCommandLine;
             LogFilePath = logFilePath;
-            ServerConfigAvailable = serverConfigAvailable;
-            ServerId = serverId;
-            AllocationId = allocationId;
-            ServerConfigPort = serverConfigPort;
-            ServerConfigQueryPort = serverConfigQueryPort;
-            IpAddress = ipAddress;
-            ServerLogDirectory = serverLogDirectory;
             GeneratedServerName = generatedServerName;
             MatchId = matchId;
-            HostingMode = hostingMode;
             ExpectedPlayerCount = Mathf.Max(1, expectedPlayerCount);
             ExpectedAuthIds = expectedAuthIds ?? Array.Empty<string>();
         }
@@ -91,7 +58,6 @@ namespace DedicatedServerMultiplayerSample.Server.Core
             ushort queryPort = k_DefaultQueryPort;
             bool queryPortFromCommandLine = false;
             string logFilePath = null;
-            ServerHostingMode requestedHostingMode = ServerHostingMode.Auto;
             string matchId = null;
             int expectedPlayerCount = 2;
             var expectedAuthIds = new List<string>();
@@ -122,22 +88,6 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 if (string.Equals(current, "-logFile", StringComparison.OrdinalIgnoreCase) && next != null)
                 {
                     logFilePath = next;
-                }
-
-                if ((string.Equals(current, "-serverMode", StringComparison.OrdinalIgnoreCase) ||
-                     string.Equals(current, "-hostingMode", StringComparison.OrdinalIgnoreCase)) &&
-                    next != null)
-                {
-                    if (string.Equals(next, "multiplay", StringComparison.OrdinalIgnoreCase))
-                    {
-                        requestedHostingMode = ServerHostingMode.Multiplay;
-                    }
-                    else if (string.Equals(next, "selfhosted", StringComparison.OrdinalIgnoreCase) ||
-                             string.Equals(next, "self-hosted", StringComparison.OrdinalIgnoreCase) ||
-                             string.Equals(next, "vm", StringComparison.OrdinalIgnoreCase))
-                    {
-                        requestedHostingMode = ServerHostingMode.SelfHosted;
-                    }
                 }
 
                 if ((string.Equals(current, "-expectedPlayers", StringComparison.OrdinalIgnoreCase) ||
@@ -173,25 +123,10 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 }
             }
 
-            bool serverConfigAvailable = false;
-            long? serverId = null;
-            string allocationId = null;
-            ushort? serverConfigPort = null;
-            ushort? serverConfigQueryPort = null;
-            string ipAddress = null;
-            string serverLogDirectory = null;
-
-            string nameSeed = !string.IsNullOrEmpty(allocationId)
-                ? allocationId
+            string nameSeed = !string.IsNullOrEmpty(matchId)
+                ? matchId
                 : Guid.NewGuid().ToString("N");
             string generatedServerName = $"RPS-{nameSeed.Substring(0, Math.Min(8, nameSeed.Length))}";
-            var hostingMode = requestedHostingMode;
-            if (hostingMode == ServerHostingMode.Auto)
-            {
-                hostingMode = !string.IsNullOrWhiteSpace(allocationId) || serverConfigAvailable
-                    ? ServerHostingMode.Multiplay
-                    : ServerHostingMode.SelfHosted;
-            }
 
             return new ServerRuntimeConfig(
                 args,
@@ -200,16 +135,8 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 queryPort,
                 queryPortFromCommandLine,
                 logFilePath,
-                serverConfigAvailable,
-                serverId,
-                allocationId,
-                serverConfigPort,
-                serverConfigQueryPort,
-                ipAddress,
-                serverLogDirectory,
                 generatedServerName,
                 matchId,
-                hostingMode,
                 expectedPlayerCount,
                 expectedAuthIds);
         }
@@ -229,24 +156,8 @@ namespace DedicatedServerMultiplayerSample.Server.Core
                 Debug.Log($"[ServerRuntimeConfig] LogFile: {LogFilePath}");
             }
 
-            if (ServerConfigAvailable)
-            {
-                Debug.Log("[ServerRuntimeConfig] server.json values:");
-                Debug.Log($"  - ServerId: {ServerId}");
-                Debug.Log($"  - AllocationId: {AllocationId}");
-                Debug.Log($"  - Port: {ServerConfigPort}");
-                Debug.Log($"  - QueryPort: {ServerConfigQueryPort}");
-                Debug.Log($"  - IpAddress: {IpAddress}");
-                Debug.Log($"  - LogDirectory: {ServerLogDirectory}");
-            }
-            else
-            {
-                Debug.Log("[ServerRuntimeConfig] server.json not available");
-            }
-
             Debug.Log($"[ServerRuntimeConfig] GeneratedServerName: {GeneratedServerName}");
             Debug.Log($"[ServerRuntimeConfig] MatchId: {(string.IsNullOrWhiteSpace(MatchId) ? "(none)" : MatchId)}");
-            Debug.Log($"[ServerRuntimeConfig] HostingMode: {HostingMode}");
             Debug.Log($"[ServerRuntimeConfig] ExpectedPlayerCount: {ExpectedPlayerCount}");
             Debug.Log($"[ServerRuntimeConfig] ExpectedAuthIds: {(ExpectedAuthIds.Count > 0 ? string.Join(", ", ExpectedAuthIds) : "(none)")}");
         }

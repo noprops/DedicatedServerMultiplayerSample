@@ -19,7 +19,6 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
 
         private ServerStartupRunner _startupRunner;
         private ServerConnectionManager _connectionManager;
-        private MultiplaySessionService _multiplaySessionService;
         private readonly ServerShutdownScheduler _shutdownScheduler = new();
         private const int AllPlayersDisconnectedShutdownDelaySeconds = 10;
         public ServerStartupRunner StartupRunner => _startupRunner;
@@ -77,10 +76,8 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
 
                 _connectionManager = new ServerConnectionManager(NetworkManager.Singleton, Mathf.Max(1, defaultMaxPlayers));
                 _connectionManager.AllPlayersDisconnected += HandleAllPlayersDisconnected;
-                _multiplaySessionService = new MultiplaySessionService(runtimeConfig, Mathf.Max(1, defaultMaxPlayers));
                 _startupRunner = new ServerStartupRunner(NetworkManager.Singleton, _connectionManager);
-                var started = await _startupRunner.StartAsync(runtimeConfig, _multiplaySessionService);
-                await LockSessionAsync();
+                var started = await _startupRunner.StartAsync(runtimeConfig);
                 if (!started)
                 {
                     ScheduleShutdown(ShutdownKind.Error, "Server startup failed", AllPlayersDisconnectedShutdownDelaySeconds);
@@ -104,7 +101,6 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
                 _connectionManager.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
             }
             _connectionManager?.Dispose();
-            _multiplaySessionService?.Dispose();
             _shutdownScheduler.Cancel();
         }
 
@@ -117,7 +113,6 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
                 _connectionManager.AllPlayersDisconnected -= HandleAllPlayersDisconnected;
             }
             _connectionManager?.Dispose();
-            _multiplaySessionService?.Dispose();
             _shutdownScheduler.Cancel();
         }
 
@@ -125,15 +120,6 @@ namespace DedicatedServerMultiplayerSample.Server.Bootstrap
         {
             TimeSpan delay = TimeSpan.FromSeconds(timeoutSeconds);
             _shutdownScheduler.Schedule(kind, reason, delay);
-        }
-
-        private async Task LockSessionAsync()
-        {
-            if (_multiplaySessionService != null && _multiplaySessionService.IsConnected)
-            {
-                await _multiplaySessionService.LockSessionAsync();
-                await _multiplaySessionService.SetPlayerReadinessAsync(false);
-            }
         }
 
         private void HandleAllPlayersDisconnected()
