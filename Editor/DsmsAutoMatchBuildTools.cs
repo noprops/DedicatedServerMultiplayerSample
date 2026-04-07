@@ -10,7 +10,7 @@ namespace DedicatedServerMultiplayerSample.Editor
     {
         private const string DefaultOutputPath = "Builds/MacAutoMatchClient/DSMSAutoMatchClient.app";
 
-        [MenuItem("DSMS/Test Build/Build macOS Auto-Match Client")]
+        [MenuItem("DSMS/Test/Build macOS Auto-Match Client")]
         public static void BuildMacAutoMatchClient()
         {
             var enabledScenes = EditorBuildSettings.scenes
@@ -42,6 +42,12 @@ namespace DedicatedServerMultiplayerSample.Editor
             {
                 throw new BuildFailedException($"macOS auto-match build failed: {report.summary.result}");
             }
+        }
+
+        [MenuItem("DSMS/Test Build/Build macOS Auto-Match Client")]
+        public static void BuildMacAutoMatchClientLegacyMenu()
+        {
+            BuildMacAutoMatchClient();
         }
     }
 }

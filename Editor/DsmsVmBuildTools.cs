@@ -15,7 +15,7 @@ namespace DedicatedServerMultiplayerSample.Editor
         private const string DefaultOutputDirectory = "Builds/LinuxServer";
         private const string DefaultOutputExecutable = "Builds/LinuxServer/DedicatedServer.x86_64";
 
-        [MenuItem("DSMS/VM/Build Linux Dedicated Server")]
+        [MenuItem("DSMS/Build/Build Linux Dedicated Server")]
         public static void BuildLinuxDedicatedServer()
         {
             var enabledScenes = EditorBuildSettings.scenes
@@ -97,6 +97,12 @@ namespace DedicatedServerMultiplayerSample.Editor
 
                 EditorUserBuildSettings.standaloneBuildSubtarget = originalSubtarget;
             }
+        }
+
+        [MenuItem("DSMS/VM/Build Linux Dedicated Server")]
+        public static void BuildLinuxDedicatedServerLegacyMenu()
+        {
+            BuildLinuxDedicatedServer();
         }
     }
 }
