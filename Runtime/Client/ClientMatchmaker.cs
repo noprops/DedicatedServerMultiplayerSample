@@ -290,10 +290,10 @@ namespace DedicatedServerMultiplayerSample.Client
 
         private async Task<IpPortAssignment> WaitForIpPortAssignmentAsync(string ticketId, CancellationToken cancellationToken)
         {
-            const float timeoutSeconds = 30f;
+            const float ticketPollingTimeoutSeconds = 90f;
             float elapsed = 0f;
 
-            while (elapsed < timeoutSeconds)
+            while (elapsed < ticketPollingTimeoutSeconds)
             {
                 cancellationToken.ThrowIfCancellationRequested();
 
@@ -330,7 +330,7 @@ namespace DedicatedServerMultiplayerSample.Client
                 elapsed += 1f;
             }
 
-            throw new Exception("Ticket Timeout: polling exceeded 30 seconds");
+            throw new Exception("Ticket Timeout: polling exceeded 90 seconds");
         }
 
         private async Task DeleteCurrentTicketIfNeededAsync()
