@@ -18,7 +18,7 @@ namespace DedicatedServerMultiplayerSample.Server.Core
         private bool _disposed;
         private readonly TaskCompletionSource<bool> _startupCompletion = new(TaskCreationOptions.RunContinuationsAsynchronously);
 
-        private const int WaitingPlayersTimeoutSeconds = 180;
+        private const int WaitingPlayersTimeoutSeconds = 30;
         private const int SceneLoadTimeoutSeconds = 5;
 
         public ServerStartupRunner(NetworkManager networkManager, ServerConnectionManager connectionManager)

@@ -56,8 +56,9 @@ public class FixedVmAllocator : IMatchmakerAllocator
         var matchId = string.IsNullOrWhiteSpace(request.MatchId)
             ? Guid.NewGuid().ToString("N")
             : request.MatchId;
-        var expectedAuthIds = ResolveExpectedAuthIds(request);
-        var expectedPlayers = expectedAuthIds.Count > 0 ? expectedAuthIds.Count : DefaultExpectedPlayers;
+        var matchProperties = ResolveMatchProperties(request);
+        var expectedAuthIds = ResolveExpectedAuthIds(matchProperties);
+        var expectedPlayers = ResolveExpectedPlayers(matchProperties, expectedAuthIds);
 
         try
         {
@@ -143,33 +144,62 @@ public class FixedVmAllocator : IMatchmakerAllocator
         }
     }
 
-    private static IReadOnlyList<string> ResolveExpectedAuthIds(AllocateRequest request)
+    private static MatchProperties? ResolveMatchProperties(AllocateRequest request)
     {
         if (request.MatchmakingResults?.MatchProperties == null)
         {
-            return Array.Empty<string>();
+            return null;
         }
 
         try
         {
             var rawJson = JsonSerializer.Serialize(request.MatchmakingResults.MatchProperties, s_JsonOptions);
-            var matchProperties = JsonSerializer.Deserialize<MatchProperties>(rawJson, s_JsonOptions);
-            if (matchProperties?.Players == null)
-            {
-                return Array.Empty<string>();
-            }
-
-            return matchProperties.Players
-                .Select(player => player?.Id?.Trim())
-                .Where(id => !string.IsNullOrWhiteSpace(id))
-                .Select(id => id!)
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
+            return JsonSerializer.Deserialize<MatchProperties>(rawJson, s_JsonOptions);
         }
         catch
         {
+            return null;
+        }
+    }
+
+    private static IReadOnlyList<string> ResolveExpectedAuthIds(MatchProperties? matchProperties)
+    {
+        if (matchProperties?.Players == null)
+        {
             return Array.Empty<string>();
         }
+
+        return matchProperties.Players
+            .Select(player => player?.Id?.Trim())
+            .Where(id => !string.IsNullOrWhiteSpace(id))
+            .Select(id => id!)
+            .Distinct(StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static int ResolveExpectedPlayers(MatchProperties? matchProperties, IReadOnlyList<string> expectedAuthIds)
+    {
+        if (IsSinglePlayerFallbackMatch(matchProperties, expectedAuthIds))
+        {
+            return 1;
+        }
+
+        return expectedAuthIds.Count > 0 ? expectedAuthIds.Count : DefaultExpectedPlayers;
+    }
+
+    private static bool IsSinglePlayerFallbackMatch(MatchProperties? matchProperties, IReadOnlyList<string> expectedAuthIds)
+    {
+        if (expectedAuthIds.Count != 1)
+        {
+            return false;
+        }
+
+        if (matchProperties?.Teams?.Count == 1)
+        {
+            return true;
+        }
+
+        return matchProperties?.Players?.Count == 1;
     }
 
     private async Task<LauncherSettings> LoadLauncherSettingsAsync(IExecutionContext context)
