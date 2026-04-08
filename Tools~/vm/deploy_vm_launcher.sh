@@ -60,3 +60,38 @@ scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no \
 
 ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$VM_USER@$VM_HOST" \
   "mkdir -p $REMOTE_DIR && chmod +x $REMOTE_DIR/server_launcher.py"
+
+python3 - <<'PY' \
+  "$TMP_DIR/config.json" \
+  "$(ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$VM_USER@$VM_HOST" "cat $REMOTE_DIR/config.json")"
+import json
+import sys
+
+local_path, remote_json = sys.argv[1:]
+
+with open(local_path, "r", encoding="utf-8") as f:
+    local_data = json.load(f)
+
+remote_data = json.loads(remote_json)
+
+keys_to_verify = [
+    "publicIp",
+    "launcherToken",
+    "bindPort",
+]
+
+mismatches = []
+for key in keys_to_verify:
+    local_value = local_data.get(key)
+    remote_value = remote_data.get(key)
+    if local_value != remote_value:
+        mismatches.append(f"{key}: local={local_value!r}, remote={remote_value!r}")
+
+if mismatches:
+    raise SystemExit(
+        "VM launcher config verification failed after deploy:\n  " +
+        "\n  ".join(mismatches)
+    )
+
+print("VM launcher config verification passed.")
+PY

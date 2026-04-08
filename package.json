@@ -1,7 +1,7 @@
 {
   "name": "info.mygames888.dedicatedservermultiplayersample",
   "displayName": "Dedicated Server Multiplayer Sample",
-  "version": "1.0.1",
+  "version": "1.0.2",
   "unity": "6000.0",
   "description": "Reusable core components for Unity Multiplayer Services dedicated server samples.",
   "keywords": ["multiplayer", "dedicated", "server"],
