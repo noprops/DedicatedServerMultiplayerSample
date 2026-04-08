@@ -33,7 +33,7 @@ namespace DedicatedServerMultiplayerSample.Editor
                 options = BuildOptions.None,
                 extraScriptingDefines = new[]
                 {
-                    "DSMS_AUTO_MATCH_TEST"
+                    "DSMS_SAMPLE_AUTO_MATCH_TEST"
                 }
             };
 

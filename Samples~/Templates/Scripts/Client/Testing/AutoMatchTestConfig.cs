@@ -5,6 +5,7 @@ using UnityEngine;
 
 namespace DedicatedServerMultiplayerSample.Samples.Client.Testing
 {
+#if DSMS_SAMPLE_AUTO_MATCH_TEST
     internal static class AutoMatchTestConfig
     {
         private static bool s_parsed;
@@ -202,4 +203,32 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Testing
                 : defaultValue;
         }
     }
+#else
+    internal static class AutoMatchTestConfig
+    {
+        public static bool Enabled => false;
+        public static string QueueName => "competitive-queue";
+        public static int InstanceIndex => 1;
+        public static string PlayerName => "LoadClient-01";
+        public static string AuthProfileName => string.Empty;
+        public static bool AutoQuitOnSuccess => true;
+        public static bool AutoQuitOnFailure => true;
+        public static int AutoQuitTimeoutSeconds => 180;
+
+        public static int GetInitialDelayMilliseconds()
+        {
+            return 0;
+        }
+
+        public static Hand GetChoiceForRound(int roundIndex)
+        {
+            return Hand.Rock;
+        }
+
+        public static string Describe()
+        {
+            return "enabled=false";
+        }
+    }
+#endif
 }

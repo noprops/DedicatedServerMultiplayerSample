@@ -7,6 +7,7 @@ using UnityEngine.SceneManagement;
 
 namespace DedicatedServerMultiplayerSample.Samples.Client.Testing
 {
+#if DSMS_SAMPLE_AUTO_MATCH_TEST
     internal sealed class AutoMatchTestBootstrap : MonoBehaviour
     {
         private static AutoMatchTestBootstrap s_instance;
@@ -176,4 +177,14 @@ namespace DedicatedServerMultiplayerSample.Samples.Client.Testing
             Application.Quit();
         }
     }
+#else
+    internal sealed class AutoMatchTestBootstrap : MonoBehaviour
+    {
+        public static bool IsEnabled => false;
+
+        public static void NotifyMatchFinished(string reason)
+        {
+        }
+    }
+#endif
 }
