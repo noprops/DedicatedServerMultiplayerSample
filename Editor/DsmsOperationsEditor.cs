@@ -172,29 +172,6 @@ namespace DedicatedServerMultiplayerSample.Editor
                 "B");
         }
 
-        [MenuItem("DSMS/Test/Run Auto Match Clients")]
-        public static void RunAutoMatchClients()
-        {
-            var settings = DsmsOperationsSettings.instance;
-            settings.EnsureDefaults();
-            if (string.IsNullOrWhiteSpace(settings.AutoMatchAppPath))
-            {
-                OpenOperationsWindow();
-                EditorUtility.DisplayDialog(
-                    "DSMS",
-                    "Auto-match app path is not configured. Opened DSMS Operations settings.",
-                    "OK");
-                return;
-            }
-
-            RunPackageScript(
-                "Run Auto Match Clients",
-                Path.Combine("Tools~", "test", "run_auto_match_clients.sh"),
-                ResolveProjectPath(settings.AutoMatchAppPath),
-                settings.AutoMatchInstanceCount.ToString(),
-                settings.AutoMatchQueueName);
-        }
-
         [MenuItem("DSMS/Utility/Open Operations Settings")]
         public static void OpenOperationsWindow()
         {
@@ -419,9 +396,6 @@ namespace DedicatedServerMultiplayerSample.Editor
         public string CompetitiveQueuePath = string.Empty;
         public string CasualQueuePath = string.Empty;
         public string LinuxServerBuildDirectory = "Builds/LinuxServer";
-        public string AutoMatchAppPath = "Builds/MacAutoMatchClient/DSMSAutoMatchClient.app";
-        public int AutoMatchInstanceCount = 2;
-        public string AutoMatchQueueName = "competitive-queue";
         public string VmCreateSlot = "A";
         public string VmCreateInstanceName = string.Empty;
         public string VmCreateAvailabilityZone = "ap-northeast-1a";
@@ -445,7 +419,6 @@ namespace DedicatedServerMultiplayerSample.Editor
             CasualQueuePath = DefaultIfBlank(
                 CasualQueuePath,
                 "Assets/Samples/Dedicated Server Multiplayer Sample/0.1.0/Basic Scene Setup/Configurations/CasualQueue.mmq");
-            AutoMatchInstanceCount = Mathf.Max(1, AutoMatchInstanceCount);
             VmCreateSlot = NormalizeSlot(VmCreateSlot);
             Persist();
         }
@@ -541,7 +514,6 @@ namespace DedicatedServerMultiplayerSample.Editor
             DrawCloudSection(settings);
             DrawMatchmakerSection(settings);
             DrawVmSection(settings);
-            DrawTestSection(settings);
 
             EditorGUILayout.Space();
             if (GUILayout.Button("Save Settings"))
@@ -594,15 +566,6 @@ namespace DedicatedServerMultiplayerSample.Editor
             settings.VmCreateAvailabilityZone = EditorGUILayout.TextField("Availability Zone", settings.VmCreateAvailabilityZone);
             settings.VmCreateBlueprintId = EditorGUILayout.TextField("Blueprint ID", settings.VmCreateBlueprintId);
             settings.VmCreateBundleId = EditorGUILayout.TextField("Bundle ID", settings.VmCreateBundleId);
-        }
-
-        private static void DrawTestSection(DsmsOperationsSettings settings)
-        {
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Auto Match Test", EditorStyles.boldLabel);
-            DrawPathField("macOS Auto Match App", ref settings.AutoMatchAppPath, true);
-            settings.AutoMatchInstanceCount = EditorGUILayout.IntField("Instance Count", settings.AutoMatchInstanceCount);
-            settings.AutoMatchQueueName = EditorGUILayout.TextField("Queue Name", settings.AutoMatchQueueName);
         }
 
         private static void DrawPathField(string label, ref string value, bool folder, string extension = "")
