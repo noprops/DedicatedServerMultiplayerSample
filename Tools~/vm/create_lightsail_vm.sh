@@ -12,15 +12,20 @@ else
   SLOT="$(resolve_slot_or_current "")"
 fi
 
-if [[ $# -lt 3 ]]; then
-  echo "Usage: $0 [slot:A|B] <instance-name> <availability-zone> <blueprint-id> [bundle-id]" >&2
+if [[ $# -gt 0 ]]; then
+  echo "Usage: $0 [slot:A|B]" >&2
+  echo "Create settings now come only from project-root/dsms-vm.json." >&2
   exit 1
 fi
 
-INSTANCE_NAME="$1"
-AVAILABILITY_ZONE="$2"
-BLUEPRINT_ID="$3"
-BUNDLE_ID="${4:-nano_3_0}"
+load_dsms_project_identity
+load_dsms_vm_create_defaults
+load_dsms_vm_slot "$SLOT"
+
+INSTANCE_NAME="${DSMS_VM_INSTANCE_NAME:-}"
+AVAILABILITY_ZONE="${DSMS_VM_DEFAULT_AVAILABILITY_ZONE:-}"
+BLUEPRINT_ID="${DSMS_VM_DEFAULT_BLUEPRINT_ID:-}"
+BUNDLE_ID="${DSMS_VM_DEFAULT_BUNDLE_ID:-}"
 REGION="${AWS_REGION:-ap-northeast-1}"
 PORT_RANGE_START="${PORT_RANGE_START:-7777}"
 PORT_RANGE_END="${PORT_RANGE_END:-7792}"
@@ -36,9 +41,14 @@ SSH_KEY_PATH_VALUE="${DSMS_VM_SSH_KEY_PATH:-${LIGHTSAIL_SSH_KEY_PATH:-}}"
 BASE_URL_SECRET_NAME="$(dsms_slot_secret_base_url_name "$SLOT")"
 TOKEN_SECRET_NAME="$(dsms_slot_secret_token_name "$SLOT")"
 
-aws lightsail create-instance \
+require_value "slots.$SLOT.instanceName" "$INSTANCE_NAME"
+require_value "defaultAvailabilityZone" "$AVAILABILITY_ZONE"
+require_value "defaultBlueprintId" "$BLUEPRINT_ID"
+require_value "defaultBundleId" "$BUNDLE_ID"
+
+aws lightsail create-instances \
   --region "$REGION" \
-  --instance-name "$INSTANCE_NAME" \
+  --instance-names "$INSTANCE_NAME" \
   --availability-zone "$AVAILABILITY_ZONE" \
   --blueprint-id "$BLUEPRINT_ID" \
   --bundle-id "$BUNDLE_ID"

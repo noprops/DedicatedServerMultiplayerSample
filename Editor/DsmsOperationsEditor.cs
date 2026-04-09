@@ -2,9 +2,9 @@ using System;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
+using System.Linq;
 using System.Text;
 using UnityEditor;
-using UnityEditor.PackageManager;
 using UnityEngine;
 using Debug = UnityEngine.Debug;
 
@@ -13,22 +13,18 @@ namespace DedicatedServerMultiplayerSample.Editor
     internal static class DsmsOperationsEditor
     {
         private const string PackageName = "info.mygames888.dedicatedservermultiplayersample";
+        private const string DefaultLinuxServerBuildDirectory = "Builds/LinuxServer";
 
         [MenuItem("DSMS/Cloud/Deploy Cloud Code Module A")]
         public static void DeployCloudCodeModuleA()
         {
-            var settings = DsmsOperationsSettings.instance;
-            settings.EnsureDefaults();
-            if (!EnsureCloudDeploySettings(settings))
-            {
-                return;
-            }
+            var config = LoadVmConfig();
 
             RunPackageScript(
                 "Deploy Cloud Code Module A",
                 Path.Combine("Tools~", "cloud", "deploy_cloudcode_module.sh"),
-                settings.EffectiveProjectId,
-                settings.EffectiveEnvironmentName,
+                RequireTopLevelValue(config.ProjectId, "projectId"),
+                RequireTopLevelValue(config.Environment, "environment"),
                 "A",
                 ResolvePackageRoot());
         }
@@ -36,18 +32,13 @@ namespace DedicatedServerMultiplayerSample.Editor
         [MenuItem("DSMS/Cloud/Deploy Cloud Code Module B")]
         public static void DeployCloudCodeModuleB()
         {
-            var settings = DsmsOperationsSettings.instance;
-            settings.EnsureDefaults();
-            if (!EnsureCloudDeploySettings(settings))
-            {
-                return;
-            }
+            var config = LoadVmConfig();
 
             RunPackageScript(
                 "Deploy Cloud Code Module B",
                 Path.Combine("Tools~", "cloud", "deploy_cloudcode_module.sh"),
-                settings.EffectiveProjectId,
-                settings.EffectiveEnvironmentName,
+                RequireTopLevelValue(config.ProjectId, "projectId"),
+                RequireTopLevelValue(config.Environment, "environment"),
                 "B",
                 ResolvePackageRoot());
         }
@@ -55,41 +46,34 @@ namespace DedicatedServerMultiplayerSample.Editor
         [MenuItem("DSMS/Cloud/Deploy Matchmaker Config")]
         public static void DeployMatchmakerConfig()
         {
-            var settings = DsmsOperationsSettings.instance;
-            settings.EnsureDefaults();
-            if (!EnsureMatchmakerDeploySettings(settings))
-            {
-                return;
-            }
+            var config = LoadVmConfig();
 
             RunPackageScript(
                 "Deploy Matchmaker Config",
                 Path.Combine("Tools~", "matchmaker", "deploy_matchmaker_config.sh"),
-                settings.EffectiveProjectId,
-                settings.EffectiveEnvironmentName,
-                ResolveProjectPath(settings.MatchmakerEnvironmentPath),
-                ResolveProjectPath(settings.CompetitiveQueuePath),
-                ResolveProjectPath(settings.CasualQueuePath));
+                RequireTopLevelValue(config.ProjectId, "projectId"),
+                RequireTopLevelValue(config.Environment, "environment"),
+                ResolveRequiredProjectFile("MatchmakerEnvironment.mme"),
+                ResolveRequiredProjectFile("CompetitiveQueue.mmq"),
+                ResolveRequiredProjectFile("CasualQueue.mmq"));
         }
 
         [MenuItem("DSMS/VM/Create Lightsail VM")]
         public static void CreateLightsailVm()
         {
-            var settings = DsmsOperationsSettings.instance;
-            settings.EnsureDefaults();
-            if (!EnsureVmCreateSettings(settings))
-            {
-                return;
-            }
+            var config = LoadVmConfig();
+            var slot = config.CurrentWorkSlot;
+            var slotData = config.GetSlot(slot);
+
+            RequireTopLevelValue(config.DefaultAvailabilityZone, "defaultAvailabilityZone");
+            RequireTopLevelValue(config.DefaultBlueprintId, "defaultBlueprintId");
+            RequireTopLevelValue(config.DefaultBundleId, "defaultBundleId");
+            RequireSlotValue(slotData.instanceName, $"slots.{slot}.instanceName");
 
             RunPackageScript(
                 "Create Lightsail VM",
                 Path.Combine("Tools~", "vm", "create_lightsail_vm.sh"),
-                settings.VmCreateSlot,
-                settings.VmCreateInstanceName,
-                settings.VmCreateAvailabilityZone,
-                settings.VmCreateBlueprintId,
-                settings.VmCreateBundleId);
+                slot);
         }
 
         [MenuItem("DSMS/VM/Start VM")]
@@ -119,6 +103,8 @@ namespace DedicatedServerMultiplayerSample.Editor
         [MenuItem("DSMS/VM/Deploy VM Launcher")]
         public static void DeployVmLauncher()
         {
+            LoadVmConfig();
+
             RunPackageScript(
                 "Deploy VM Launcher",
                 Path.Combine("Tools~", "vm", "deploy_vm_launcher.sh"),
@@ -128,6 +114,8 @@ namespace DedicatedServerMultiplayerSample.Editor
         [MenuItem("DSMS/VM/Install VM Launcher Service")]
         public static void InstallVmLauncherService()
         {
+            LoadVmConfig();
+
             RunPackageScript(
                 "Install VM Launcher Service",
                 Path.Combine("Tools~", "vm", "install_vm_launcher_service.sh"));
@@ -136,22 +124,13 @@ namespace DedicatedServerMultiplayerSample.Editor
         [MenuItem("DSMS/VM/Upload Server Build")]
         public static void UploadServerBuild()
         {
-            var settings = DsmsOperationsSettings.instance;
-            settings.EnsureDefaults();
-            if (string.IsNullOrWhiteSpace(settings.LinuxServerBuildDirectory))
-            {
-                OpenOperationsWindow();
-                EditorUtility.DisplayDialog(
-                    "DSMS",
-                    "Linux server build directory is not configured. Opened DSMS Operations settings.",
-                    "OK");
-                return;
-            }
+            LoadVmConfig();
 
+            var buildDirectory = ResolveDefaultLinuxServerBuildDirectory();
             RunPackageScript(
                 "Upload Server Build",
                 Path.Combine("Tools~", "vm", "upload_server_build.sh"),
-                ResolveProjectPath(settings.LinuxServerBuildDirectory));
+                buildDirectory);
         }
 
         [MenuItem("DSMS/VM/Set Current Work Slot/A")]
@@ -172,12 +151,20 @@ namespace DedicatedServerMultiplayerSample.Editor
                 "B");
         }
 
-        [MenuItem("DSMS/Utility/Open Operations Settings")]
-        public static void OpenOperationsWindow()
+        [MenuItem("DSMS/Utility/Open VM Config")]
+        public static void OpenVmConfig()
         {
-            var window = EditorWindow.GetWindow<DsmsOperationsWindow>("DSMS Operations");
-            window.minSize = new Vector2(620f, 540f);
-            window.Show();
+            var configPath = GetVmConfigPath();
+            if (!File.Exists(configPath))
+            {
+                EditorUtility.DisplayDialog(
+                    "DSMS",
+                    $"VM config not found:\n{configPath}",
+                    "OK");
+                return;
+            }
+
+            EditorUtility.RevealInFinder(configPath);
         }
 
         [MenuItem("DSMS/Utility/Print Active Package Root")]
@@ -189,7 +176,7 @@ namespace DedicatedServerMultiplayerSample.Editor
         [MenuItem("DSMS/Utility/Print Active VM Config")]
         public static void PrintActiveVmConfig()
         {
-            var configPath = Path.Combine(ProjectRoot, "dsms-vm.json");
+            var configPath = GetVmConfigPath();
             if (!File.Exists(configPath))
             {
                 Debug.LogWarning($"[DSMS] VM config not found: {configPath}");
@@ -199,82 +186,7 @@ namespace DedicatedServerMultiplayerSample.Editor
             Debug.Log($"[DSMS] VM config path: {configPath}\n{File.ReadAllText(configPath)}");
         }
 
-        private static bool EnsureCloudDeploySettings(DsmsOperationsSettings settings)
-        {
-            if (!string.IsNullOrWhiteSpace(settings.EffectiveProjectId) && !string.IsNullOrWhiteSpace(settings.EffectiveEnvironmentName))
-            {
-                return true;
-            }
-
-            OpenOperationsWindow();
-            EditorUtility.DisplayDialog(
-                "DSMS",
-                "Project ID or Environment Name could not be auto-detected. Opened DSMS Operations settings.",
-                "OK");
-            return false;
-        }
-
-        private static bool EnsureMatchmakerDeploySettings(DsmsOperationsSettings settings)
-        {
-            if (!EnsureCloudDeploySettings(settings))
-            {
-                return false;
-            }
-
-            if (!HasProjectPath(settings.MatchmakerEnvironmentPath) ||
-                !HasProjectPath(settings.CompetitiveQueuePath) ||
-                !HasProjectPath(settings.CasualQueuePath))
-            {
-                OpenOperationsWindow();
-                EditorUtility.DisplayDialog(
-                    "DSMS",
-                    "Matchmaker environment and queue paths are required. Opened DSMS Operations settings.",
-                    "OK");
-                return false;
-            }
-
-            return true;
-        }
-
-        private static bool EnsureVmCreateSettings(DsmsOperationsSettings settings)
-        {
-            if (!string.IsNullOrWhiteSpace(settings.VmCreateInstanceName) &&
-                !string.IsNullOrWhiteSpace(settings.VmCreateAvailabilityZone) &&
-                !string.IsNullOrWhiteSpace(settings.VmCreateBlueprintId) &&
-                !string.IsNullOrWhiteSpace(settings.VmCreateBundleId))
-            {
-                return true;
-            }
-
-            OpenOperationsWindow();
-            EditorUtility.DisplayDialog(
-                "DSMS",
-                "VM create settings are incomplete. Opened DSMS Operations settings.",
-                "OK");
-            return false;
-        }
-
-        private static bool HasProjectPath(string value)
-        {
-            if (string.IsNullOrWhiteSpace(value))
-            {
-                return false;
-            }
-
-            return File.Exists(ResolveProjectPath(value)) || Directory.Exists(ResolveProjectPath(value));
-        }
-
-        private static string ResolveProjectPath(string path)
-        {
-            if (Path.IsPathRooted(path))
-            {
-                return path;
-            }
-
-            return Path.GetFullPath(Path.Combine(ProjectRoot, path));
-        }
-
-        private static string ResolvePackageRoot()
+        internal static string ResolvePackageRoot()
         {
             var packageInfo = UnityEditor.PackageManager.PackageInfo.FindForAssetPath($"Packages/{PackageName}");
             if (packageInfo == null || string.IsNullOrWhiteSpace(packageInfo.resolvedPath))
@@ -285,7 +197,97 @@ namespace DedicatedServerMultiplayerSample.Editor
             return packageInfo.resolvedPath;
         }
 
-        private static string ProjectRoot => Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+        internal static string ProjectRoot => Path.GetFullPath(Path.Combine(Application.dataPath, ".."));
+
+        internal static string GetVmConfigPath()
+        {
+            return Path.Combine(ProjectRoot, "dsms-vm.json");
+        }
+
+        internal static DsmsVmConfigData LoadVmConfig(bool requireFile = true)
+        {
+            var configPath = GetVmConfigPath();
+            if (!File.Exists(configPath))
+            {
+                if (!requireFile)
+                {
+                    return new DsmsVmConfigData();
+                }
+
+                throw new FileNotFoundException(
+                    $"DSMS VM config not found: {configPath}\nCreate project-root/dsms-vm.json first, for example by copying the DSMS example file and filling the required keys.");
+            }
+
+            var json = File.ReadAllText(configPath);
+            var data = JsonUtility.FromJson<DsmsVmConfigData>(json) ?? new DsmsVmConfigData();
+            data.EnsureInitialized();
+            return data;
+        }
+
+        private static string ResolveRequiredProjectFile(string fileName)
+        {
+            var assetsRoot = Path.Combine(ProjectRoot, "Assets");
+            if (!Directory.Exists(assetsRoot))
+            {
+                throw new DirectoryNotFoundException($"Assets directory not found: {assetsRoot}");
+            }
+
+            var matches = Directory.GetFiles(assetsRoot, fileName, SearchOption.AllDirectories)
+                .Select(Path.GetFullPath)
+                .OrderBy(path => path, StringComparer.OrdinalIgnoreCase)
+                .ToArray();
+
+            return matches.Length switch
+            {
+                1 => matches[0],
+                0 => throw new FileNotFoundException(
+                    $"Required file not found under Assets: {fileName}\nImport the DSMS sample or place the file in your project."),
+                _ => throw new InvalidOperationException(
+                    $"Multiple {fileName} files were found under Assets. Keep one canonical file or update DSMS tooling to disambiguate:\n- " +
+                    string.Join("\n- ", matches))
+            };
+        }
+
+        private static string ResolveDefaultLinuxServerBuildDirectory()
+        {
+            var fullPath = Path.GetFullPath(Path.Combine(ProjectRoot, DefaultLinuxServerBuildDirectory));
+            if (!Directory.Exists(fullPath))
+            {
+                throw new DirectoryNotFoundException(
+                    $"Linux server build directory not found: {fullPath}\nBuild it first with DSMS/Build/Build Linux Dedicated Server.");
+            }
+
+            var executablePath = Path.Combine(fullPath, "DedicatedServer.x86_64");
+            if (!File.Exists(executablePath))
+            {
+                throw new FileNotFoundException(
+                    $"Linux server executable not found: {executablePath}\nBuild it first with DSMS/Build/Build Linux Dedicated Server.");
+            }
+
+            return fullPath;
+        }
+
+        private static string RequireTopLevelValue(string value, string keyName)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+
+            throw new InvalidOperationException(
+                $"Missing required key in dsms-vm.json: {keyName}\nFill project-root/dsms-vm.json before running this menu command.");
+        }
+
+        private static string RequireSlotValue(string value, string keyName)
+        {
+            if (!string.IsNullOrWhiteSpace(value))
+            {
+                return value.Trim();
+            }
+
+            throw new InvalidOperationException(
+                $"Missing required key in dsms-vm.json: {keyName}\nFill project-root/dsms-vm.json before running this menu command.");
+        }
 
         private static void RunPackageScript(string label, string packageRelativeScriptPath, params string[] args)
         {
@@ -387,199 +389,62 @@ namespace DedicatedServerMultiplayerSample.Editor
         }
     }
 
-    [FilePath("UserSettings/DsmsOperationsSettings.asset", FilePathAttribute.Location.ProjectFolder)]
-    internal sealed class DsmsOperationsSettings : ScriptableSingleton<DsmsOperationsSettings>
+    [Serializable]
+    internal sealed class DsmsVmConfigData
     {
-        public string ProjectId = string.Empty;
-        public string EnvironmentName = string.Empty;
-        public string MatchmakerEnvironmentPath = string.Empty;
-        public string CompetitiveQueuePath = string.Empty;
-        public string CasualQueuePath = string.Empty;
-        public string LinuxServerBuildDirectory = "Builds/LinuxServer";
-        public string VmCreateSlot = "A";
-        public string VmCreateInstanceName = string.Empty;
-        public string VmCreateAvailabilityZone = "ap-northeast-1a";
-        public string VmCreateBlueprintId = "ubuntu_24_04";
-        public string VmCreateBundleId = "nano_3_0";
-        public string EffectiveProjectId => !string.IsNullOrWhiteSpace(ProjectId) ? ProjectId : AutoDetectedProjectId;
-        public string EffectiveEnvironmentName => !string.IsNullOrWhiteSpace(EnvironmentName) ? EnvironmentName : AutoDetectedEnvironmentName;
+        public string defaultAvailabilityZone = string.Empty;
+        public string defaultBlueprintId = string.Empty;
+        public string defaultBundleId = string.Empty;
+        public string environment = string.Empty;
+        public string currentWorkSlot = "A";
+        public string projectId = string.Empty;
+        public string projectName = string.Empty;
+        public DsmsVmSlotsData slots = new();
 
-        public string AutoDetectedProjectId { get; private set; } = string.Empty;
-        public string AutoDetectedEnvironmentName { get; private set; } = string.Empty;
+        public string DefaultAvailabilityZone => defaultAvailabilityZone ?? string.Empty;
+        public string DefaultBlueprintId => defaultBlueprintId ?? string.Empty;
+        public string DefaultBundleId => defaultBundleId ?? string.Empty;
+        public string Environment => environment ?? string.Empty;
+        public string CurrentWorkSlot => NormalizeSlot(currentWorkSlot);
+        public string ProjectId => projectId ?? string.Empty;
+        public string ProjectName => projectName ?? string.Empty;
 
-        public void EnsureDefaults()
+        public void EnsureInitialized()
         {
-            RefreshAutoDetectedValues();
-            MatchmakerEnvironmentPath = DefaultIfBlank(
-                MatchmakerEnvironmentPath,
-                "Assets/Samples/Dedicated Server Multiplayer Sample/0.1.0/Basic Scene Setup/Configurations/MatchmakerEnvironment.mme");
-            CompetitiveQueuePath = DefaultIfBlank(
-                CompetitiveQueuePath,
-                "Assets/Samples/Dedicated Server Multiplayer Sample/0.1.0/Basic Scene Setup/Configurations/CompetitiveQueue.mmq");
-            CasualQueuePath = DefaultIfBlank(
-                CasualQueuePath,
-                "Assets/Samples/Dedicated Server Multiplayer Sample/0.1.0/Basic Scene Setup/Configurations/CasualQueue.mmq");
-            VmCreateSlot = NormalizeSlot(VmCreateSlot);
-            Persist();
+            slots ??= new DsmsVmSlotsData();
+            slots.A ??= new DsmsVmSlotData();
+            slots.B ??= new DsmsVmSlotData();
         }
 
-        public void Persist()
+        public DsmsVmSlotData GetSlot(string slot)
         {
-            Save(true);
+            EnsureInitialized();
+            return NormalizeSlot(slot) == "B" ? slots.B : slots.A;
         }
 
-        private void RefreshAutoDetectedValues()
+        public static string NormalizeSlot(string slot)
         {
-            AutoDetectedProjectId = DetectProjectId();
-            AutoDetectedEnvironmentName = DetectEnvironmentName();
-        }
-
-        private static string DetectProjectId()
-        {
-            return CloudProjectSettings.projectId?.Trim() ?? string.Empty;
-        }
-
-        private static string DetectEnvironmentName()
-        {
-            var settingsPath = Path.Combine(
-                Path.GetFullPath(Path.Combine(Application.dataPath, "..")),
-                "ProjectSettings",
-                "Packages",
-                "com.unity.services.core",
-                "Settings.json");
-            if (!File.Exists(settingsPath))
-            {
-                return string.Empty;
-            }
-
-            try
-            {
-                var settingsJson = JsonUtility.FromJson<UnityServicesCoreSettingsJson>(File.ReadAllText(settingsPath));
-                if (settingsJson != null && !string.IsNullOrWhiteSpace(settingsJson.EnvironmentName))
-                {
-                    return settingsJson.EnvironmentName.Trim();
-                }
-            }
-            catch (Exception ex)
-            {
-                Debug.LogWarning($"[DSMS] Failed to read Unity Services environment name from {settingsPath}: {ex.Message}");
-            }
-
-            return string.Empty;
-        }
-
-        private static string DefaultIfBlank(string currentValue, string candidate)
-        {
-            if (!string.IsNullOrWhiteSpace(currentValue))
-            {
-                return currentValue;
-            }
-
-            var resolved = Path.GetFullPath(Path.Combine(Path.GetFullPath(Path.Combine(Application.dataPath, "..")), candidate));
-            return File.Exists(resolved) ? candidate : currentValue;
-        }
-
-        private static string NormalizeSlot(string slot)
-        {
-            return string.Equals(slot, "B", StringComparison.OrdinalIgnoreCase) ? "B" : "A";
-        }
-
-        [Serializable]
-        private sealed class UnityServicesCoreSettingsJson
-        {
-            public string EnvironmentName = string.Empty;
+            return string.Equals(slot?.Trim(), "B", StringComparison.OrdinalIgnoreCase) ? "B" : "A";
         }
     }
 
-    internal sealed class DsmsOperationsWindow : EditorWindow
+    [Serializable]
+    internal sealed class DsmsVmSlotsData
     {
-        private Vector2 _scrollPosition;
+        public DsmsVmSlotData A = new();
+        public DsmsVmSlotData B = new();
+    }
 
-        private void OnEnable()
-        {
-            DsmsOperationsSettings.instance.EnsureDefaults();
-        }
-
-        private void OnGUI()
-        {
-            var settings = DsmsOperationsSettings.instance;
-
-            _scrollPosition = EditorGUILayout.BeginScrollView(_scrollPosition);
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("DSMS Operations Settings", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox(
-                "These settings are stored in UserSettings/DsmsOperationsSettings.asset and are used by the DSMS menu commands.",
-                MessageType.Info);
-
-            DrawCloudSection(settings);
-            DrawMatchmakerSection(settings);
-            DrawVmSection(settings);
-
-            EditorGUILayout.Space();
-            if (GUILayout.Button("Save Settings"))
-            {
-                settings.Persist();
-                Debug.Log("[DSMS] Saved DSMS operations settings.");
-            }
-
-            EditorGUILayout.EndScrollView();
-
-            if (GUI.changed)
-            {
-                settings.Persist();
-            }
-        }
-
-        private static void DrawCloudSection(DsmsOperationsSettings settings)
-        {
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Cloud", EditorStyles.boldLabel);
-            EditorGUILayout.HelpBox(
-                "Leave Project ID and Environment blank to use auto-detected values from the current Unity project.",
-                MessageType.None);
-            EditorGUILayout.LabelField(
-                "Auto-detected Project ID",
-                string.IsNullOrWhiteSpace(settings.AutoDetectedProjectId) ? "(not detected)" : settings.AutoDetectedProjectId);
-            EditorGUILayout.LabelField(
-                "Auto-detected Environment",
-                string.IsNullOrWhiteSpace(settings.AutoDetectedEnvironmentName) ? "(not detected)" : settings.AutoDetectedEnvironmentName);
-            settings.ProjectId = EditorGUILayout.TextField("Project ID Override", settings.ProjectId);
-            settings.EnvironmentName = EditorGUILayout.TextField("Environment Override", settings.EnvironmentName);
-        }
-
-        private static void DrawMatchmakerSection(DsmsOperationsSettings settings)
-        {
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("Matchmaker Config", EditorStyles.boldLabel);
-            DrawPathField("Environment .mme", ref settings.MatchmakerEnvironmentPath, false, "mme");
-            DrawPathField("Competitive Queue .mmq", ref settings.CompetitiveQueuePath, false, "mmq");
-            DrawPathField("Casual Queue .mmq", ref settings.CasualQueuePath, false, "mmq");
-        }
-
-        private static void DrawVmSection(DsmsOperationsSettings settings)
-        {
-            EditorGUILayout.Space();
-            EditorGUILayout.LabelField("VM", EditorStyles.boldLabel);
-            DrawPathField("Linux Server Build Dir", ref settings.LinuxServerBuildDirectory, true);
-            settings.VmCreateSlot = EditorGUILayout.Popup("Create VM Slot", settings.VmCreateSlot == "B" ? 1 : 0, new[] { "A", "B" }) == 1 ? "B" : "A";
-            settings.VmCreateInstanceName = EditorGUILayout.TextField("VM Instance Name", settings.VmCreateInstanceName);
-            settings.VmCreateAvailabilityZone = EditorGUILayout.TextField("Availability Zone", settings.VmCreateAvailabilityZone);
-            settings.VmCreateBlueprintId = EditorGUILayout.TextField("Blueprint ID", settings.VmCreateBlueprintId);
-            settings.VmCreateBundleId = EditorGUILayout.TextField("Bundle ID", settings.VmCreateBundleId);
-        }
-
-        private static void DrawPathField(string label, ref string value, bool folder, string extension = "")
-        {
-            EditorGUILayout.BeginHorizontal();
-            value = EditorGUILayout.TextField(label, value);
-            if (GUILayout.Button("Browse", GUILayout.Width(80f)))
-            {
-                value = folder
-                    ? EditorUtility.OpenFolderPanel(label, Path.GetFullPath(Path.Combine(Application.dataPath, "..")), string.Empty)
-                    : EditorUtility.OpenFilePanel(label, Path.GetFullPath(Path.Combine(Application.dataPath, "..")), extension);
-            }
-
-            EditorGUILayout.EndHorizontal();
-        }
+    [Serializable]
+    internal sealed class DsmsVmSlotData
+    {
+        public bool enabled;
+        public string host = string.Empty;
+        public string instanceName = string.Empty;
+        public string launcherBaseUrl = string.Empty;
+        public string launcherToken = string.Empty;
+        public int maxConcurrentMatches = 3;
+        public string publicIp = string.Empty;
+        public string sshKeyPath = string.Empty;
     }
 }

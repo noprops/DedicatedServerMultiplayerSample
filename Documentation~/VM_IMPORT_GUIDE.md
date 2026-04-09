@@ -167,27 +167,55 @@ VM:
 
 These are package-contained on purpose, so downstream users do not have to hunt through this DSMS repo.
 
-## Why Shell Scripts And Not Editor Scripts
+## Editor Menus And Source Of Truth
 
-Use shell scripts for:
+Downstream users should use the DSMS Editor menus as the supported human-facing entry point.
 
-- UGS CLI deploy
-- AWS / Lightsail operations
-- SSH / SCP to the VM
-- launcher installation
+Important rule:
 
-Reason:
+- do not manually browse `Library/PackageCache/...` to run DSMS scripts
 
-- these tasks depend on external CLIs, credentials, SSH keys, and machine-local tooling
-- that is a better fit for shell scripts than Unity Editor scripting
+The Editor menus internally call package scripts where needed, but the operational source of truth is:
 
-Use Editor scripts for:
+- `project-root/dsms-vm.json`
 
-- creating the Linux dedicated server build
+There is no separate persisted DSMS operations settings asset for deploy state anymore.
 
-The package now includes this editor menu item:
+Menu commands now read required values directly from `dsms-vm.json`, including:
 
-- `DSMS/VM/Build Linux Dedicated Server`
+- `projectId`
+- `projectName`
+- `environment`
+- `currentWorkSlot`
+- slot-scoped VM values
+
+Examples:
+
+- `DSMS/Cloud/Deploy Cloud Code Module A`
+- `DSMS/Cloud/Deploy Cloud Code Module B`
+- `DSMS/Cloud/Deploy Matchmaker Config`
+- `DSMS/VM/Start VM`
+- `DSMS/VM/Stop VM`
+- `DSMS/VM/Open Lightsail Ports`
+- `DSMS/VM/Deploy VM Launcher`
+- `DSMS/VM/Install VM Launcher Service`
+- `DSMS/VM/Upload Server Build`
+
+`DSMS/VM/Create Lightsail VM` now reads create-time values directly from `project-root/dsms-vm.json`.
+
+It uses:
+
+- `currentWorkSlot`
+- `slots.<slot>.instanceName`
+- `defaultAvailabilityZone`
+- `defaultBlueprintId`
+- `defaultBundleId`
+
+If any of those are missing, the menu fails clearly and tells you which key is missing.
+
+The package also includes this build menu:
+
+- `DSMS/Build/Build Linux Dedicated Server`
 
 That menu item is implemented in:
 
@@ -213,6 +241,7 @@ That is the real minimum flow.
 If you use AWS Lightsail, use:
 
 - `Tools~/vm/create_lightsail_vm.sh`
+- or the Unity Editor menu `DSMS/VM/Create Lightsail VM`
 
 It creates or updates `project-root/dsms-vm.json` automatically and prints the exact values you should store for the chosen slot.
 
@@ -228,11 +257,28 @@ For slot `B`:
 
 That file becomes the canonical per-project local VM operations file.
 
+Important:
+
+- create `project-root/dsms-vm.json` before using `DSMS/VM/Create Lightsail VM`
+- the easiest starting point is to copy `Tools~/vm/dsms-vm.example.json`
+- then fill:
+  - `projectId`
+  - `projectName`
+  - `environment`
+  - `defaultAvailabilityZone`
+  - `defaultBlueprintId`
+  - `defaultBundleId`
+  - `currentWorkSlot`
+  - `slots.<slot>.instanceName`
+
 Expected shape in `project-root/dsms-vm.json`:
 
 - `projectId`
 - `projectName`
 - `environment`
+- `defaultAvailabilityZone`
+- `defaultBlueprintId`
+- `defaultBundleId`
 - `currentWorkSlot`
 - `slots.A.instanceName`
 - `slots.A.host`
@@ -257,8 +303,8 @@ Recommended usage:
 
 - set `currentWorkSlot` to the slot you are actively deploying to
 - if you are preparing the next release on `B`, keep `currentWorkSlot: "B"`
-- scripts will use an explicit slot argument if you pass one
-- otherwise they will fall back to `currentWorkSlot`
+- `DSMS/VM/Create Lightsail VM` uses `currentWorkSlot` plus the top-level create defaults
+- `slots.<slot>.instanceName` is the desired Lightsail instance name
 - `A` and `B` must point to different VMs
 - do not copy `dsms-vm.json` between unrelated projects
 

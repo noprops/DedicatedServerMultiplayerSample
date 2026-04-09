@@ -29,10 +29,19 @@ Per-project VM operations are standardized through:
   - `projectId`
   - `projectName`
   - `environment`
+- includes top-level create defaults:
+  - `defaultAvailabilityZone`
+  - `defaultBlueprintId`
+  - `defaultBundleId`
 - includes `currentWorkSlot`
 - includes slot-scoped launcher config values such as `maxConcurrentMatches`
 - scripts use an explicit slot argument if provided, otherwise they use `currentWorkSlot`
 - slot `A` and slot `B` must point to different VMs
+- DSMS Editor operational menus now read their required project and slot values directly from `project-root/dsms-vm.json`
+- there is no separate persisted DSMS operations settings asset used as operational state
+- `DSMS/VM/Create Lightsail VM` reads create-time values directly from `project-root/dsms-vm.json`
+- the selected slot's `instanceName` is used as the desired Lightsail instance name
+- create `project-root/dsms-vm.json` first, typically by copying `Tools~/vm/dsms-vm.example.json` and filling the required keys
 
 For downstream projects, these package-contained assets are the canonical integration entry points.
 Do not depend on root-level migration workspace `modules/` or `scripts/` paths from this repository.
@@ -119,6 +128,7 @@ Important:
 - `project-root/dsms-vm.json` stores local deploy/SSH values for VM slot `A` and `B`
 - `project-root/dsms-vm.json` is also the source of truth for launcher config values such as `maxConcurrentMatches`
 - `project-root/dsms-vm.json` now also stores project ownership values used for VM ownership checks
+- DSMS operational menus read `projectId`, `projectName`, `environment`, `currentWorkSlot`, and slot-scoped VM values directly from `project-root/dsms-vm.json`
 - launcher deploy rebuilds remote `config.json` from package defaults, then overrides slot values from `dsms-vm.json`
 - launcher deploy refuses to overwrite a VM that reports a different `projectId` or `slot`
 - launcher deploy verifies `projectId`, `projectName`, `environment`, `slot`, `instanceName`, `publicIp`, `launcherToken`, `bindPort`, and `maxConcurrentMatches` after upload

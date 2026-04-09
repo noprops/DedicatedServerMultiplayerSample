@@ -200,6 +200,37 @@ mapping = {
     "DSMS_ENVIRONMENT": data.get("environment", ""),
 }
 
+load_dsms_vm_create_defaults() {
+  local config_path
+  config_path="$(dsms_config_path)"
+
+  if [[ ! -f "$config_path" ]]; then
+    echo "Missing DSMS VM config: $config_path" >&2
+    exit 1
+  fi
+
+  eval "$(
+    python3 - <<'PY' "$config_path"
+import json
+import shlex
+import sys
+
+config_path = sys.argv[1]
+with open(config_path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+mapping = {
+    "DSMS_VM_DEFAULT_AVAILABILITY_ZONE": data.get("defaultAvailabilityZone", ""),
+    "DSMS_VM_DEFAULT_BLUEPRINT_ID": data.get("defaultBlueprintId", ""),
+    "DSMS_VM_DEFAULT_BUNDLE_ID": data.get("defaultBundleId", ""),
+}
+
+for key, value in mapping.items():
+    print(f"{key}={shlex.quote(str(value))}")
+PY
+  )"
+}
+
 for key, value in mapping.items():
     print(f"{key}={shlex.quote(str(value))}")
 PY

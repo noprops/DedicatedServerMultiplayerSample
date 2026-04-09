@@ -1,4 +1,7 @@
 {
+  "defaultAvailabilityZone": "ap-northeast-1a",
+  "defaultBlueprintId": "ubuntu_24_04",
+  "defaultBundleId": "nano_3_0",
   "environment": "production",
   "currentWorkSlot": "B",
   "projectId": "your-unity-project-id",
