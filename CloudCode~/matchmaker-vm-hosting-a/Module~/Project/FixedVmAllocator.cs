@@ -9,6 +9,8 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using System.Threading.Tasks;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Newtonsoft.Json.Linq;
 using Unity.Services.CloudCode.Apis;
 using Unity.Services.CloudCode.Apis.Matchmaker;
 using Unity.Services.CloudCode.Core;
@@ -44,10 +46,12 @@ public class FixedVmAllocator : IMatchmakerAllocator
     };
 
     private readonly IGameApiClient gameApiClient;
+    private readonly ILogger<FixedVmAllocator> logger;
 
-    public FixedVmAllocator(IGameApiClient gameApiClient)
+    public FixedVmAllocator(IGameApiClient gameApiClient, ILogger<FixedVmAllocator> logger)
     {
         this.gameApiClient = gameApiClient;
+        this.logger = logger;
     }
 
     [CloudCodeFunction("allocate")]
@@ -64,7 +68,10 @@ public class FixedVmAllocator : IMatchmakerAllocator
             var playerCount = ResolvePlayerCount(matchProperties);
             var expectedAuthIds = ResolveExpectedAuthIds(matchProperties);
             var expectedPlayers = ResolveExpectedPlayers(teamCount, playerCount, expectedAuthIds);
-            LogAllocator($"Allocate start matchId={matchId}, matchPropertiesKeys={DescribeMatchPropertiesKeys(request.MatchmakingResults?.MatchProperties)}, teams={teamCount}, players={playerCount}, expectedAuthIds={expectedAuthIds.Count}, expectedPlayers={expectedPlayers}");
+            if (expectedAuthIds.Count == 0)
+            {
+                LogAllocatorWarning($"Allocate matchId={matchId} resolved no expectedAuthIds; matchPropertiesKeys={DescribeMatchPropertiesKeys(request.MatchmakingResults?.MatchProperties)}, teams={teamCount}, players={playerCount}, expectedPlayers={expectedPlayers}");
+            }
             var launcherSettings = await LoadLauncherSettingsAsync(context);
             var launcherResponse = await WaitForAllocationReadyAsync(
                 launcherSettings,
@@ -85,6 +92,8 @@ public class FixedVmAllocator : IMatchmakerAllocator
                 AllocationData = new Dictionary<string, object>
                 {
                     { "matchId", matchId },
+                    { "MatchId", matchId },
+                    { "assignmentId", matchId },
                     { "expectedPlayers", expectedPlayers }
                 }
             };
@@ -113,7 +122,6 @@ public class FixedVmAllocator : IMatchmakerAllocator
 
         try
         {
-            LogAllocator($"Poll start matchId={matchId}");
             var launcherSettings = await LoadLauncherSettingsAsync(context);
             var launcherResponse = await SendPollAsync(launcherSettings, matchId);
             if (IsReady(launcherResponse))
@@ -181,7 +189,8 @@ public class FixedVmAllocator : IMatchmakerAllocator
             }
         }
 
-        if (expectedAuthIds.Count == 0 && TryGetNamedValue(matchProperties, "teams", out var teamsElement))
+        if (expectedAuthIds.Count == 0 &&
+            TryGetNamedValue(matchProperties, "teams", out var teamsElement))
         {
             foreach (var teamElement in EnumerateArray(teamsElement))
             {
@@ -268,6 +277,37 @@ public class FixedVmAllocator : IMatchmakerAllocator
             return TryGetNamedValue(jsonDocument.RootElement, propertyName, out value);
         }
 
+        if (container is JObject jsonObject)
+        {
+            foreach (var property in jsonObject.Properties())
+            {
+                if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = property.Value;
+                    return true;
+                }
+            }
+
+            value = null;
+            return false;
+        }
+
+        if (container is JProperty jsonProperty)
+        {
+            return TryGetNamedValue(jsonProperty.Value, propertyName, out value);
+        }
+
+        if (container is JToken jsonToken)
+        {
+            if (jsonToken.Type == JTokenType.Object)
+            {
+                return TryGetNamedValue((JObject)jsonToken, propertyName, out value);
+            }
+
+            value = null;
+            return false;
+        }
+
         if (container is JsonElement jsonElement)
         {
             if (jsonElement.ValueKind == JsonValueKind.Object)
@@ -338,6 +378,18 @@ public class FixedVmAllocator : IMatchmakerAllocator
             return EnumerateArray(jsonDocument.RootElement);
         }
 
+        if (value is JArray jsonArray)
+        {
+            return jsonArray.Select(item => (object?)item).ToArray();
+        }
+
+        if (value is JToken jsonToken)
+        {
+            return jsonToken.Type == JTokenType.Array
+                ? ((JArray)jsonToken).Select(item => (object?)item).ToArray()
+                : Array.Empty<object?>();
+        }
+
         if (value is JsonElement jsonElement)
         {
             return jsonElement.ValueKind == JsonValueKind.Array
@@ -365,6 +417,8 @@ public class FixedVmAllocator : IMatchmakerAllocator
         {
             null => null,
             JsonDocument jsonDocument => TryReadString(jsonDocument.RootElement),
+            JValue jsonValue => jsonValue.Value?.ToString(),
+            JToken jsonToken when jsonToken.Type == JTokenType.String || jsonToken.Type == JTokenType.Integer || jsonToken.Type == JTokenType.Float || jsonToken.Type == JTokenType.Boolean => jsonToken.ToString(),
             JsonElement jsonElement when jsonElement.ValueKind == JsonValueKind.String => jsonElement.GetString(),
             JsonElement jsonElement when jsonElement.ValueKind == JsonValueKind.Number => jsonElement.GetRawText(),
             JsonElement jsonElement when jsonElement.ValueKind == JsonValueKind.True => bool.TrueString,
@@ -396,17 +450,46 @@ public class FixedVmAllocator : IMatchmakerAllocator
 
     private static string? ResolveMatchId(PollRequest request)
     {
-        if (request.AllocationData != null &&
-            request.AllocationData.TryGetValue("matchId", out var fromAllocation) &&
+        if (TryGetAllocationDataValue(request.AllocationData, "matchId", out var fromAllocation) &&
             fromAllocation != null)
         {
-            return fromAllocation.ToString();
+            return TryReadString(fromAllocation);
+        }
+
+        if (TryGetAllocationDataValue(request.AllocationData, "MatchId", out fromAllocation) &&
+            fromAllocation != null)
+        {
+            return TryReadString(fromAllocation);
+        }
+
+        if (TryGetAllocationDataValue(request.AllocationData, "assignmentId", out fromAllocation) &&
+            fromAllocation != null)
+        {
+            return TryReadString(fromAllocation);
         }
 
         return request.MatchId;
     }
 
-    private static async Task<LauncherMatchResponse> SendAllocateAsync(
+    private static bool TryGetAllocationDataValue(IDictionary<string, object>? allocationData, string key, out object? value)
+    {
+        if (allocationData != null)
+        {
+            foreach (var pair in allocationData)
+            {
+                if (string.Equals(pair.Key, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = pair.Value;
+                    return true;
+                }
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    private async Task<LauncherMatchResponse> SendAllocateAsync(
         LauncherSettings launcherSettings,
         string matchId,
         int expectedPlayers,
@@ -431,12 +514,11 @@ public class FixedVmAllocator : IMatchmakerAllocator
                     Encoding.UTF8,
                     "application/json");
 
-                LogAllocator($"Launcher allocate HTTP POST attempt={attempt + 1} uri={requestUri}");
                 using var response = await s_HttpClient.SendAsync(httpRequest);
                 var launcherResponse = await ReadLauncherResponseAsync(requestUri, response);
                 if (attempt == 0 && ShouldRetryAllocateResponse(response))
                 {
-                    LogAllocator($"Launcher allocate retrying after HTTP {(int)response.StatusCode} for uri={requestUri}");
+                    LogAllocatorWarning($"Launcher allocate retrying after HTTP {(int)response.StatusCode} for uri={requestUri}");
                     await Task.Delay(AllocateRetryDelayMilliseconds);
                     continue;
                 }
@@ -445,7 +527,7 @@ public class FixedVmAllocator : IMatchmakerAllocator
             }
             catch (Exception ex) when (attempt == 0 && IsTransientLauncherException(ex))
             {
-                LogAllocator($"Launcher allocate transient failure attempt={attempt + 1} uri={requestUri}: {FormatException(ex)}; retrying");
+                LogAllocatorWarning($"Launcher allocate transient failure attempt={attempt + 1} uri={requestUri}: {FormatException(ex)}; retrying");
                 await Task.Delay(AllocateRetryDelayMilliseconds);
             }
         }
@@ -453,19 +535,18 @@ public class FixedVmAllocator : IMatchmakerAllocator
         throw new InvalidOperationException($"launcher allocate retry loop exhausted for uri={requestUri}");
     }
 
-    private static async Task<LauncherMatchResponse> SendPollAsync(LauncherSettings launcherSettings, string matchId)
+    private async Task<LauncherMatchResponse> SendPollAsync(LauncherSettings launcherSettings, string matchId)
     {
         var requestUri = new Uri(
             new Uri(EnsureTrailingSlash(launcherSettings.BaseUrl)),
             $"matches/{Uri.EscapeDataString(matchId)}");
         using var httpRequest = CreateRequest(launcherSettings, HttpMethod.Get, requestUri);
 
-        LogAllocator($"Launcher poll HTTP GET uri={requestUri}");
         using var response = await s_HttpClient.SendAsync(httpRequest);
         return await ReadLauncherResponseAsync(requestUri, response);
     }
 
-    private static async Task<LauncherMatchResponse> WaitForAllocationReadyAsync(
+    private async Task<LauncherMatchResponse> WaitForAllocationReadyAsync(
         LauncherSettings launcherSettings,
         string matchId,
         int expectedPlayers,
@@ -507,7 +588,7 @@ public class FixedVmAllocator : IMatchmakerAllocator
         return request;
     }
 
-    private static async Task<LauncherMatchResponse> ReadLauncherResponseAsync(Uri requestUri, HttpResponseMessage response)
+    private async Task<LauncherMatchResponse> ReadLauncherResponseAsync(Uri requestUri, HttpResponseMessage response)
     {
         var responseBody = response.Content == null
             ? string.Empty
@@ -576,9 +657,14 @@ public class FixedVmAllocator : IMatchmakerAllocator
         return value.Length <= maxLength ? value : $"{value[..maxLength]}...";
     }
 
-    private static void LogAllocator(string message)
+    private void LogAllocator(string message)
     {
-        Console.WriteLine($"[FixedVmAllocator] {message}");
+        logger.LogInformation("{allocatorMessage}", $"[FixedVmAllocator] {message}");
+    }
+
+    private void LogAllocatorWarning(string message)
+    {
+        logger.LogWarning("{allocatorMessage}", $"[FixedVmAllocator] {message}");
     }
 
     private static bool IsReady(LauncherMatchResponse response)

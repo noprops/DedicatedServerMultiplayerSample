@@ -200,6 +200,12 @@ mapping = {
     "DSMS_ENVIRONMENT": data.get("environment", ""),
 }
 
+for key, value in mapping.items():
+    print(f"{key}={shlex.quote(str(value))}")
+PY
+  )"
+}
+
 load_dsms_vm_create_defaults() {
   local config_path
   config_path="$(dsms_config_path)"
@@ -223,12 +229,6 @@ mapping = {
     "DSMS_VM_DEFAULT_AVAILABILITY_ZONE": data.get("defaultAvailabilityZone", ""),
     "DSMS_VM_DEFAULT_BLUEPRINT_ID": data.get("defaultBlueprintId", ""),
     "DSMS_VM_DEFAULT_BUNDLE_ID": data.get("defaultBundleId", ""),
-}
-
-for key, value in mapping.items():
-    print(f"{key}={shlex.quote(str(value))}")
-PY
-  )"
 }
 
 for key, value in mapping.items():
