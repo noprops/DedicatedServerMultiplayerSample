@@ -25,9 +25,14 @@ VM helper scripts include slot-based:
 Per-project VM operations are standardized through:
 - `project-root/dsms-vm.json`
 - generated automatically by `Tools~/vm/create_lightsail_vm.sh`
+- includes top-level project ownership fields:
+  - `projectId`
+  - `projectName`
+  - `environment`
 - includes `currentWorkSlot`
 - includes slot-scoped launcher config values such as `maxConcurrentMatches`
 - scripts use an explicit slot argument if provided, otherwise they use `currentWorkSlot`
+- slot `A` and slot `B` must point to different VMs
 
 For downstream projects, these package-contained assets are the canonical integration entry points.
 Do not depend on root-level migration workspace `modules/` or `scripts/` paths from this repository.
@@ -113,8 +118,11 @@ Important:
 - Unity Secret Manager stores Cloud Code secrets
 - `project-root/dsms-vm.json` stores local deploy/SSH values for VM slot `A` and `B`
 - `project-root/dsms-vm.json` is also the source of truth for launcher config values such as `maxConcurrentMatches`
+- `project-root/dsms-vm.json` now also stores project ownership values used for VM ownership checks
 - launcher deploy rebuilds remote `config.json` from package defaults, then overrides slot values from `dsms-vm.json`
-- launcher deploy verifies `publicIp`, `launcherToken`, `bindPort`, and `maxConcurrentMatches` after upload
+- launcher deploy refuses to overwrite a VM that reports a different `projectId` or `slot`
+- launcher deploy verifies `projectId`, `projectName`, `environment`, `slot`, `instanceName`, `publicIp`, `launcherToken`, `bindPort`, and `maxConcurrentMatches` after upload
+- server build upload refuses to run unless the remote launcher ownership metadata matches the local project and slot
 - both this DSMS repo and downstream repos use the same `dsms-vm.json` convention
 
 ## Build

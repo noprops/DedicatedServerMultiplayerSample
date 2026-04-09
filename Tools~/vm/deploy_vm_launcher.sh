@@ -13,8 +13,13 @@ if [[ "${1:-}" =~ ^[AaBb]$ ]]; then
 fi
 
 SLOT="$(resolve_slot_or_current "$SLOT_ARG")"
+load_dsms_project_identity
 load_dsms_vm_slot "$SLOT"
 
+PROJECT_ID="${DSMS_PROJECT_ID:-}"
+PROJECT_NAME="${DSMS_PROJECT_NAME:-}"
+ENVIRONMENT="${DSMS_ENVIRONMENT:-}"
+VM_INSTANCE_NAME="${DSMS_VM_INSTANCE_NAME:-}"
 SSH_KEY_PATH="${DSMS_VM_SSH_KEY_PATH:-}"
 VM_HOST="${DSMS_VM_HOST:-}"
 LAUNCHER_TOKEN="${DSMS_VM_LAUNCHER_TOKEN:-}"
@@ -24,6 +29,9 @@ PACKAGE_ROOT="${!PACKAGE_ROOT_INDEX:-Packages/info.mygames888.dedicatedservermul
 
 require_value "ssh-key-path or DSMS_VM_SSH_KEY_PATH" "$SSH_KEY_PATH"
 require_value "vm-host or DSMS_VM_HOST" "$VM_HOST"
+require_value "projectId or DSMS_PROJECT_ID" "$PROJECT_ID"
+require_value "projectName or DSMS_PROJECT_NAME" "$PROJECT_NAME"
+require_value "environment or DSMS_ENVIRONMENT" "$ENVIRONMENT"
 require_value "launcher-token or DSMS_VM_LAUNCHER_TOKEN" "$LAUNCHER_TOKEN"
 require_value "public-ip or DSMS_VM_PUBLIC_IP" "$PUBLIC_IP"
 require_value "maxConcurrentMatches or DSMS_VM_MAX_CONCURRENT_MATCHES" "$MAX_CONCURRENT_MATCHES"
@@ -39,17 +47,62 @@ cleanup() {
 }
 trap cleanup EXIT
 
-cp "$VM_LAUNCHER_DIR/server_launcher.py" "$TMP_DIR/server_launcher.py"
-python3 - <<'PY' "$VM_LAUNCHER_DIR/config.example.json" "$TMP_DIR/config.json" "$PUBLIC_IP" "$LAUNCHER_TOKEN" "$LAUNCHER_PORT" "$MAX_CONCURRENT_MATCHES"
+REMOTE_CONFIG_JSON="$(ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$VM_USER@$VM_HOST" \
+  "if [ -f $REMOTE_DIR/config.json ]; then cat $REMOTE_DIR/config.json; fi")"
+
+python3 - <<'PY' "$REMOTE_CONFIG_JSON" "$PROJECT_ID" "$PROJECT_NAME" "$ENVIRONMENT" "$SLOT" "$VM_INSTANCE_NAME" "$LAUNCHER_TOKEN"
 import json
 import sys
-src, dst, ip, token, port, max_concurrent_matches = sys.argv[1:]
+
+remote_json, project_id, project_name, environment, slot, instance_name, launcher_token = sys.argv[1:]
+
+if not remote_json.strip():
+    raise SystemExit(0)
+
+remote = json.loads(remote_json)
+remote_project_id = str(remote.get("projectId", "")).strip()
+remote_project_name = str(remote.get("projectName", "")).strip()
+remote_slot = str(remote.get("slot", "")).strip()
+remote_token = str(remote.get("launcherToken", "")).strip()
+
+if remote_project_id:
+    if remote_project_id != project_id:
+        raise SystemExit(
+            f"Remote VM ownership mismatch: remote projectId={remote_project_id!r}, local projectId={project_id!r}"
+        )
+    if remote_slot and remote_slot != slot:
+        raise SystemExit(
+            f"Remote VM slot mismatch: remote slot={remote_slot!r}, local slot={slot!r}"
+        )
+else:
+    if remote_token and remote_token != launcher_token:
+        raise SystemExit(
+            "Remote VM has no ownership metadata and launcherToken does not match local dsms-vm.json. "
+            "Refusing to deploy launcher onto a possibly foreign VM."
+        )
+
+    if remote_project_name and remote_project_name != project_name:
+        raise SystemExit(
+            f"Remote VM projectName mismatch without projectId metadata: remote={remote_project_name!r}, local={project_name!r}"
+        )
+PY
+
+cp "$VM_LAUNCHER_DIR/server_launcher.py" "$TMP_DIR/server_launcher.py"
+python3 - <<'PY' "$VM_LAUNCHER_DIR/config.example.json" "$TMP_DIR/config.json" "$PUBLIC_IP" "$LAUNCHER_TOKEN" "$LAUNCHER_PORT" "$MAX_CONCURRENT_MATCHES" "$PROJECT_ID" "$PROJECT_NAME" "$ENVIRONMENT" "$SLOT" "$VM_INSTANCE_NAME"
+import json
+import sys
+src, dst, ip, token, port, max_concurrent_matches, project_id, project_name, environment, slot, instance_name = sys.argv[1:]
 with open(src, "r", encoding="utf-8") as f:
     data = json.load(f)
 data["publicIp"] = ip
 data["launcherToken"] = token
 data["bindPort"] = int(port)
 data["maxConcurrentMatches"] = int(max_concurrent_matches)
+data["projectId"] = project_id
+data["projectName"] = project_name
+data["environment"] = environment
+data["slot"] = slot
+data["instanceName"] = instance_name
 with open(dst, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2, sort_keys=True)
     f.write("\n")
@@ -78,6 +131,11 @@ with open(local_path, "r", encoding="utf-8") as f:
 remote_data = json.loads(remote_json)
 
 keys_to_verify = [
+    "projectId",
+    "projectName",
+    "environment",
+    "slot",
+    "instanceName",
     "publicIp",
     "launcherToken",
     "bindPort",

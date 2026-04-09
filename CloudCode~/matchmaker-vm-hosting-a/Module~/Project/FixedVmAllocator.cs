@@ -1,4 +1,5 @@
 using System;
+using System.Collections;
 using System.Collections.Generic;
 using System.Linq;
 using System.Net.Http;
@@ -12,7 +13,6 @@ using Unity.Services.CloudCode.Apis;
 using Unity.Services.CloudCode.Apis.Matchmaker;
 using Unity.Services.CloudCode.Core;
 using IExecutionContext = Unity.Services.CloudCode.Core.IExecutionContext;
-using MatchProperties = Unity.Services.Matchmaker.Model.MatchProperties;
 
 namespace MatchmakerVmHostingA;
 
@@ -56,13 +56,15 @@ public class FixedVmAllocator : IMatchmakerAllocator
         var matchId = string.IsNullOrWhiteSpace(request.MatchId)
             ? Guid.NewGuid().ToString("N")
             : request.MatchId;
-        var matchProperties = ResolveMatchProperties(request);
-        var expectedAuthIds = ResolveExpectedAuthIds(matchProperties);
-        var expectedPlayers = ResolveExpectedPlayers(matchProperties, expectedAuthIds);
 
         try
         {
-            LogAllocator($"Allocate start matchId={matchId}, expectedPlayers={expectedPlayers}, expectedAuthIds={expectedAuthIds.Count}");
+            var matchProperties = ResolveMatchPropertiesObject(request);
+            var teamCount = ResolveTeamCount(matchProperties);
+            var playerCount = ResolvePlayerCount(matchProperties);
+            var expectedAuthIds = ResolveExpectedAuthIds(matchProperties);
+            var expectedPlayers = ResolveExpectedPlayers(teamCount, playerCount, expectedAuthIds);
+            LogAllocator($"Allocate start matchId={matchId}, matchPropertiesKeys={DescribeMatchPropertiesKeys(request.MatchmakingResults?.MatchProperties)}, teams={teamCount}, players={playerCount}, expectedAuthIds={expectedAuthIds.Count}, expectedPlayers={expectedPlayers}");
             var launcherSettings = await LoadLauncherSettingsAsync(context);
             var launcherResponse = await WaitForAllocationReadyAsync(
                 launcherSettings,
@@ -144,62 +146,231 @@ public class FixedVmAllocator : IMatchmakerAllocator
         }
     }
 
-    private static MatchProperties? ResolveMatchProperties(AllocateRequest request)
+    private static object? ResolveMatchPropertiesObject(AllocateRequest request)
     {
         if (request.MatchmakingResults?.MatchProperties == null)
         {
             return null;
         }
 
-        try
-        {
-            var rawJson = JsonSerializer.Serialize(request.MatchmakingResults.MatchProperties, s_JsonOptions);
-            return JsonSerializer.Deserialize<MatchProperties>(rawJson, s_JsonOptions);
-        }
-        catch
-        {
-            return null;
-        }
+        return request.MatchmakingResults.MatchProperties;
     }
 
-    private static IReadOnlyList<string> ResolveExpectedAuthIds(MatchProperties? matchProperties)
+    private static IReadOnlyList<string> ResolveExpectedAuthIds(object? matchProperties)
     {
-        if (matchProperties?.Players == null)
+        if (matchProperties == null)
         {
             return Array.Empty<string>();
         }
 
-        return matchProperties.Players
-            .Select(player => player?.Id?.Trim())
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .Select(id => id!)
-            .Distinct(StringComparer.Ordinal)
-            .ToArray();
-    }
-
-    private static int ResolveExpectedPlayers(MatchProperties? matchProperties, IReadOnlyList<string> expectedAuthIds)
-    {
-        if (IsSinglePlayerFallbackMatch(matchProperties, expectedAuthIds))
+        var expectedAuthIds = new HashSet<string>(StringComparer.Ordinal);
+        if (TryGetNamedValue(matchProperties, "players", out var playersElement))
         {
-            return 1;
+            foreach (var playerElement in EnumerateArray(playersElement))
+            {
+                if (!TryGetNamedValue(playerElement, "id", out var idElement))
+                {
+                    continue;
+                }
+
+                var authId = TryReadString(idElement)?.Trim();
+                if (!string.IsNullOrWhiteSpace(authId))
+                {
+                    expectedAuthIds.Add(authId);
+                }
+            }
         }
 
-        return expectedAuthIds.Count > 0 ? expectedAuthIds.Count : DefaultExpectedPlayers;
+        if (expectedAuthIds.Count == 0 && TryGetNamedValue(matchProperties, "teams", out var teamsElement))
+        {
+            foreach (var teamElement in EnumerateArray(teamsElement))
+            {
+                if (!TryGetNamedValue(teamElement, "playerIds", out var playerIdsElement))
+                {
+                    continue;
+                }
+
+                foreach (var playerIdElement in EnumerateArray(playerIdsElement))
+                {
+                    var authId = TryReadString(playerIdElement)?.Trim();
+                    if (!string.IsNullOrWhiteSpace(authId))
+                    {
+                        expectedAuthIds.Add(authId);
+                    }
+                }
+            }
+        }
+
+        return expectedAuthIds.ToArray();
     }
 
-    private static bool IsSinglePlayerFallbackMatch(MatchProperties? matchProperties, IReadOnlyList<string> expectedAuthIds)
+    private static int ResolveExpectedPlayers(int teamCount, int playerCount, IReadOnlyList<string> expectedAuthIds)
     {
-        if (expectedAuthIds.Count != 1)
+        if (expectedAuthIds.Count > 0)
         {
+            return expectedAuthIds.Count;
+        }
+
+        if (playerCount > 0)
+        {
+            return playerCount;
+        }
+
+        if (teamCount > 0)
+        {
+            return teamCount;
+        }
+
+        return DefaultExpectedPlayers;
+    }
+
+    private static string DescribeMatchPropertiesKeys(Dictionary<string, object>? matchProperties)
+    {
+        if (matchProperties == null || matchProperties.Count == 0)
+        {
+            return "(none)";
+        }
+
+        return string.Join(",",
+            matchProperties.Select(pair => $"{pair.Key}:{pair.Value?.GetType().Name ?? "null"}"));
+    }
+
+    private static int ResolveTeamCount(object? matchProperties)
+    {
+        if (!TryGetNamedValue(matchProperties, "teams", out var teamsElement))
+        {
+            return 0;
+        }
+
+        return EnumerateArray(teamsElement).Count();
+    }
+
+    private static int ResolvePlayerCount(object? matchProperties)
+    {
+        if (!TryGetNamedValue(matchProperties, "players", out var playersElement))
+        {
+            return 0;
+        }
+
+        return EnumerateArray(playersElement).Count();
+    }
+
+    private static bool TryGetNamedValue(object? container, string propertyName, out object? value)
+    {
+        if (container == null)
+        {
+            value = null;
             return false;
         }
 
-        if (matchProperties?.Teams?.Count == 1)
+        if (container is JsonDocument jsonDocument)
         {
-            return true;
+            return TryGetNamedValue(jsonDocument.RootElement, propertyName, out value);
         }
 
-        return matchProperties?.Players?.Count == 1;
+        if (container is JsonElement jsonElement)
+        {
+            if (jsonElement.ValueKind == JsonValueKind.Object)
+            {
+                foreach (var property in jsonElement.EnumerateObject())
+                {
+                    if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        value = property.Value;
+                        return true;
+                    }
+                }
+            }
+
+            value = null;
+            return false;
+        }
+
+        if (container is IDictionary<string, object> stringObjectDictionary)
+        {
+            foreach (var pair in stringObjectDictionary)
+            {
+                if (string.Equals(pair.Key, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = pair.Value;
+                    return true;
+                }
+            }
+        }
+
+        if (container is IDictionary dictionary)
+        {
+            foreach (DictionaryEntry entry in dictionary)
+            {
+                if (entry.Key is string key &&
+                    string.Equals(key, propertyName, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = entry.Value;
+                    return true;
+                }
+            }
+        }
+
+        var properties = container.GetType().GetProperties()
+            .Where(property => property.CanRead && property.GetIndexParameters().Length == 0);
+        foreach (var property in properties)
+        {
+            if (string.Equals(property.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                value = property.GetValue(container);
+                return true;
+            }
+        }
+
+        value = null;
+        return false;
+    }
+
+    private static IEnumerable<object?> EnumerateArray(object? value)
+    {
+        if (value == null)
+        {
+            return Array.Empty<object?>();
+        }
+
+        if (value is JsonDocument jsonDocument)
+        {
+            return EnumerateArray(jsonDocument.RootElement);
+        }
+
+        if (value is JsonElement jsonElement)
+        {
+            return jsonElement.ValueKind == JsonValueKind.Array
+                ? jsonElement.EnumerateArray().Select(item => (object?)item).ToArray()
+                : Array.Empty<object?>();
+        }
+
+        if (value is IEnumerable enumerable && value is not string)
+        {
+            var items = new List<object?>();
+            foreach (var item in enumerable)
+            {
+                items.Add(item);
+            }
+
+            return items;
+        }
+
+        return Array.Empty<object?>();
+    }
+
+    private static string? TryReadString(object? value)
+    {
+        return value switch
+        {
+            null => null,
+            JsonDocument jsonDocument => TryReadString(jsonDocument.RootElement),
+            JsonElement jsonElement when jsonElement.ValueKind == JsonValueKind.String => jsonElement.GetString(),
+            JsonElement jsonElement when jsonElement.ValueKind == JsonValueKind.Number => jsonElement.GetRawText(),
+            JsonElement jsonElement when jsonElement.ValueKind == JsonValueKind.True => bool.TrueString,
+            JsonElement jsonElement when jsonElement.ValueKind == JsonValueKind.False => bool.FalseString,
+            _ => value.ToString()
+        };
     }
 
     private async Task<LauncherSettings> LoadLauncherSettingsAsync(IExecutionContext context)

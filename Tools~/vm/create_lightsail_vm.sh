@@ -27,6 +27,9 @@ PORT_RANGE_END="${PORT_RANGE_END:-7792}"
 LAUNCHER_PORT="${LAUNCHER_PORT:-8080}"
 LAUNCHER_TOKEN="${VM_LAUNCHER_TOKEN:-$(openssl rand -hex 20)}"
 MAX_CONCURRENT_MATCHES="${DSMS_VM_MAX_CONCURRENT_MATCHES:-${MAX_CONCURRENT_MATCHES:-3}}"
+PROJECT_ID_VALUE="${DSMS_PROJECT_ID:-$(detect_dsms_project_id)}"
+PROJECT_NAME_VALUE="${DSMS_PROJECT_NAME:-$(detect_dsms_project_name)}"
+ENVIRONMENT_VALUE="${DSMS_ENVIRONMENT:-$(detect_dsms_environment)}"
 PROJECT_ROOT="$(resolve_project_root)"
 CONFIG_PATH="$(dsms_config_path)"
 SSH_KEY_PATH_VALUE="${DSMS_VM_SSH_KEY_PATH:-${LIGHTSAIL_SSH_KEY_PATH:-}}"
@@ -59,12 +62,12 @@ if [[ -z "$IP_ADDRESS" || "$IP_ADDRESS" == "None" ]]; then
   exit 1
 fi
 
-python3 - <<'PY' "$CONFIG_PATH" "$SLOT" "$INSTANCE_NAME" "$IP_ADDRESS" "$SSH_KEY_PATH_VALUE" "$LAUNCHER_TOKEN" "$LAUNCHER_PORT" "$MAX_CONCURRENT_MATCHES"
+python3 - <<'PY' "$CONFIG_PATH" "$SLOT" "$INSTANCE_NAME" "$IP_ADDRESS" "$SSH_KEY_PATH_VALUE" "$LAUNCHER_TOKEN" "$LAUNCHER_PORT" "$MAX_CONCURRENT_MATCHES" "$PROJECT_ID_VALUE" "$PROJECT_NAME_VALUE" "$ENVIRONMENT_VALUE"
 import json
 import os
 import sys
 
-config_path, slot, instance_name, ip_address, ssh_key_path, launcher_token, launcher_port, max_concurrent_matches = sys.argv[1:]
+config_path, slot, instance_name, ip_address, ssh_key_path, launcher_token, launcher_port, max_concurrent_matches, project_id, project_name, environment = sys.argv[1:]
 
 if os.path.exists(config_path):
     with open(config_path, "r", encoding="utf-8") as f:
@@ -74,6 +77,12 @@ else:
 
 if not data.get("currentWorkSlot"):
     data["currentWorkSlot"] = slot
+if project_id:
+    data["projectId"] = project_id
+if project_name:
+    data["projectName"] = project_name
+if environment:
+    data["environment"] = environment
 
 slots = data.setdefault("slots", {})
 slots.setdefault("A", {})

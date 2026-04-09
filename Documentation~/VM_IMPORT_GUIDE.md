@@ -230,6 +230,9 @@ That file becomes the canonical per-project local VM operations file.
 
 Expected shape in `project-root/dsms-vm.json`:
 
+- `projectId`
+- `projectName`
+- `environment`
 - `currentWorkSlot`
 - `slots.A.instanceName`
 - `slots.A.host`
@@ -256,6 +259,8 @@ Recommended usage:
 - if you are preparing the next release on `B`, keep `currentWorkSlot: "B"`
 - scripts will use an explicit slot argument if you pass one
 - otherwise they will fall back to `currentWorkSlot`
+- `A` and `B` must point to different VMs
+- do not copy `dsms-vm.json` between unrelated projects
 
 So yes, the VM creation script drives both:
 
@@ -393,6 +398,13 @@ Canonical rule:
 - let `project-root/dsms-vm.json` be the canonical local VM operations file for both this DSMS repo and downstream repos
 - let `project-root/dsms-vm.json` also be the source of truth for deployed launcher config values such as `maxConcurrentMatches`
 - `deploy_vm_launcher.sh` must preserve and verify `maxConcurrentMatches` when pushing `config.json` to the VM
+- `deploy_vm_launcher.sh` must also preserve and verify ownership metadata:
+  - `projectId`
+  - `projectName`
+  - `environment`
+  - `slot`
+  - `instanceName`
+- `upload_server_build.sh` now requires matching remote launcher ownership metadata before it will upload a build
 
 ## What Is Still Project-Specific
 

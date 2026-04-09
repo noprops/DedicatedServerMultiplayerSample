@@ -17,6 +17,64 @@ dsms_config_path() {
   printf '%s/dsms-vm.json\n' "$project_root"
 }
 
+unity_services_settings_path() {
+  local project_root
+  project_root="$(resolve_project_root)"
+  printf '%s/ProjectSettings/Packages/com.unity.services.core/Settings.json\n' "$project_root"
+}
+
+unity_project_settings_asset_path() {
+  local project_root
+  project_root="$(resolve_project_root)"
+  printf '%s/ProjectSettings/ProjectSettings.asset\n' "$project_root"
+}
+
+detect_dsms_project_id() {
+  local settings_path
+  settings_path="$(unity_project_settings_asset_path)"
+  if [[ ! -f "$settings_path" ]]; then
+    return 0
+  fi
+
+  python3 - <<'PY' "$settings_path"
+import re
+import sys
+
+settings_path = sys.argv[1]
+with open(settings_path, "r", encoding="utf-8") as f:
+    text = f.read()
+
+match = re.search(r'^\s*cloudProjectId:\s*(.+?)\s*$', text, re.MULTILINE)
+if match:
+    print(match.group(1).strip())
+PY
+}
+
+detect_dsms_environment() {
+  local settings_path
+  settings_path="$(unity_services_settings_path)"
+  if [[ ! -f "$settings_path" ]]; then
+    return 0
+  fi
+
+  python3 - <<'PY' "$settings_path"
+import json
+import sys
+
+settings_path = sys.argv[1]
+with open(settings_path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+value = str(data.get("EnvironmentName", "")).strip()
+if value:
+    print(value)
+PY
+}
+
+detect_dsms_project_name() {
+  basename "$(resolve_project_root)"
+}
+
 normalize_slot() {
   local slot="${1:-}"
   slot="$(printf '%s' "$slot" | tr '[:lower:]' '[:upper:]')"
@@ -64,6 +122,47 @@ resolve_slot_or_current() {
   normalize_slot "$(dsms_current_work_slot)"
 }
 
+validate_dsms_vm_uniqueness() {
+  local config_path
+  config_path="$(dsms_config_path)"
+
+  python3 - <<'PY' "$config_path"
+import json
+import sys
+
+config_path = sys.argv[1]
+with open(config_path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+slots = data.get("slots", {})
+a = slots.get("A", {}) if isinstance(slots.get("A", {}), dict) else {}
+b = slots.get("B", {}) if isinstance(slots.get("B", {}), dict) else {}
+
+if not a.get("enabled") or not b.get("enabled"):
+    raise SystemExit(0)
+
+fields = [
+    "instanceName",
+    "host",
+    "publicIp",
+    "launcherBaseUrl",
+]
+
+duplicates = []
+for field in fields:
+    a_value = str(a.get(field, "")).strip()
+    b_value = str(b.get(field, "")).strip()
+    if a_value and b_value and a_value == b_value:
+        duplicates.append(f"{field}={a_value}")
+
+if duplicates:
+    raise SystemExit(
+        "Invalid dsms-vm.json: slot A and slot B must not point at the same VM:\n  " +
+        "\n  ".join(duplicates)
+    )
+PY
+}
+
 dsms_slot_secret_base_url_name() {
   local slot
   slot="$(normalize_slot "$1")"
@@ -76,6 +175,37 @@ dsms_slot_secret_token_name() {
   printf 'DSMS_VM_%s_LAUNCHER_TOKEN\n' "$slot"
 }
 
+load_dsms_project_identity() {
+  local config_path
+  config_path="$(dsms_config_path)"
+
+  if [[ ! -f "$config_path" ]]; then
+    echo "Missing DSMS VM config: $config_path" >&2
+    exit 1
+  fi
+
+  eval "$(
+    python3 - <<'PY' "$config_path"
+import json
+import shlex
+import sys
+
+config_path = sys.argv[1]
+with open(config_path, "r", encoding="utf-8") as f:
+    data = json.load(f)
+
+mapping = {
+    "DSMS_PROJECT_ID": data.get("projectId", ""),
+    "DSMS_PROJECT_NAME": data.get("projectName", ""),
+    "DSMS_ENVIRONMENT": data.get("environment", ""),
+}
+
+for key, value in mapping.items():
+    print(f"{key}={shlex.quote(str(value))}")
+PY
+  )"
+}
+
 load_dsms_vm_slot() {
   local slot config_path
   slot="$(normalize_slot "$1")"
@@ -85,6 +215,8 @@ load_dsms_vm_slot() {
     echo "Missing DSMS VM config: $config_path" >&2
     exit 1
   fi
+
+  validate_dsms_vm_uniqueness
 
   eval "$(
     python3 - <<'PY' "$config_path" "$slot"

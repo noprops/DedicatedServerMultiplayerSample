@@ -1,5 +1,8 @@
 {
+  "environment": "production",
   "currentWorkSlot": "B",
+  "projectId": "your-unity-project-id",
+  "projectName": "YourProjectName",
   "slots": {
     "A": {
       "enabled": true,
