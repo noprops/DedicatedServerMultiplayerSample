@@ -7,6 +7,7 @@
       "instanceName": "example-vm-a",
       "launcherBaseUrl": "http://1.2.3.4:8080",
       "launcherToken": "replace-me",
+      "maxConcurrentMatches": 8,
       "publicIp": "1.2.3.4",
       "sshKeyPath": "/Users/you/.ssh/example-a.pem"
     },
@@ -16,6 +17,7 @@
       "instanceName": "example-vm-b",
       "launcherBaseUrl": "http://5.6.7.8:8080",
       "launcherToken": "replace-me",
+      "maxConcurrentMatches": 8,
       "publicIp": "5.6.7.8",
       "sshKeyPath": "/Users/you/.ssh/example-b.pem"
     }

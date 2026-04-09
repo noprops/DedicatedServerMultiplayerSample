@@ -108,6 +108,7 @@ mapping = {
     "DSMS_VM_SSH_KEY_PATH": slot_data.get("sshKeyPath", ""),
     "DSMS_VM_LAUNCHER_TOKEN": slot_data.get("launcherToken", ""),
     "DSMS_VM_LAUNCHER_BASE_URL": slot_data.get("launcherBaseUrl", ""),
+    "DSMS_VM_MAX_CONCURRENT_MATCHES": slot_data.get("maxConcurrentMatches", ""),
 }
 
 for key, value in mapping.items():

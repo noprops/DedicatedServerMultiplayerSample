@@ -19,12 +19,14 @@ SSH_KEY_PATH="${DSMS_VM_SSH_KEY_PATH:-}"
 VM_HOST="${DSMS_VM_HOST:-}"
 LAUNCHER_TOKEN="${DSMS_VM_LAUNCHER_TOKEN:-}"
 PUBLIC_IP="${DSMS_VM_PUBLIC_IP:-}"
+MAX_CONCURRENT_MATCHES="${DSMS_VM_MAX_CONCURRENT_MATCHES:-}"
 PACKAGE_ROOT="${!PACKAGE_ROOT_INDEX:-Packages/info.mygames888.dedicatedservermultiplayersample}"
 
 require_value "ssh-key-path or DSMS_VM_SSH_KEY_PATH" "$SSH_KEY_PATH"
 require_value "vm-host or DSMS_VM_HOST" "$VM_HOST"
 require_value "launcher-token or DSMS_VM_LAUNCHER_TOKEN" "$LAUNCHER_TOKEN"
 require_value "public-ip or DSMS_VM_PUBLIC_IP" "$PUBLIC_IP"
+require_value "maxConcurrentMatches or DSMS_VM_MAX_CONCURRENT_MATCHES" "$MAX_CONCURRENT_MATCHES"
 
 VM_LAUNCHER_DIR="$PACKAGE_ROOT/VmLauncher~"
 REMOTE_DIR="${REMOTE_DIR:-~/dsms-launcher}"
@@ -38,15 +40,16 @@ cleanup() {
 trap cleanup EXIT
 
 cp "$VM_LAUNCHER_DIR/server_launcher.py" "$TMP_DIR/server_launcher.py"
-python3 - <<'PY' "$VM_LAUNCHER_DIR/config.example.json" "$TMP_DIR/config.json" "$PUBLIC_IP" "$LAUNCHER_TOKEN" "$LAUNCHER_PORT"
+python3 - <<'PY' "$VM_LAUNCHER_DIR/config.example.json" "$TMP_DIR/config.json" "$PUBLIC_IP" "$LAUNCHER_TOKEN" "$LAUNCHER_PORT" "$MAX_CONCURRENT_MATCHES"
 import json
 import sys
-src, dst, ip, token, port = sys.argv[1:]
+src, dst, ip, token, port, max_concurrent_matches = sys.argv[1:]
 with open(src, "r", encoding="utf-8") as f:
     data = json.load(f)
 data["publicIp"] = ip
 data["launcherToken"] = token
 data["bindPort"] = int(port)
+data["maxConcurrentMatches"] = int(max_concurrent_matches)
 with open(dst, "w", encoding="utf-8") as f:
     json.dump(data, f, indent=2, sort_keys=True)
     f.write("\n")
@@ -78,6 +81,7 @@ keys_to_verify = [
     "publicIp",
     "launcherToken",
     "bindPort",
+    "maxConcurrentMatches",
 ]
 
 mismatches = []

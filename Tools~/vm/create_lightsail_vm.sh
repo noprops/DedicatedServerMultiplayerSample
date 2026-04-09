@@ -26,6 +26,7 @@ PORT_RANGE_START="${PORT_RANGE_START:-7777}"
 PORT_RANGE_END="${PORT_RANGE_END:-7792}"
 LAUNCHER_PORT="${LAUNCHER_PORT:-8080}"
 LAUNCHER_TOKEN="${VM_LAUNCHER_TOKEN:-$(openssl rand -hex 20)}"
+MAX_CONCURRENT_MATCHES="${DSMS_VM_MAX_CONCURRENT_MATCHES:-${MAX_CONCURRENT_MATCHES:-3}}"
 PROJECT_ROOT="$(resolve_project_root)"
 CONFIG_PATH="$(dsms_config_path)"
 SSH_KEY_PATH_VALUE="${DSMS_VM_SSH_KEY_PATH:-${LIGHTSAIL_SSH_KEY_PATH:-}}"
@@ -58,12 +59,12 @@ if [[ -z "$IP_ADDRESS" || "$IP_ADDRESS" == "None" ]]; then
   exit 1
 fi
 
-python3 - <<'PY' "$CONFIG_PATH" "$SLOT" "$INSTANCE_NAME" "$IP_ADDRESS" "$SSH_KEY_PATH_VALUE" "$LAUNCHER_TOKEN" "$LAUNCHER_PORT"
+python3 - <<'PY' "$CONFIG_PATH" "$SLOT" "$INSTANCE_NAME" "$IP_ADDRESS" "$SSH_KEY_PATH_VALUE" "$LAUNCHER_TOKEN" "$LAUNCHER_PORT" "$MAX_CONCURRENT_MATCHES"
 import json
 import os
 import sys
 
-config_path, slot, instance_name, ip_address, ssh_key_path, launcher_token, launcher_port = sys.argv[1:]
+config_path, slot, instance_name, ip_address, ssh_key_path, launcher_token, launcher_port, max_concurrent_matches = sys.argv[1:]
 
 if os.path.exists(config_path):
     with open(config_path, "r", encoding="utf-8") as f:
@@ -84,6 +85,7 @@ slots[slot] = {
     "sshKeyPath": ssh_key_path,
     "launcherToken": launcher_token,
     "launcherBaseUrl": f"http://{ip_address}:{launcher_port}",
+    "maxConcurrentMatches": int(max_concurrent_matches),
     "enabled": True
 }
 
@@ -114,7 +116,8 @@ Recommended next steps:
   1. Open TCP port $LAUNCHER_PORT
   2. Open UDP ports $PORT_RANGE_START-$PORT_RANGE_END
   3. If needed, edit currentWorkSlot or sshKeyPath for slot $SLOT in $CONFIG_PATH
-  4. Upload Linux dedicated server build
-  5. Upload VmLauncher~ contents
-  6. Install dsms-vm-launcher.service
+  4. Review maxConcurrentMatches for slot $SLOT in $CONFIG_PATH
+  5. Upload Linux dedicated server build
+  6. Upload VmLauncher~ contents
+  7. Install dsms-vm-launcher.service
 EOF

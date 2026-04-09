@@ -237,12 +237,14 @@ Expected shape in `project-root/dsms-vm.json`:
 - `slots.A.sshKeyPath`
 - `slots.A.launcherToken`
 - `slots.A.launcherBaseUrl`
+- `slots.A.maxConcurrentMatches`
 - `slots.B.instanceName`
 - `slots.B.host`
 - `slots.B.publicIp`
 - `slots.B.sshKeyPath`
 - `slots.B.launcherToken`
 - `slots.B.launcherBaseUrl`
+- `slots.B.maxConcurrentMatches`
 
 Reference example:
 
@@ -259,6 +261,7 @@ So yes, the VM creation script drives both:
 
 - Unity Secret values
 - local deploy-time VM values
+- slot-scoped launcher runtime config values such as `maxConcurrentMatches`
 
 If you do not create the VM with the helper script, use:
 
@@ -388,6 +391,8 @@ Canonical rule:
 - for downstream usage, use the package-contained `CloudCode~/`, `VmLauncher~/`, and `Tools~/` assets
 - do not depend on any root-level migration workspace scripts from this DSMS repository
 - let `project-root/dsms-vm.json` be the canonical local VM operations file for both this DSMS repo and downstream repos
+- let `project-root/dsms-vm.json` also be the source of truth for deployed launcher config values such as `maxConcurrentMatches`
+- `deploy_vm_launcher.sh` must preserve and verify `maxConcurrentMatches` when pushing `config.json` to the VM
 
 ## What Is Still Project-Specific
 
