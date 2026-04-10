@@ -117,6 +117,9 @@ scp -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no \
 ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$VM_USER@$VM_HOST" \
   "mkdir -p $REMOTE_DIR && chmod +x $REMOTE_DIR/server_launcher.py"
 
+ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$VM_USER@$VM_HOST" \
+  "sudo systemctl restart dsms-vm-launcher.service && systemctl is-active dsms-vm-launcher.service >/dev/null"
+
 python3 - <<'PY' \
   "$TMP_DIR/config.json" \
   "$(ssh -i "$SSH_KEY_PATH" -o StrictHostKeyChecking=no "$VM_USER@$VM_HOST" "cat $REMOTE_DIR/config.json")"

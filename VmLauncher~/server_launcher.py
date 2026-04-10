@@ -15,6 +15,7 @@ from urllib.parse import urlparse
 
 CONFIG_PATH = os.environ.get("DSMS_VM_LAUNCHER_CONFIG", str(Path(__file__).with_name("config.json")))
 STATE_LOCK = threading.Lock()
+RECENT_CAPACITY_REJECTION_LIMIT = 20
 
 
 def load_config():
@@ -47,13 +48,14 @@ def ensure_parent(path_str):
 def load_state():
     state_path = ensure_parent(CONFIG["stateFile"])
     if not state_path.exists():
-        return {"matches": {}}
+        return default_state()
 
     with state_path.open("r", encoding="utf-8") as f:
-        return json.load(f)
+        return normalize_state(json.load(f))
 
 
 def save_state(state):
+    state = normalize_state(state)
     state_path = ensure_parent(CONFIG["stateFile"])
     temp_path = state_path.with_suffix(".tmp")
     with temp_path.open("w", encoding="utf-8") as f:
@@ -61,8 +63,42 @@ def save_state(state):
     temp_path.replace(state_path)
 
 
+def default_state():
+    return {
+        "matches": {},
+        "capacityRejectionsTotal": 0,
+        "recentCapacityRejections": [],
+    }
+
+
+def normalize_state(state):
+    if not isinstance(state, dict):
+        return default_state()
+
+    normalized = dict(state)
+    matches = normalized.get("matches")
+    normalized["matches"] = matches if isinstance(matches, dict) else {}
+
+    total = normalized.get("capacityRejectionsTotal", 0)
+    try:
+        normalized["capacityRejectionsTotal"] = int(total)
+    except (TypeError, ValueError):
+        normalized["capacityRejectionsTotal"] = 0
+
+    recent = normalized.get("recentCapacityRejections", [])
+    normalized["recentCapacityRejections"] = recent if isinstance(recent, list) else []
+    return normalized
+
+
 def now_ts():
     return int(time.time())
+
+
+def log_event(payload):
+    try:
+        print(json.dumps(payload, ensure_ascii=True), flush=True)
+    except Exception:
+        pass
 
 
 def reap_children():
@@ -178,6 +214,61 @@ def active_match_count(state):
     return count
 
 
+def record_capacity_rejection(state, match_id, expected_players, expected_auth_ids):
+    active_matches = active_match_count(state)
+    max_concurrent_matches = int(CONFIG.get("maxConcurrentMatches", 0) or 0)
+    timestamp = now_ts()
+    event = {
+        "event": "capacity_reached",
+        "timestamp": timestamp,
+        "matchId": match_id,
+        "activeMatches": active_matches,
+        "maxConcurrentMatches": max_concurrent_matches,
+        "expectedPlayers": expected_players,
+        "expectedAuthIdsCount": len(expected_auth_ids),
+        "projectName": CONFIG.get("projectName"),
+        "projectId": CONFIG.get("projectId"),
+        "environment": CONFIG.get("environment"),
+        "slot": CONFIG.get("slot"),
+        "instanceName": CONFIG.get("instanceName"),
+        "attemptCount": 1,
+    }
+    recent = state.get("recentCapacityRejections")
+    if not isinstance(recent, list):
+        recent = []
+        state["recentCapacityRejections"] = recent
+
+    existing = next((item for item in recent if item.get("matchId") == match_id), None)
+    if existing is None:
+        state["capacityRejectionsTotal"] = int(state.get("capacityRejectionsTotal", 0) or 0) + 1
+        recent.append(event)
+        if len(recent) > RECENT_CAPACITY_REJECTION_LIMIT:
+            del recent[:-RECENT_CAPACITY_REJECTION_LIMIT]
+    else:
+        existing["timestamp"] = timestamp
+        existing["activeMatches"] = active_matches
+        existing["maxConcurrentMatches"] = max_concurrent_matches
+        existing["expectedPlayers"] = expected_players
+        existing["expectedAuthIdsCount"] = len(expected_auth_ids)
+        existing["projectName"] = CONFIG.get("projectName")
+        existing["projectId"] = CONFIG.get("projectId")
+        existing["environment"] = CONFIG.get("environment")
+        existing["slot"] = CONFIG.get("slot")
+        existing["instanceName"] = CONFIG.get("instanceName")
+        existing["attemptCount"] = int(existing.get("attemptCount", 1) or 1) + 1
+        event["attemptCount"] = existing["attemptCount"]
+
+    log_event(event)
+    return {
+        "matchId": match_id,
+        "status": "failed",
+        "message": f"capacity reached: activeMatches={active_matches} maxConcurrentMatches={max_concurrent_matches}",
+        "activeMatches": active_matches,
+        "maxConcurrentMatches": max_concurrent_matches,
+        "updatedAt": now_ts(),
+    }
+
+
 def capacity_available(state):
     max_concurrent_matches = int(CONFIG.get("maxConcurrentMatches", 0) or 0)
     if max_concurrent_matches <= 0:
@@ -262,14 +353,9 @@ def allocate_match(match_id, expected_players, expected_auth_ids):
             return existing
 
         if not capacity_available(state):
-            return {
-                "matchId": match_id,
-                "status": "failed",
-                "message": f"capacity reached: activeMatches={active_match_count(state)} maxConcurrentMatches={int(CONFIG.get('maxConcurrentMatches', 0) or 0)}",
-                "activeMatches": active_match_count(state),
-                "maxConcurrentMatches": int(CONFIG.get("maxConcurrentMatches", 0) or 0),
-                "updatedAt": now_ts(),
-            }
+            rejection = record_capacity_rejection(state, match_id, expected_players, expected_auth_ids)
+            save_state(state)
+            return rejection
 
         port = next_free_port(state)
         entry = spawn_server(match_id, port, expected_players, expected_auth_ids)
@@ -400,10 +486,7 @@ class LauncherHandler(BaseHTTPRequestHandler):
         self.wfile.write(body)
 
     def _log(self, payload):
-        try:
-            print(json.dumps(payload, ensure_ascii=True), flush=True)
-        except Exception:
-            pass
+        log_event(payload)
 
 
 def main():
